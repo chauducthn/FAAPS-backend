@@ -2,10 +2,14 @@ package vn.edu.fpt.faaps.auth;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 
 public class JdbcAuthAccountStore implements AuthAccountStore {
     private final JdbcTemplate jdbcTemplate;
@@ -36,7 +40,90 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
 
     @Override
     public AuthAccount resolveGoogleAccount(GoogleIdentity identity) {
-        throw new AuthUnavailableException();
+        if (identity.subject() == null || identity.subject().isBlank()
+                || identity.email() == null || identity.email().isBlank()) {
+            throw new BadCredentialsException("Invalid Google identity");
+        }
+
+        String subject = identity.subject().strip();
+        String email = identity.email().strip().toLowerCase(Locale.ROOT);
+        if (subject.length() > 255 || email.length() > 255) {
+            throw new BadCredentialsException("Invalid Google identity");
+        }
+        Optional<AuthAccount> linked = findByGoogleSubject(subject);
+        if (linked.isPresent()) {
+            return linked.get();
+        }
+
+        Optional<GoogleLinkTarget> existing = jdbcTemplate.query("""
+                SELECT u.id, r.code AS role, u.status, u.external_id, u.password_hash
+                FROM users u JOIN roles r ON r.id = u.role_id
+                WHERE u.email = ?
+                """, (resultSet, rowNumber) -> new GoogleLinkTarget(
+                resultSet.getString("id"), resultSet.getString("role"),
+                resultSet.getString("status"), resultSet.getString("external_id"),
+                resultSet.getString("password_hash")), email).stream().findFirst();
+
+        if (existing.isPresent()) {
+            GoogleLinkTarget target = existing.get();
+            if (!"ACTIVE".equals(target.status())) {
+                throw new DisabledException("Account is not active");
+            }
+            if (!"ADVISOR".equals(target.role()) || target.externalId() != null
+                    || target.passwordHash() != null) {
+                throw new BadCredentialsException("Google account cannot be linked automatically");
+            }
+            try {
+                int updated = jdbcTemplate.update("""
+                        UPDATE users SET auth_provider = 'GOOGLE', external_id = ?,
+                            email_verified_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND external_id IS NULL AND password_hash IS NULL
+                          AND status = 'ACTIVE' AND role_id = (SELECT id FROM roles WHERE code = 'ADVISOR')
+                        """, subject, target.id());
+                if (updated == 1) {
+                    return findByGoogleSubject(subject).orElseThrow();
+                }
+            } catch (DuplicateKeyException exception) {
+                Optional<AuthAccount> concurrentlyLinked = findByGoogleSubject(subject);
+                if (concurrentlyLinked.isPresent()) {
+                    return concurrentlyLinked.get();
+                }
+            }
+            throw new BadCredentialsException("Google account is already linked elsewhere");
+        }
+
+        UUID userId = UUID.randomUUID();
+        String fullName = identity.fullName() == null || identity.fullName().isBlank()
+                ? email : identity.fullName().strip();
+        String avatarUrl = identity.avatarUrl();
+        if (avatarUrl != null && avatarUrl.length() > 500) {
+            avatarUrl = null;
+        }
+        try {
+            int inserted = jdbcTemplate.update("""
+                    INSERT INTO users (id, role_id, email, auth_provider, external_id,
+                                       full_name, avatar_url, status, email_verified_at)
+                    SELECT ?, r.id, ?, 'GOOGLE', ?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP
+                    FROM roles r WHERE r.code = 'STUDENT'
+                    """, userId.toString(), email, subject,
+                    fullName.substring(0, Math.min(fullName.length(), 255)), avatarUrl);
+            if (inserted != 1) {
+                throw new IllegalStateException("STUDENT role is missing");
+            }
+            return findById(userId).orElseThrow();
+        } catch (DuplicateKeyException exception) {
+            return findByGoogleSubject(subject)
+                    .orElseThrow(() -> new BadCredentialsException("Google email is already in use"));
+        }
+    }
+
+    private Optional<AuthAccount> findByGoogleSubject(String subject) {
+        return jdbcTemplate.query("""
+                SELECT u.id, u.email, u.full_name, u.avatar_url, r.code AS role,
+                       u.status, u.password_hash
+                FROM users u JOIN roles r ON r.id = u.role_id
+                WHERE u.auth_provider = 'GOOGLE' AND u.external_id = ?
+                """, this::mapAccount, subject).stream().findFirst();
     }
 
     private AuthAccount mapAccount(ResultSet resultSet, int rowNumber) throws SQLException {
@@ -44,5 +131,9 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
                 resultSet.getString("full_name"), resultSet.getString("avatar_url"),
                 resultSet.getString("role"), resultSet.getString("status"),
                 resultSet.getString("password_hash"));
+    }
+
+    private record GoogleLinkTarget(String id, String role, String status,
+            String externalId, String passwordHash) {
     }
 }

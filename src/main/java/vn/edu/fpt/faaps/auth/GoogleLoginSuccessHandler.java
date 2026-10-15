@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -50,6 +51,9 @@ public class GoogleLoginSuccessHandler implements AuthenticationSuccessHandler {
         } catch (DisabledException exception) {
             SecurityContextHolder.clearContext();
             response.sendRedirect(frontendUrl + "/login?error=account-disabled");
+        } catch (BadCredentialsException exception) {
+            SecurityContextHolder.clearContext();
+            response.sendRedirect(frontendUrl + "/login?error=google-account-conflict");
         } catch (AuthUnavailableException exception) {
             SecurityContextHolder.clearContext();
             response.sendRedirect(frontendUrl + "/login?error=account-store-unavailable");
