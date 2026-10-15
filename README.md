@@ -14,6 +14,8 @@ mvn spring-boot:run
 
 The health endpoint is `http://localhost:8080/api/health`.
 
+For the shared development RDS database and Google OAuth setup, follow [the team setup guide](docs/RDS_TEAM_SETUP.md). The launcher is `./scripts/Start-Rds.ps1`; it keeps database and OAuth secrets out of Git.
+
 ## Authentication API
 
 The backend has session-based authentication, Google OAuth login, Admin password login, CSRF protection, role-based API access and logout. Students and Advisors use Google; Google first sign-in must create a Student through the account store. Admin accounts may use a password or a linked Google account.
