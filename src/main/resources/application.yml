@@ -1,5 +1,10 @@
 server:
   port: 8080
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
 spring:
   application:
     name: faaps-api
@@ -11,3 +16,5 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+faaps:
+  frontend-url: ${FAAPS_FRONTEND_URL:http://localhost:5173}
