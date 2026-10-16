@@ -29,7 +29,7 @@ class AdminUserServiceTest {
                 """);
         jdbc.execute("CREATE TABLE students (user_id VARCHAR(36) PRIMARY KEY, student_code VARCHAR(50), major_id VARCHAR(36), curriculum_version_id VARCHAR(36), current_semester INT, academic_status VARCHAR(20))");
         jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY, advisor_code VARCHAR(50))");
-        jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, name VARCHAR(255))");
+        jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, code VARCHAR(50), name VARCHAR(255))");
         jdbc.execute("CREATE TABLE curriculum_versions (id VARCHAR(36) PRIMARY KEY, version VARCHAR(50))");
         String adminRole = UUID.randomUUID().toString();
         String studentRole = UUID.randomUUID().toString();
@@ -46,11 +46,39 @@ class AdminUserServiceTest {
 
     @Test
     void listsUsersWithoutProfilesAndFiltersByRole() {
-        AdminUserService.Page page = users.list("STUDENT", "ACTIVE", "student", 0, 20, "userId,asc");
+        AdminUserService.Page page = users.list("STUDENT", "ACTIVE", "student", null, 0, 20, "userId,asc");
         assertEquals(1, page.totalElements());
         assertEquals(studentId, page.items().get(0).id());
         assertEquals("student@example.com", page.items().get(0).userId());
         assertEquals("STUDENT", users.detail(studentId).role());
+    }
+
+    @Test
+    void listsMajorsAndFiltersStudentsByMajor() {
+        UUID softwareMajor = UUID.randomUUID();
+        UUID aiMajor = UUID.randomUUID();
+        UUID aiStudent = UUID.randomUUID();
+        String studentRole = jdbc.queryForObject("SELECT id FROM roles WHERE code = 'STUDENT'", String.class);
+        jdbc.update("INSERT INTO majors (id, code, name) VALUES (?, 'SE', 'Software Engineering')",
+                softwareMajor.toString());
+        jdbc.update("INSERT INTO majors (id, code, name) VALUES (?, 'AI', 'Artificial Intelligence')",
+                aiMajor.toString());
+        jdbc.update("INSERT INTO students (user_id, student_code, major_id) VALUES (?, 'SE01', ?)",
+                studentId.toString(), softwareMajor.toString());
+        jdbc.update("INSERT INTO users (id, role_id, email, full_name, status) VALUES (?, ?, 'ai@example.com', 'AI Student', 'ACTIVE')",
+                aiStudent.toString(), studentRole);
+        jdbc.update("INSERT INTO students (user_id, student_code, major_id) VALUES (?, 'AI01', ?)",
+                aiStudent.toString(), aiMajor.toString());
+
+        List<AdminOverviewController.Major> majors = new AdminOverviewController(jdbc).majors();
+        assertEquals(List.of("AI", "SE"), majors.stream().map(AdminOverviewController.Major::code).toList());
+        assertEquals(softwareMajor, majors.get(1).id());
+
+        AdminUserService.Page filtered = users.list("STUDENT", null, null, softwareMajor,
+                0, 20, "userId,asc");
+        assertEquals(1, filtered.totalElements());
+        assertEquals(studentId, filtered.items().get(0).id());
+        assertEquals(3, users.list(null, null, null, null, 0, 20, "userId,asc").totalElements());
     }
 
     @Test

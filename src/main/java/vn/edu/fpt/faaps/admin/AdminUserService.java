@@ -19,7 +19,7 @@ public class AdminUserService {
         this.jdbc = jdbc;
     }
 
-    public Page list(String role, String status, String search, int page, int size, String sort) {
+    public Page list(String role, String status, String search, UUID majorId, int page, int size, String sort) {
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("page or size is invalid");
         }
@@ -47,6 +47,10 @@ public class AdminUserService {
         if (status != null) {
             where.append(" AND u.status = ?");
             parameters.add(status);
+        }
+        if (majorId != null) {
+            where.append(" AND s.major_id = ?");
+            parameters.add(majorId.toString());
         }
         if (search != null && !search.isBlank()) {
             String term = "%" + search.strip().toLowerCase(Locale.ROOT) + "%";

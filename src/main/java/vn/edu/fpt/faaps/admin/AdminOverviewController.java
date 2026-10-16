@@ -23,6 +23,13 @@ public class AdminOverviewController {
         this.jdbc = jdbc;
     }
 
+    @GetMapping("/majors")
+    public List<Major> majors() {
+        return jdbc.query("SELECT id, code, name FROM majors ORDER BY name, code",
+                (result, row) -> new Major(UUID.fromString(result.getString("id")),
+                        result.getString("code"), result.getString("name")));
+    }
+
     @GetMapping("/dashboard/accounts")
     public Map<String, Long> accountCounts() {
         return Map.of(
@@ -153,6 +160,9 @@ public class AdminOverviewController {
     }
 
     public record MonthlyCount(String month, long students) {
+    }
+
+    public record Major(UUID id, String code, String name) {
     }
 
     public record Appointment(String id, String studentId, String studentName,
