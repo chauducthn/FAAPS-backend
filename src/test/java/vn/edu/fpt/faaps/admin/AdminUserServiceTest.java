@@ -65,4 +65,14 @@ class AdminUserServiceTest {
         assertThrows(IllegalArgumentException.class, () ->
                 users.update(studentId, "Student", null, "javascript:alert(1)"));
     }
+
+    @Test
+    void keepsUploadedAvatarDuringProfileEdit() {
+        String avatarUrl = "/api/avatars/" + studentId + "/" + UUID.randomUUID();
+        jdbc.update("UPDATE users SET avatar_url = ? WHERE id = ?", avatarUrl, studentId.toString());
+        users.update(studentId, "Student", null, avatarUrl);
+        assertEquals(avatarUrl, users.detail(studentId).avatarUrl());
+        assertThrows(IllegalArgumentException.class, () ->
+                users.update(studentId, "Student", null, "/api/avatars/" + studentId + "/" + UUID.randomUUID()));
+    }
 }
