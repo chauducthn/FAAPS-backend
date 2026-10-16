@@ -7,8 +7,8 @@ To add optional demo data, run `faaps_demo_seed.sql` after the schema. The demo 
 In MySQL Workbench, open each SQL file and execute the entire script. From a terminal with the MySQL client installed:
 
 ```powershell
-mysql -u root -p < sql/faaps_schema_mysql84.sql
-mysql -u root -p < sql/faaps_demo_seed.sql
+mysql -u root -p --execute="SOURCE sql/faaps_schema_mysql84.sql"
+mysql -u root -p --execute="SOURCE sql/faaps_demo_seed.sql"
 ```
 
 Run the schema only on a new local database. The shared RDS database already has its schema and demo rows; teammates connecting to that same RDS database should not import these files again. Keep database credentials outside Git.
