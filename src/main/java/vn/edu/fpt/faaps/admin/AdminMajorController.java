@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -78,19 +79,50 @@ public class AdminMajorController {
         return ResponseEntity.ok(Map.of("success", true, "deletedCount", deleted, "message", "Deleted " + deleted + " major(s)"));
     }
 
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException exception) {
+        Map<String, String> fieldErrors = new java.util.HashMap<>();
+        for (org.springframework.validation.FieldError fe : exception.getBindingResult().getFieldErrors()) {
+            fieldErrors.put(fe.getField(), fe.getDefaultMessage());
+        }
+        return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "code", "VALIDATION_ERROR",
+                "message", "Validation failed",
+                "fieldErrors", fieldErrors,
+                "error", "Validation failed"
+        ));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> invalid(IllegalArgumentException exception) {
-        return ResponseEntity.badRequest().body(Map.of("success", false, "error", exception.getMessage()));
+        return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "code", "VALIDATION_ERROR",
+                "message", exception.getMessage(),
+                "fieldErrors", Map.of("error", exception.getMessage()),
+                "error", exception.getMessage()
+        ));
     }
 
     @ExceptionHandler(AdminMajorService.NotFound.class)
     public ResponseEntity<Map<String, Object>> notFound() {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("success", false, "error", "Major not found"));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "success", false,
+                "code", "NOT_FOUND",
+                "message", "Major not found",
+                "error", "Major not found"
+        ));
     }
 
     @ExceptionHandler(AdminMajorService.Conflict.class)
     public ResponseEntity<Map<String, Object>> conflict(AdminMajorService.Conflict exception) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("success", false, "error", exception.getMessage()));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "success", false,
+                "code", "CONFLICT",
+                "message", exception.getMessage(),
+                "error", exception.getMessage()
+        ));
     }
 
     public record CreateMajorRequest(

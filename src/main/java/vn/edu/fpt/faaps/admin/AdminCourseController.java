@@ -14,6 +14,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -100,19 +101,50 @@ public class AdminCourseController {
         return ResponseEntity.ok(Map.of("success", true, "importedCount", count, "message", "Successfully imported " + count + " course(s)"));
     }
 
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException exception) {
+        Map<String, String> fieldErrors = new java.util.HashMap<>();
+        for (org.springframework.validation.FieldError fe : exception.getBindingResult().getFieldErrors()) {
+            fieldErrors.put(fe.getField(), fe.getDefaultMessage());
+        }
+        return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "code", "VALIDATION_ERROR",
+                "message", "Validation failed",
+                "fieldErrors", fieldErrors,
+                "error", "Validation failed"
+        ));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException exception) {
-        return ResponseEntity.badRequest().body(Map.of("error", exception.getMessage()));
+    public ResponseEntity<Map<String, Object>> invalid(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "code", "VALIDATION_ERROR",
+                "message", exception.getMessage(),
+                "fieldErrors", Map.of("error", exception.getMessage()),
+                "error", exception.getMessage()
+        ));
     }
 
     @ExceptionHandler(AdminCourseService.NotFound.class)
-    public ResponseEntity<Map<String, String>> notFound() {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Course not found"));
+    public ResponseEntity<Map<String, Object>> notFound() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "success", false,
+                "code", "NOT_FOUND",
+                "message", "Course not found",
+                "error", "Course not found"
+        ));
     }
 
     @ExceptionHandler(AdminCourseService.Conflict.class)
-    public ResponseEntity<Map<String, String>> conflict(AdminCourseService.Conflict exception) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", exception.getMessage()));
+    public ResponseEntity<Map<String, Object>> conflict(AdminCourseService.Conflict exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "success", false,
+                "code", "CONFLICT",
+                "message", exception.getMessage(),
+                "error", exception.getMessage()
+        ));
     }
 
     public record CreateCourseRequest(
