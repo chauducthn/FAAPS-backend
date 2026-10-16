@@ -92,8 +92,9 @@ public class AdminUserService {
     @Transactional
     public Detail update(UUID id, String fullName, String phone, String avatarUrl) {
         if (avatarUrl != null && !avatarUrl.isBlank()
-                && !(avatarUrl.startsWith("https://") || avatarUrl.startsWith("http://localhost:"))) {
-            throw new IllegalArgumentException("avatarUrl must use HTTPS");
+                && !(avatarUrl.startsWith("https://") || avatarUrl.startsWith("http://localhost:"))
+                && !avatarUrl.equals(detail(id).avatarUrl())) {
+            throw new IllegalArgumentException("avatarUrl must use HTTPS or match the current avatar");
         }
         int changed = jdbc.update("UPDATE users SET full_name = ?, phone = ?, avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 fullName.strip(), phone == null || phone.isBlank() ? null : phone.strip(),
