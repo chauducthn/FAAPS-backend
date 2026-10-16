@@ -6,7 +6,7 @@ Tất cả endpoint dưới đây yêu cầu phiên đăng nhập có role `ADMI
 
 | Method | URL | Mục đích |
 | --- | --- | --- |
-| GET | `/api/admin/users?role=STUDENT&status=ACTIVE&search=&page=0&size=20&sort=createdAt,desc` | Danh sách, lọc, phân trang |
+| GET | `/api/admin/users?role=STUDENT&status=ACTIVE&majorId=uuid&search=&page=0&size=20&sort=createdAt,desc` | Danh sách, lọc, phân trang; `majorId` tùy chọn, khi dùng chỉ trả tài khoản Student thuộc ngành đó |
 | GET | `/api/admin/users/{id}` | Chi tiết tài khoản và thông tin học thuật hiện có |
 | PATCH | `/api/admin/users/{id}` | Sửa `fullName`, `phone`, `avatarUrl` |
 | PATCH | `/api/admin/users/{id}/status` | Đổi trạng thái với body `{"status":"SUSPENDED"}` hoặc `ACTIVE` |
@@ -35,6 +35,7 @@ Preview không giữ chỗ. Confirm khóa sinh viên và advisor, chỉ gán sin
 
 | Method | URL | Mục đích |
 | --- | --- | --- |
+| GET | `/api/admin/majors` | Danh sách `{id, code, name}` cho bộ lọc ngành |
 | GET | `/api/admin/dashboard/accounts` | Số Student, Advisor và cohort |
 | GET | `/api/admin/dashboard/new-students?startMonth=2025-07&endMonth=2026-06&majorId=uuid` | Số tài khoản Student mới theo tháng; `majorId` tùy chọn |
 | GET | `/api/admin/appointments?status=SCHEDULED&search=&page=0&size=20` | Danh sách appointment |
