@@ -484,13 +484,25 @@ CREATE TABLE `ai_usage_logs` (
 CREATE TABLE `notifications` (
   `id` char(36) PRIMARY KEY DEFAULT (UUID()),
   `user_id` char(36) NOT NULL,
-  `notification_type` varchar(20) DEFAULT 'INFO' COMMENT 'INFO, WARNING, REMINDER, PLAN_STATUS, MESSAGE',
+  `notification_type` varchar(20) DEFAULT 'INFO' COMMENT 'INFO, WARNING, REMINDER, PLAN_STATUS, MESSAGE, ADVISOR_REQUEST',
   `title` varchar(255) NOT NULL,
   `message` text NOT NULL,
   `action_url` varchar(500),
+  `related_student_id` char(36),
+  `resolved_at` timestamp,
   `is_read` boolean DEFAULT false,
   `read_at` timestamp,
   `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
+);
+
+CREATE TABLE `cohort_advisors` (
+  `cohort_id` char(36) NOT NULL,
+  `advisor_id` char(36) NOT NULL,
+  `is_active` boolean NOT NULL DEFAULT true,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`cohort_id`, `advisor_id`),
+  KEY `idx_cohort_advisors_advisor` (`advisor_id`)
 );
 
 CREATE TABLE `audit_logs` (
@@ -772,6 +784,9 @@ ALTER TABLE `ai_usage_logs` ADD FOREIGN KEY (`message_id`) REFERENCES `ai_messag
 ALTER TABLE `ai_usage_logs` ADD FOREIGN KEY (`ai_configuration_id`) REFERENCES `ai_configurations` (`id`) ON DELETE SET NULL;
 
 ALTER TABLE `notifications` ADD FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+ALTER TABLE `notifications` ADD FOREIGN KEY (`related_student_id`) REFERENCES `students` (`user_id`) ON DELETE SET NULL;
+ALTER TABLE `cohort_advisors` ADD FOREIGN KEY (`cohort_id`) REFERENCES `curriculum_versions` (`id`);
+ALTER TABLE `cohort_advisors` ADD FOREIGN KEY (`advisor_id`) REFERENCES `advisors` (`user_id`);
 
 ALTER TABLE `audit_logs` ADD FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL;
 

@@ -1,13 +1,13 @@
 # Shared RDS setup (development only)
 
-The `faaps-dev` database already has the FAAPS schema (39 tables). The shared application user is `faaps_app`; it can read and change application data, but cannot create or alter tables. Never put the database password, Google Client Secret, or a credentials JSON file in Git or team chat.
+The `faaps-dev` database has the FAAPS schema, including the advisor-assignment migration. The shared application user is `faaps_app`; it can read and change application data, but cannot create or alter tables. Never put the database password, Google Client Secret, or a credentials JSON file in Git or team chat.
 
 ## One-time setup per developer
 
 1. Install Git, Java 21, Maven, and PowerShell 7. Clone the backend repository and check out the team branch: `git clone -b thiencdse173019 https://github.com/chauducthn/FAAPS-backend.git`.
 2. Ask the AWS account owner to allow **your current public IP `/32`** for MySQL TCP port `3306` in the RDS security group. Do not open `0.0.0.0/0`. Repeat when your public IP changes.
 3. Get the `faaps_app` password from the owner through a secure private channel. Do not use the RDS master password for application development.
-4. In the backend directory, run `./scripts/Start-Rds.ps1`. The script downloads AWS's public CA bundle, builds a local PKCS12 truststore, asks for the password without displaying it, and starts Spring Boot with certificate and hostname verification. The CA bundle and truststore stay under `%LOCALAPPDATA%\FAAPS`, outside Git.
+4. In the backend directory, run `./scripts/Start-Rds.ps1` or fill a private `.env` based on `.env.example` and run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-FromEnv.ps1`. The launcher downloads AWS's public CA bundle, builds a local PKCS12 truststore, and starts Spring Boot with certificate and hostname verification. The CA bundle and truststore stay under `%LOCALAPPDATA%\FAAPS`, outside Git. Spring Boot does not read `.env` without the launcher.
 5. Check `http://localhost:8080/api/health`. A healthy API returns `{"status":"ok","service":"faaps-api"}`. Stop the process with Ctrl+C.
 
 If the connection times out, check the RDS IP rule and local firewall. If authentication fails, check the shared password. If certificate validation fails, remove `%LOCALAPPDATA%\FAAPS\rds-truststore-roots.p12` and rerun the script to rebuild it from the current AWS CA bundle.

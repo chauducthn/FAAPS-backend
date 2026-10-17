@@ -53,8 +53,21 @@ public class AdminAssignmentController {
     }
 
     @PostMapping("/assign")
-    public Map<String, Integer> assign(@Valid @RequestBody AssignRequest request) {
-        return Map.of("assigned", assignments.assign(request.studentIds(), request.advisorId()));
+    public Map<String, Object> assign(@Valid @RequestBody AssignRequest request) {
+        int count = assignments.assign(request.studentIds(), request.advisorId(),
+                request.acknowledgeAppointmentCancellation());
+        AdminAssignmentService.Advisor advisor = assignments.advisor(request.advisorId()).advisor();
+        int excess = advisor.maxAdvisees() == null ? 0
+                : (int) Math.max(0, advisor.activeStudents() - advisor.maxAdvisees());
+        return Map.of("assigned", count, "overLimitBy", excess, "warning", excess > 0);
+    }
+
+    @PostMapping("/assign/preview")
+    public Map<String, Object> previewAssignment(@Valid @RequestBody AssignRequest request) {
+        List<AdminAssignmentService.AppointmentImpact> appointments =
+                assignments.appointmentImpacts(request.studentIds(), request.advisorId());
+        return Map.of("scheduledAppointments", appointments, "appointmentCount", appointments.size(),
+                "warning", !appointments.isEmpty());
     }
 
     @PostMapping("/auto-assign/preview")
@@ -67,6 +80,16 @@ public class AdminAssignmentController {
         return assignments.confirm(request.cohort(), request.advisorIds());
     }
 
+    @PostMapping("/auto-assign/cohort/preview")
+    public Map<String, Object> previewCohort(@Valid @RequestBody CohortAutoAssignRequest request) {
+        return assignments.previewCohort(request.cohortId(), request.advisorIds());
+    }
+
+    @PostMapping("/auto-assign/cohort/confirm")
+    public Map<String, Object> confirmCohort(@Valid @RequestBody CohortAutoAssignRequest request) {
+        return assignments.confirmCohort(request.cohortId(), request.advisorIds());
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException exception) {
         return ResponseEntity.badRequest().body(Map.of("error", exception.getMessage()));
@@ -77,9 +100,21 @@ public class AdminAssignmentController {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "Assignment data changed; reload and retry"));
     }
 
-    public record AssignRequest(@NotEmpty List<UUID> studentIds, @NotNull UUID advisorId) {
+    @ExceptionHandler(AdminAssignmentService.AppointmentWarningRequired.class)
+    public ResponseEntity<Map<String, Object>> appointmentWarning(
+            AdminAssignmentService.AppointmentWarningRequired exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "error", "Future appointments will be cancelled; confirm before reassigning",
+                "appointments", exception.appointments(), "confirmationRequired", true));
+    }
+
+    public record AssignRequest(@NotEmpty List<UUID> studentIds, @NotNull UUID advisorId,
+            boolean acknowledgeAppointmentCancellation) {
     }
 
     public record AutoAssignRequest(@NotNull String cohort, @NotEmpty List<UUID> advisorIds) {
+    }
+
+    public record CohortAutoAssignRequest(@NotNull UUID cohortId, List<UUID> advisorIds) {
     }
 }

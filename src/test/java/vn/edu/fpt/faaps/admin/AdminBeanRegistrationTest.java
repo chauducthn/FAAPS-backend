@@ -21,6 +21,10 @@ class AdminBeanRegistrationTest {
     void adminControllersExistWhenDatasourceIsConfigured() {
         assertNotNull(context.getBean(AdminUserController.class));
         assertNotNull(context.getBean(AdminAssignmentController.class));
+        assertNotNull(context.getBean(AssignmentWorkflowController.class));
+        assertNotNull(context.getBean(CohortAdvisorController.class));
+        assertNotNull(context.getBean(StudentAdvisingController.class));
+        assertNotNull(context.getBean(AdminNotificationController.class));
         assertNotNull(context.getBean(AdminOverviewController.class));
         assertNotNull(context.getBean(AdminAiReportController.class));
     }

@@ -16,6 +16,8 @@ The health endpoint is `http://localhost:8080/api/health`.
 
 For the shared development RDS database and Google OAuth setup, follow [the team setup guide](docs/RDS_TEAM_SETUP.md). The launcher is `./scripts/Start-Rds.ps1`; it keeps database and OAuth secrets out of Git.
 
+To start from a private environment file, copy `.env.example` to `.env`, replace the placeholder values, then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-FromEnv.ps1` from the backend directory. The launcher loads `.env` for this process and configures the RDS TLS truststore. The application does not load `.env` by itself. Never commit or send a filled `.env` through Git or group chat; share secrets privately, and each developer should create their own `.env`. AWS profile names are local to each machine, so each developer must configure their own AWS identity if avatar upload is enabled.
+
 ## Authentication API
 
 The backend has session-based authentication, Google OAuth login, Admin password login, CSRF protection, role-based API access and logout. Students and Advisors use Google; Google first sign-in must create a Student through the account store. Admin accounts may use a password or a linked Google account.

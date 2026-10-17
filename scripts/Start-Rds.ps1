@@ -31,8 +31,11 @@ if ($EnableGoogle) {
 }
 
 $truststoreUrl = ([Uri]::new($truststorePath)).AbsoluteUri
-$env:DB_URL = "jdbc:mysql://faaps-dev.crwkasygqczm.ap-southeast-1.rds.amazonaws.com:3306/faaps?sslMode=VERIFY_IDENTITY&trustCertificateKeyStoreUrl=$truststoreUrl&trustCertificateKeyStoreType=PKCS12&trustCertificateKeyStorePassword=changeit&serverTimezone=Asia/Ho_Chi_Minh"
-$env:DB_USERNAME = 'faaps_app'
+$databaseHost = if ($env:FAAPS_RDS_HOST) { $env:FAAPS_RDS_HOST } else { 'faaps-dev.crwkasygqczm.ap-southeast-1.rds.amazonaws.com' }
+$databasePort = if ($env:FAAPS_RDS_PORT) { $env:FAAPS_RDS_PORT } else { '3306' }
+$databaseName = if ($env:FAAPS_RDS_NAME) { $env:FAAPS_RDS_NAME } else { 'faaps' }
+$env:DB_URL = "jdbc:mysql://${databaseHost}:${databasePort}/${databaseName}?sslMode=VERIFY_IDENTITY&trustCertificateKeyStoreUrl=$truststoreUrl&trustCertificateKeyStoreType=PKCS12&trustCertificateKeyStorePassword=changeit&serverTimezone=Asia/Ho_Chi_Minh"
+if (-not $env:DB_USERNAME) { $env:DB_USERNAME = 'faaps_app' }
 
 Push-Location $backendDirectory
 try {
