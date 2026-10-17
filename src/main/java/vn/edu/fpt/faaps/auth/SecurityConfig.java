@@ -52,7 +52,8 @@ public class SecurityConfig {
                 .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()));
         http.authorizeHttpRequests(requests -> requests
                 .requestMatchers("/api/health", "/api/auth/csrf", "/api/auth/admin/login",
-                        "/oauth2/**", "/login/oauth2/**").permitAll()
+                        "/oauth2/**", "/login/oauth2/**",
+                        "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/advisor/**").hasRole("ADVISOR")
                 .requestMatchers("/api/student/**").hasRole("STUDENT")

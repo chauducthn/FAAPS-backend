@@ -14,6 +14,19 @@ mvn spring-boot:run
 
 The health endpoint is `http://localhost:8080/api/health`.
 
+## Test APIs with Swagger UI
+
+Start the backend, then open `http://localhost:8080/swagger-ui.html`. The generated OpenAPI JSON is at `http://localhost:8080/v3/api-docs`. Swagger UI and the API docs can be viewed without logging in; the Admin, Student, and Advisor APIs still require their respective roles.
+
+To test Admin APIs in the same browser tab:
+
+1. Run `GET /api/auth/csrf` using **Try it out**. This sets the CSRF cookie. Swagger UI is configured to copy the cookie into the `X-XSRF-TOKEN` header on subsequent requests.
+2. Run `POST /api/auth/admin/login` with `{ "email": "admin", "password": "<your-admin-password>" }`. The browser retains the session cookie; do not put a real password in committed examples or screenshots.
+3. Run `GET /api/auth/me` to confirm `role: ADMIN`, then try an Admin endpoint such as `GET /api/admin/majors`.
+4. For POST, PATCH, PUT, or DELETE requests, ensure the CSRF cookie exists. Call `GET /api/auth/csrf` again if a request returns 403 after a new login. Use `POST /api/auth/logout` when finished.
+
+For Student or Advisor APIs, sign in through the frontend with Google in the same browser profile, then open Swagger UI on `localhost:8080`. The account must have the required role. Swagger UI does not grant permissions; a 401 means no valid session and a 403 means missing role or CSRF token.
+
 For the shared development RDS database and Google OAuth setup, follow [the team setup guide](docs/RDS_TEAM_SETUP.md). The launcher is `./scripts/Start-Rds.ps1`; it keeps database and OAuth secrets out of Git.
 
 To start from a private environment file, copy `.env.example` to `.env`, replace the placeholder values, then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-FromEnv.ps1` from the backend directory. The launcher loads `.env` for this process and configures the RDS TLS truststore. The application does not load `.env` by itself. Never commit or send a filled `.env` through Git or group chat; share secrets privately, and each developer should create their own `.env`. AWS profile names are local to each machine, so each developer must configure their own AWS identity if avatar upload is enabled.

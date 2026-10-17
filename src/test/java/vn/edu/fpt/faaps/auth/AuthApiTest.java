@@ -36,6 +36,14 @@ class AuthApiTest {
         HttpResponse<String> health = send(client, HttpRequest.newBuilder(baseUrl.resolve("/api/health")).GET().build());
         assertEquals(200, health.statusCode());
 
+        HttpResponse<String> apiDocs = send(client, HttpRequest.newBuilder(baseUrl.resolve("/v3/api-docs")).GET().build());
+        assertEquals(200, apiDocs.statusCode());
+        assertTrue(apiDocs.body().contains("/api/auth/admin/login"));
+        assertTrue(apiDocs.body().contains("/api/admin/majors"));
+
+        HttpResponse<String> swaggerUi = send(client, HttpRequest.newBuilder(baseUrl.resolve("/swagger-ui/index.html")).GET().build());
+        assertEquals(200, swaggerUi.statusCode());
+
         HttpResponse<String> currentUser = send(client, HttpRequest.newBuilder(baseUrl.resolve("/api/auth/me")).GET().build());
         assertEquals(401, currentUser.statusCode());
 

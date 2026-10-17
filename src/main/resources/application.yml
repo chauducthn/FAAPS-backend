@@ -26,3 +26,7 @@ faaps:
     enabled: ${FAAPS_AVATAR_ENABLED:false}
     bucket: ${FAAPS_AVATAR_BUCKET:}
     region: ${FAAPS_AVATAR_REGION:ap-southeast-1}
+springdoc:
+  swagger-ui:
+    csrf:
+      enabled: true
