@@ -79,7 +79,7 @@ public class CohortAdvisorService {
     private void requireCohort(UUID cohortId) {
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM curriculum_versions WHERE id = ?",
                 Integer.class, cohortId.toString());
-        if (count == null || count == 0) throw new AdminAssignmentService.Conflict();
+        if (count == null || count == 0) throw new AdminAssignmentService.NotFound("Cohort not found");
     }
 
     void lockCohort(UUID cohortId) {
@@ -94,7 +94,7 @@ public class CohortAdvisorService {
                 SELECT COUNT(*) FROM advisors a JOIN users u ON u.id = a.user_id
                 WHERE a.user_id = ? AND a.status = 'ACTIVE' AND u.status = 'ACTIVE'
                 """, Integer.class, advisorId.toString());
-        if (count == null || count == 0) throw new AdminAssignmentService.Conflict();
+        if (count == null || count == 0) throw new AdminAssignmentService.AssignmentError("ADVISOR_INACTIVE", "Advisor is not active");
     }
 
     public record CohortAdvisor(UUID advisorId, String advisorCode, String fullName,

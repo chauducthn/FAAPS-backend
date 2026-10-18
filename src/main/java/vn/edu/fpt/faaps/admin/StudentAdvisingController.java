@@ -8,7 +8,6 @@ import java.util.UUID;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,12 +31,6 @@ public class StudentAdvisingController {
     @GetMapping("/advisor-assignment")
     public Map<String, Object> assignmentStatus(@AuthenticationPrincipal AuthSession session) {
         return requests.assignmentStatus(session.id());
-    }
-
-    @DeleteMapping("/advisor-assignment-requests/{id}")
-    public Map<String, Object> cancelRequest(@AuthenticationPrincipal AuthSession session,
-            @PathVariable UUID id) {
-        return requests.cancelAssignmentRequest(session.id(), id);
     }
 
     @PostMapping("/advising-requests")

@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.admin;
 
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
@@ -11,6 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import vn.edu.fpt.faaps.ApiError;
 
 @RestController
 @RequestMapping("/api/avatars")
@@ -31,7 +31,7 @@ public class AvatarViewController {
     }
 
     @ExceptionHandler(AdminUserService.NotFound.class)
-    public ResponseEntity<Map<String, String>> notFound() {
-        return ResponseEntity.notFound().build();
+    public ResponseEntity<ApiError> notFound() {
+        return ResponseEntity.status(404).body(ApiError.of("AVATAR_NOT_FOUND", "Avatar not found"));
     }
 }

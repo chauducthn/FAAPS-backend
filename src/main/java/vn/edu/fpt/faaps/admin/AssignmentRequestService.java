@@ -3,6 +3,7 @@ package vn.edu.fpt.faaps.admin;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,9 +11,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AssignmentRequestService {
     private final JdbcTemplate jdbc;
+    private AdminNotificationPublisher notificationPublisher;
 
     public AssignmentRequestService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    @Autowired(required = false)
+    public void setNotificationPublisher(AdminNotificationPublisher notificationPublisher) {
+        this.notificationPublisher = notificationPublisher;
     }
 
     @Transactional
@@ -20,6 +27,7 @@ public class AssignmentRequestService {
         List<String> students = jdbc.query("SELECT user_id FROM students WHERE user_id = ? FOR UPDATE",
                 (result, row) -> result.getString(1), studentId.toString());
         if (students.isEmpty()) throw new IllegalArgumentException("Student profile not found");
+        Map<String, Object> student = jdbc.queryForMap("SELECT student_code,curriculum_version_id FROM students WHERE user_id=?", studentId.toString());
         Integer active = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM student_advisor_assignments
                 WHERE student_id = ? AND status = 'ACTIVE' AND end_date IS NULL
@@ -47,6 +55,8 @@ public class AssignmentRequestService {
                             'A student needs an advisor assignment.', '/admin/assignments', ?, FALSE)
                     """, id, adminId, studentId.toString());
         }
+        if (notificationPublisher != null) notificationPublisher.advisorRequestCreated(
+                (String) student.get("student_code"), (String) student.get("curriculum_version_id"));
         return Map.of("id", firstId, "status", "PENDING", "created", true);
     }
 
@@ -64,22 +74,6 @@ public class AssignmentRequestService {
         status.put("canRequestAdvisor", advisors.isEmpty() && pending.isEmpty());
         status.put("canRequestAdvising", !advisors.isEmpty());
         return status;
-    }
-
-    @Transactional
-    public Map<String, Object> cancelAssignmentRequest(UUID studentId, UUID requestId) {
-        List<String> pending = jdbc.query("""
-                SELECT id FROM notifications WHERE id = ? AND related_student_id = ?
-                  AND notification_type = 'ADVISOR_REQUEST' AND resolved_at IS NULL
-                """, (result, row) -> result.getString(1), requestId.toString(), studentId.toString());
-        if (pending.isEmpty()) throw new AdminAssignmentService.Conflict();
-        int changed = jdbc.update("""
-                UPDATE notifications SET resolved_at = CURRENT_TIMESTAMP
-                WHERE related_student_id = ? AND notification_type = 'ADVISOR_REQUEST'
-                  AND resolved_at IS NULL
-                """, studentId.toString());
-        if (changed == 0) throw new AdminAssignmentService.Conflict();
-        return Map.of("id", requestId, "status", "CANCELLED");
     }
 
     @Transactional

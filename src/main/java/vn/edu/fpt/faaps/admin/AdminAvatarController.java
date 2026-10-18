@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import vn.edu.fpt.faaps.ApiError;
 
 @RestController
 @RequestMapping("/api/admin/users")
@@ -32,12 +33,12 @@ public class AdminAvatarController {
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException exception) {
-        return ResponseEntity.badRequest().body(Map.of("error", exception.getMessage()));
+    public ResponseEntity<ApiError> invalid(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest().body(ApiError.of("INVALID_REQUEST", exception.getMessage()));
     }
 
     @ExceptionHandler(AdminUserService.NotFound.class)
-    public ResponseEntity<Map<String, String>> notFound() {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found"));
+    public ResponseEntity<ApiError> notFound() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiError.of("USER_NOT_FOUND", "User not found"));
     }
 }

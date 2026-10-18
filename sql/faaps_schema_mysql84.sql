@@ -162,6 +162,8 @@ CREATE TABLE `student_advisor_assignments` (
   `advisor_id` char(36) NOT NULL,
   `group_name` varchar(100) COMMENT 'Optional student group handled by the advisor, e.g. cohort K19 - SE',
   `assigned_date` date NOT NULL,
+  `assigned_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `assigned_by_user_id` char(36),
   `end_date` date,
   `is_primary` boolean DEFAULT true,
   `status` varchar(20) DEFAULT 'ACTIVE' COMMENT 'ACTIVE, COMPLETED, TRANSFERRED',
@@ -670,6 +672,8 @@ ALTER TABLE `advisors` ADD FOREIGN KEY (`user_id`) REFERENCES `users` (`id`);
 ALTER TABLE `student_advisor_assignments` ADD FOREIGN KEY (`student_id`) REFERENCES `students` (`user_id`);
 
 ALTER TABLE `student_advisor_assignments` ADD FOREIGN KEY (`advisor_id`) REFERENCES `advisors` (`user_id`);
+
+ALTER TABLE `student_advisor_assignments` ADD FOREIGN KEY (`assigned_by_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL;
 
 ALTER TABLE `student_course_records` ADD FOREIGN KEY (`student_id`) REFERENCES `students` (`user_id`);
 

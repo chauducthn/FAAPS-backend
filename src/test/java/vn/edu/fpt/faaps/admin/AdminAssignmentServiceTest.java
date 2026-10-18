@@ -30,7 +30,7 @@ class AdminAssignmentServiceTest {
                 "jdbc:h2:mem:admin-assignments-" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
         jdbc = new JdbcTemplate(dataSource);
         transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
-        jdbc.execute("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY, full_name VARCHAR(255), status VARCHAR(20))");
+        jdbc.execute("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY, full_name VARCHAR(255), email VARCHAR(255), avatar_url VARCHAR(500), status VARCHAR(20))");
         jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY, advisor_code VARCHAR(50), max_advisees INT, status VARCHAR(20), updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20))");
         jdbc.execute("CREATE TABLE curriculum_versions (id VARCHAR(36) PRIMARY KEY, version VARCHAR(50), major_id VARCHAR(36))");
@@ -38,6 +38,7 @@ class AdminAssignmentServiceTest {
         jdbc.execute("""
                 CREATE TABLE student_advisor_assignments (id VARCHAR(36) PRIMARY KEY,
                     student_id VARCHAR(36), advisor_id VARCHAR(36), assigned_date DATE,
+                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, assigned_by_user_id VARCHAR(36), notes CLOB,
                     end_date DATE, is_primary BOOLEAN, status VARCHAR(20),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP)
                 """);
@@ -119,6 +120,9 @@ class AdminAssignmentServiceTest {
         Map<String, Object> preview = assignments.previewCohort(cohortId, List.of(firstAdvisor, secondAdvisor));
         assertEquals(2, preview.get("assigned"));
         assertEquals(false, preview.get("warning"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> allocation = (List<Map<String, Object>>) preview.get("allocation");
+        assertEquals(0L, allocation.get(0).get("totalBefore"));
         Map<String, Object> result = transactions.execute(status ->
                 assignments.confirmCohort(cohortId, List.of(firstAdvisor, secondAdvisor)));
         assertEquals(2, result.get("assigned"));
@@ -158,6 +162,10 @@ class AdminAssignmentServiceTest {
                 .filter(item -> upcomingCohort.toString().equals(item.get("cohortId")))
                 .filter(item -> (boolean) item.get("inPool") && (long) item.get("studentCount") == 0)
                 .count());
+        AssignmentWorkflowService.Page<Map<String, Object>> advisorPage =
+                workflow.advisorsWithCohorts(upcomingCohort, "A", 0, 1);
+        assertEquals(1, advisorPage.totalElements());
+        assertEquals(1, advisorPage.items().size());
 
         UUID newcomer = addStudent("S3", upcomingCohort.toString());
         jdbc.update("INSERT INTO notifications (id, user_id, notification_type, title, message, is_read, related_student_id) VALUES (?, ?, 'ADVISOR_REQUEST', 'Request', 'Assign', TRUE, ?)",
@@ -185,6 +193,12 @@ class AdminAssignmentServiceTest {
                 .filter(item -> cohortId.toString().equals(item.get("cohortId")))
                 .filter(item -> firstAdvisor.toString().equals(item.get("advisorId")))
                 .findFirst().orElseThrow().get("studentCount"));
+        AdminAssignmentService.Page<AdminAssignmentService.Student> studentPage =
+                assignments.students(cohortId, null, false, 0, 1, null, null, null);
+        assertEquals(2, studentPage.totalElements());
+        assertEquals(1, studentPage.items().size());
+        assertEquals(cohortId, studentPage.items().get(0).cohortId());
+        assertEquals("SE", studentPage.items().get(0).majorCode());
     }
 
     @Test
@@ -199,7 +213,7 @@ class AdminAssignmentServiceTest {
 
     private UUID addAdvisor(String code, int capacity) {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, full_name, status) VALUES (?, ?, 'ACTIVE')", id.toString(), code);
+        jdbc.update("INSERT INTO users (id, full_name, email, avatar_url, status) VALUES (?, ?, ?, NULL, 'ACTIVE')", id.toString(), code, code + "@test.local");
         jdbc.update("INSERT INTO advisors (user_id, advisor_code, max_advisees, status) VALUES (?, ?, ?, 'ACTIVE')",
                 id.toString(), code, capacity);
         return id;
@@ -207,7 +221,7 @@ class AdminAssignmentServiceTest {
 
     private UUID addStudent(String code, String curriculum) {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, full_name, status) VALUES (?, ?, 'ACTIVE')", id.toString(), code);
+        jdbc.update("INSERT INTO users (id, full_name, email, avatar_url, status) VALUES (?, ?, ?, NULL, 'ACTIVE')", id.toString(), code, code + "@test.local");
         jdbc.update("INSERT INTO students (user_id, student_code, curriculum_version_id) VALUES (?, ?, ?)",
                 id.toString(), code, curriculum);
         return id;

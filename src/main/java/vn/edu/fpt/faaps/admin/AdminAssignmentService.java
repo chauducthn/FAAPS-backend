@@ -37,12 +37,36 @@ public class AdminAssignmentService {
                 """, this::mapAdvisor);
     }
 
+    public Page<Advisor> advisors(int page, int size, String search, String status) {
+        validatePage(page, size);
+        String term = search == null || search.isBlank() ? null : "%" + search.strip().toLowerCase() + "%";
+        String state = status == null || status.isBlank() ? null : status.toUpperCase();
+        if (state != null && !List.of("ACTIVE", "INACTIVE", "ON_LEAVE").contains(state)) {
+            throw new IllegalArgumentException("status must be ACTIVE, INACTIVE, or ON_LEAVE");
+        }
+        String where = " WHERE (? IS NULL OR a.status = ?) AND (? IS NULL OR LOWER(a.advisor_code) LIKE ? OR LOWER(u.full_name) LIKE ? OR LOWER(u.email) LIKE ?)";
+        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM advisors a JOIN users u ON u.id = a.user_id" + where,
+                Long.class, state, state, term, term, term, term);
+        List<Advisor> items = jdbc.query("""
+                SELECT a.user_id, a.advisor_code, u.full_name, a.max_advisees,
+                       COUNT(sa.id) AS active_students
+                FROM advisors a JOIN users u ON u.id = a.user_id
+                LEFT JOIN student_advisor_assignments sa ON sa.advisor_id = a.user_id
+                    AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
+                """ + where + " GROUP BY a.user_id, a.advisor_code, u.full_name, a.max_advisees "
+                + "ORDER BY u.full_name LIMIT ? OFFSET ?", this::mapAdvisor,
+                state, state, term, term, term, term, size, page * size);
+        return new Page<>(items, page, size, total == null ? 0 : total);
+    }
+
     public List<Cohort> cohorts() {
         return jdbc.query("""
-                SELECT cv.version AS cohort, COUNT(*) AS students
-                FROM students s JOIN curriculum_versions cv ON cv.id = s.curriculum_version_id
-                GROUP BY cv.version ORDER BY cv.version
-                """, (result, row) -> new Cohort(result.getString("cohort"), result.getLong("students")));
+                SELECT cv.id AS cohort_id, cv.version AS cohort, m.code AS major_code, COUNT(s.user_id) AS students
+                FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id
+                LEFT JOIN students s ON s.curriculum_version_id = cv.id
+                GROUP BY cv.id, cv.version, m.code ORDER BY m.code, cv.version
+                """, (result, row) -> new Cohort(UUID.fromString(result.getString("cohort_id")),
+                result.getString("cohort"), result.getString("major_code"), result.getLong("students")));
     }
 
     public List<Student> students(String cohort, boolean unassignedOnly) {
@@ -50,49 +74,75 @@ public class AdminAssignmentService {
             throw new IllegalArgumentException("cohort is required");
         }
         return jdbc.query("""
-                SELECT s.user_id, s.student_code, u.full_name, cv.version AS cohort,
-                       sa.advisor_id, advisor_user.full_name AS advisor_name
+                SELECT s.user_id, s.student_code, u.full_name, cv.id AS cohort_id,
+                       cv.version AS cohort, m.code AS major_code, sa.advisor_id,
+                       advisor_user.full_name AS advisor_name, sa.assigned_date
                 FROM students s JOIN users u ON u.id = s.user_id
                 JOIN curriculum_versions cv ON cv.id = s.curriculum_version_id
+                JOIN majors m ON m.id = cv.major_id
                 LEFT JOIN student_advisor_assignments sa ON sa.student_id = s.user_id
                     AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
                 LEFT JOIN users advisor_user ON advisor_user.id = sa.advisor_id
                 WHERE cv.version = ? AND (? = FALSE OR sa.id IS NULL)
                 ORDER BY s.student_code
-                """, (result, row) -> new Student(UUID.fromString(result.getString("user_id")),
-                result.getString("student_code"), result.getString("full_name"),
-                result.getString("cohort"), result.getString("advisor_id"),
-                result.getString("advisor_name")), cohort, unassignedOnly);
+                """, this::mapStudent, cohort, unassignedOnly);
+    }
+
+    public Page<Student> students(UUID cohortId, String cohort, boolean unassignedOnly,
+            int page, int size, String search, String advisorId, String status) {
+        validatePage(page, size);
+        if (cohortId == null && (cohort == null || cohort.isBlank()))
+            throw new IllegalArgumentException("cohortId is required");
+        String term = search == null || search.isBlank() ? null : "%" + search.strip().toLowerCase() + "%";
+        String cohortFilter = cohortId == null ? "cv.version = ?" : "cv.id = ?";
+        Object cohortValue = cohortId == null ? cohort : cohortId.toString();
+        StringBuilder where = new StringBuilder(" WHERE " + cohortFilter + " AND (? = FALSE OR sa.id IS NULL) AND (? IS NULL OR sa.advisor_id = ?) AND (? IS NULL OR u.status = ?) AND (? IS NULL OR LOWER(s.student_code) LIKE ? OR LOWER(u.full_name) LIKE ?)");
+        Object[] params = {cohortValue, unassignedOnly, advisorId, advisorId, status, status, term, term, term};
+        String from = " FROM students s JOIN users u ON u.id=s.user_id JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id JOIN majors m ON m.id=cv.major_id LEFT JOIN student_advisor_assignments sa ON sa.student_id=s.user_id AND sa.status='ACTIVE' AND sa.end_date IS NULL LEFT JOIN users advisor_user ON advisor_user.id=sa.advisor_id";
+        Long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, params);
+        List<Student> items = jdbc.query("SELECT s.user_id,s.student_code,u.full_name,cv.id AS cohort_id,cv.version AS cohort,m.code AS major_code,sa.advisor_id,advisor_user.full_name AS advisor_name,sa.assigned_date" + from + where + " ORDER BY s.student_code LIMIT ? OFFSET ?",
+                this::mapStudent, append(params, size, page * size));
+        return new Page<>(items, page, size, total == null ? 0 : total);
     }
 
     public AdvisorDetail advisor(UUID advisorId) {
         Advisor advisor = advisors().stream().filter(item -> item.id().equals(advisorId))
-                .findFirst().orElseThrow(Conflict::new);
+                .findFirst().orElseThrow(() -> new NotFound("Advisor not found or inactive"));
         List<Student> students = jdbc.query("""
-                SELECT s.user_id, s.student_code, u.full_name, cv.version AS cohort,
-                       sa.advisor_id, advisor_user.full_name AS advisor_name
+                SELECT s.user_id, s.student_code, u.full_name, cv.id AS cohort_id,
+                       cv.version AS cohort, m.code AS major_code, sa.advisor_id,
+                       advisor_user.full_name AS advisor_name, sa.assigned_date
                 FROM student_advisor_assignments sa JOIN students s ON s.user_id = sa.student_id
                 JOIN users u ON u.id = s.user_id
                 JOIN curriculum_versions cv ON cv.id = s.curriculum_version_id
+                JOIN majors m ON m.id = cv.major_id
                 JOIN users advisor_user ON advisor_user.id = sa.advisor_id
                 WHERE sa.advisor_id = ? AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
                 ORDER BY cv.version, s.student_code
-                """, (result, row) -> new Student(UUID.fromString(result.getString("user_id")),
-                result.getString("student_code"), result.getString("full_name"),
-                result.getString("cohort"), result.getString("advisor_id"),
-                result.getString("advisor_name")), advisorId.toString());
-        return new AdvisorDetail(advisor, students);
+                """, this::mapStudent, advisorId.toString());
+        Map<String, Object> profile = jdbc.queryForMap("SELECT u.email,u.avatar_url,a.status FROM advisors a JOIN users u ON u.id=a.user_id WHERE a.user_id=?", advisorId.toString());
+        List<Cohort> allCohorts = jdbc.query("SELECT cv.id AS cohort_id,cv.version AS cohort,m.code AS major_code,COUNT(s.user_id) AS students FROM curriculum_versions cv JOIN majors m ON m.id=cv.major_id LEFT JOIN students s ON s.curriculum_version_id=cv.id GROUP BY cv.id,cv.version,m.code ORDER BY m.code,cv.version",
+                (rs, row) -> new Cohort(UUID.fromString(rs.getString("cohort_id")), rs.getString("cohort"), rs.getString("major_code"), rs.getLong("students")));
+        List<Cohort> configured = jdbc.query("SELECT cv.id AS cohort_id,cv.version AS cohort,m.code AS major_code,COUNT(s.user_id) AS students FROM cohort_advisors ca JOIN curriculum_versions cv ON cv.id=ca.cohort_id JOIN majors m ON m.id=cv.major_id LEFT JOIN students s ON s.curriculum_version_id=cv.id WHERE ca.advisor_id=? AND ca.is_active=TRUE GROUP BY cv.id,cv.version,m.code ORDER BY m.code,cv.version",
+                (rs, row) -> new Cohort(UUID.fromString(rs.getString("cohort_id")), rs.getString("cohort"), rs.getString("major_code"), rs.getLong("students")), advisorId.toString());
+        return new AdvisorDetail(advisor, (String) profile.get("email"), (String) profile.get("avatar_url"),
+                (String) profile.get("status"), students, allCohorts, configured);
     }
 
     public List<History> history(UUID studentId) {
         return jdbc.query("""
-                SELECT sa.id, sa.advisor_id, u.full_name AS advisor_name, sa.assigned_date,
-                       sa.end_date, sa.status
+                SELECT sa.id, sa.advisor_id, a.advisor_code, u.full_name AS advisor_name,
+                       sa.assigned_date, sa.assigned_at, sa.assigned_by_user_id,
+                       actor.full_name AS actor_name, sa.notes, sa.end_date, sa.status
                 FROM student_advisor_assignments sa JOIN users u ON u.id = sa.advisor_id
-                WHERE sa.student_id = ? ORDER BY sa.assigned_date DESC, sa.created_at DESC
+                JOIN advisors a ON a.user_id=sa.advisor_id
+                LEFT JOIN users actor ON actor.id=sa.assigned_by_user_id
+                WHERE sa.student_id = ? ORDER BY sa.assigned_at DESC, sa.id DESC
                 """, (result, row) -> new History(result.getString("id"),
-                result.getString("advisor_id"), result.getString("advisor_name"),
-                result.getDate("assigned_date").toLocalDate(),
+                result.getString("advisor_id"), result.getString("advisor_code"), result.getString("advisor_name"),
+                result.getDate("assigned_date").toLocalDate(), result.getTimestamp("assigned_at") == null
+                        ? null : result.getTimestamp("assigned_at").toLocalDateTime(),
+                result.getString("assigned_by_user_id"), result.getString("actor_name"), result.getString("notes"),
                 result.getDate("end_date") == null ? null : result.getDate("end_date").toLocalDate(),
                 result.getString("status")), studentId.toString());
     }
@@ -104,6 +154,12 @@ public class AdminAssignmentService {
 
     @Transactional
     public int assign(List<UUID> studentIds, UUID advisorId, boolean acknowledgeAppointmentCancellation) {
+        return assign(studentIds, advisorId, acknowledgeAppointmentCancellation, null, null);
+    }
+
+    @Transactional
+    public int assign(List<UUID> studentIds, UUID advisorId, boolean acknowledgeAppointmentCancellation,
+            UUID actorId, String notes) {
         validateIds(studentIds);
         lockAdvisor(advisorId);
         Advisor advisor = requireAdvisor(advisorId);
@@ -112,6 +168,14 @@ public class AdminAssignmentService {
         List<UUID> sortedStudents = studentIds.stream().sorted().toList();
         for (UUID studentId : sortedStudents) {
             lockStudent(studentId);
+        }
+        for (UUID studentId : sortedStudents) {
+            if (advisorId.toString().equals(activeAdvisor(studentId))) continue;
+            UUID cohortId = jdbc.queryForObject("SELECT curriculum_version_id FROM students WHERE user_id = ?",
+                    (result, row) -> UUID.fromString(result.getString(1)), studentId.toString());
+            List<UUID> pool = cohorts.activeIds(cohortId);
+            if (pool.isEmpty()) throw new AssignmentError("COHORT_ADVISORS_NOT_CONFIGURED", "No advisors are configured for this cohort");
+            if (!pool.contains(advisorId)) throw new AssignmentError("ADVISOR_NOT_IN_COHORT", "Selected advisor is not configured for this student's cohort");
         }
         List<AppointmentImpact> impacts = appointmentImpacts(sortedStudents, advisorId);
         if (!impacts.isEmpty() && !acknowledgeAppointmentCancellation) {
@@ -146,7 +210,7 @@ public class AdminAssignmentService {
                             """, UUID.randomUUID().toString(), studentId.toString());
                 }
             }
-            insertAssignment(studentId, advisorId);
+            insertAssignment(studentId, advisorId, actorId, notes);
             changed++;
             load++;
         }
@@ -186,6 +250,11 @@ public class AdminAssignmentService {
 
     @Transactional
     public Map<String, Object> confirmCohort(UUID cohortId, List<UUID> advisorIds) {
+        return confirmCohort(cohortId, advisorIds, null, null);
+    }
+
+    @Transactional
+    public Map<String, Object> confirmCohort(UUID cohortId, List<UUID> advisorIds, UUID actorId, String notes) {
         cohorts.lockCohort(cohortId);
         List<Advisor> initial = selectedAdvisorsForCohort(cohortId, advisorIds);
         for (UUID advisorId : initial.stream().map(Advisor::id).sorted().toList()) lockAdvisor(advisorId);
@@ -200,7 +269,7 @@ public class AdminAssignmentService {
         }
         for (UUID studentId : students) {
             Advisor advisor = nextAdvisor(selected, loads);
-            insertAssignment(studentId, advisor.id());
+            insertAssignment(studentId, advisor.id(), actorId, notes);
             loads.put(advisor.id(), loads.get(advisor.id()) + 1);
             allocation.put(advisor.id(), allocation.get(advisor.id()) + 1);
         }
@@ -226,7 +295,7 @@ public class AdminAssignmentService {
             int excess = advisor.maxAdvisees() == null ? 0 :
                     (int) Math.max(0, after - advisor.maxAdvisees());
             return Map.<String, Object>of("advisorId", advisor.id(), "assigned", allocation.get(advisor.id()),
-                    "totalAfter", after, "overLimitBy", excess, "warning", excess > 0);
+                    "totalBefore", advisor.activeStudents(), "totalAfter", after, "overLimitBy", excess, "warning", excess > 0);
         }).toList();
         return Map.of("cohortId", cohortId, "assigned", count, "allocation", limits,
                 "warning", limits.stream().anyMatch(item -> (boolean) item.get("warning")));
@@ -234,6 +303,11 @@ public class AdminAssignmentService {
 
     @Transactional
     public Result confirm(String cohort, List<UUID> advisorIds) {
+        return confirm(cohort, advisorIds, null, null);
+    }
+
+    @Transactional
+    public Result confirm(String cohort, List<UUID> advisorIds, UUID actorId, String notes) {
         for (UUID advisorId : advisorIds.stream().sorted().toList()) {
             lockAdvisor(advisorId);
         }
@@ -254,7 +328,7 @@ public class AdminAssignmentService {
         }
         for (Student student : unassigned) {
             Advisor next = nextAdvisor(selected, loads);
-            insertAssignment(student.id(), next.id());
+            insertAssignment(student.id(), next.id(), actorId, notes);
             loads.put(next.id(), loads.get(next.id()) + 1);
             assignedCounts.put(next.id(), assignedCounts.get(next.id()) + 1);
         }
@@ -297,7 +371,8 @@ public class AdminAssignmentService {
     private List<Advisor> selectedAdvisorsForCohort(UUID cohortId, List<UUID> ids) {
         List<UUID> pool = cohorts.activeIds(cohortId);
         List<UUID> selected = ids == null || ids.isEmpty() ? pool : ids;
-        if (selected.isEmpty() || !pool.containsAll(selected)) throw new Conflict();
+        if (pool.isEmpty()) throw new AssignmentError("COHORT_ADVISORS_NOT_CONFIGURED", "No advisors are configured for this cohort");
+        if (!pool.containsAll(selected)) throw new AssignmentError("ADVISOR_NOT_IN_COHORT", "Selected advisor is not configured for this cohort");
         return selectedAdvisors(selected);
     }
 
@@ -308,8 +383,10 @@ public class AdminAssignmentService {
     }
 
     private Advisor requireAdvisor(UUID id) {
+        Integer active = jdbc.queryForObject("SELECT COUNT(*) FROM advisors a JOIN users u ON u.id=a.user_id WHERE a.user_id=? AND a.status='ACTIVE' AND u.status='ACTIVE'", Integer.class, id.toString());
+        if (active == null || active == 0) throw new AssignmentError("ADVISOR_INACTIVE", "Advisor is not active");
         return advisors().stream().filter(advisor -> advisor.id().equals(id))
-                .findFirst().orElseThrow(Conflict::new);
+                .findFirst().orElseThrow(() -> new AssignmentError("ADVISOR_INACTIVE", "Advisor is not active"));
     }
 
     void lockAdvisor(UUID id) {
@@ -340,11 +417,16 @@ public class AdminAssignmentService {
     }
 
     void insertAssignment(UUID studentId, UUID advisorId) {
+        insertAssignment(studentId, advisorId, null, null);
+    }
+
+    void insertAssignment(UUID studentId, UUID advisorId, UUID actorId, String notes) {
         jdbc.update("""
                 INSERT INTO student_advisor_assignments
-                    (id, student_id, advisor_id, assigned_date, is_primary, status)
-                VALUES (?, ?, ?, CURRENT_DATE, TRUE, 'ACTIVE')
-                """, UUID.randomUUID().toString(), studentId.toString(), advisorId.toString());
+                    (id, student_id, advisor_id, assigned_date, assigned_at, assigned_by_user_id, notes, is_primary, status)
+                VALUES (?, ?, ?, CURRENT_DATE, CURRENT_TIMESTAMP, ?, ?, TRUE, 'ACTIVE')
+                """, UUID.randomUUID().toString(), studentId.toString(), advisorId.toString(),
+                actorId == null ? null : actorId.toString(), notes);
         jdbc.update("""
                 UPDATE notifications SET resolved_at = CURRENT_TIMESTAMP
                 WHERE related_student_id = ? AND notification_type = 'ADVISOR_REQUEST'
@@ -367,22 +449,53 @@ public class AdminAssignmentService {
                 result.getLong("active_students"));
     }
 
+    private Student mapStudent(ResultSet result, int row) throws SQLException {
+        return new Student(UUID.fromString(result.getString("user_id")), result.getString("student_code"),
+                result.getString("full_name"), UUID.fromString(result.getString("cohort_id")),
+                result.getString("cohort"), result.getString("major_code"), result.getString("advisor_id"),
+                result.getString("advisor_name"), result.getDate("assigned_date") == null ? null
+                        : result.getDate("assigned_date").toLocalDate());
+    }
+
+    private void validatePage(int page, int size) {
+        if (page < 0 || size < 1 || size > 100 || (long) page * size > Integer.MAX_VALUE)
+            throw new IllegalArgumentException("page or size is invalid");
+    }
+
+    private Object[] append(Object[] values, Object... extra) {
+        Object[] result = java.util.Arrays.copyOf(values, values.length + extra.length);
+        System.arraycopy(extra, 0, result, values.length, extra.length);
+        return result;
+    }
+
     public record Advisor(UUID id, String advisorCode, String fullName,
             Integer maxAdvisees, long activeStudents) {
     }
 
-    public record Cohort(String cohort, long students) {
+    public record Cohort(UUID cohortId, String cohort, String majorCode, long students) {
     }
 
-    public record Student(UUID id, String studentCode, String fullName,
-            String cohort, String advisorId, String advisorName) {
+    public record Student(UUID id, String studentCode, String fullName, UUID cohortId,
+            String cohort, String majorCode, String advisorId, String advisorName, LocalDate assignedDate) {
     }
 
-    public record AdvisorDetail(Advisor advisor, List<Student> students) {
+    public record AdvisorDetail(Advisor advisor, String email, String avatarUrl, String status,
+            List<Student> students, List<Cohort> cohorts, List<Cohort> configuredCohorts) {
     }
 
-    public record History(String id, String advisorId, String advisorName,
-            LocalDate assignedDate, LocalDate endDate, String status) {
+    public record History(String id, String advisorId, String advisorCode, String advisorName,
+            LocalDate assignedDate, LocalDateTime assignedAt, String assignedByUserId,
+            String assignedByName, String notes, LocalDate endDate, String status) {
+    }
+
+    public record Page<T>(List<T> items, int page, int size, long totalElements) {
+        public long totalPages() { return (totalElements + size - 1) / size; }
+    }
+    public static class NotFound extends RuntimeException { public NotFound(String message) { super(message); } }
+    public static class AssignmentError extends RuntimeException {
+        private final String code;
+        public AssignmentError(String code, String message) { super(message); this.code = code; }
+        public String code() { return code; }
     }
 
     public record Preview(String cohort, int unassignedStudents, Map<UUID, Integer> allocation) {

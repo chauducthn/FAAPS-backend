@@ -2,7 +2,6 @@ package vn.edu.fpt.faaps.admin;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vn.edu.fpt.faaps.auth.AuthSession;
+import vn.edu.fpt.faaps.ApiError;
 
 @RestController
 @RequestMapping("/api/admin/ai-reports")
@@ -48,18 +48,18 @@ public class AdminAiReportController {
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException exception) {
-        return ResponseEntity.badRequest().body(Map.of("error", exception.getMessage()));
+    public ResponseEntity<ApiError> invalid(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest().body(ApiError.of("INVALID_REQUEST", exception.getMessage()));
     }
 
     @ExceptionHandler(AdminAiReportService.NotFound.class)
-    public ResponseEntity<Map<String, String>> notFound() {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Report not found"));
+    public ResponseEntity<ApiError> notFound() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiError.of("REPORT_NOT_FOUND", "Report not found"));
     }
 
     @ExceptionHandler(AdminAiReportService.Conflict.class)
-    public ResponseEntity<Map<String, String>> conflict() {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "Report is already closed"));
+    public ResponseEntity<ApiError> conflict() {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.of("REPORT_ALREADY_CLOSED", "Report is already closed"));
     }
 
     public record ResolveRequest(@NotBlank String status, @NotBlank String resolutionNote) {

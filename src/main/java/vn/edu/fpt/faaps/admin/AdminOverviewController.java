@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vn.edu.fpt.faaps.ApiError;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -35,7 +36,7 @@ public class AdminOverviewController {
         return Map.of(
                 "students", count("STUDENT"),
                 "advisors", count("ADVISOR"),
-                "cohorts", jdbc.queryForObject("SELECT COUNT(DISTINCT version) FROM curriculum_versions", Long.class));
+                "cohorts", jdbc.queryForObject("SELECT COUNT(DISTINCT id) FROM curriculum_versions", Long.class));
     }
 
     @GetMapping("/dashboard/new-students")
@@ -150,13 +151,13 @@ public class AdminOverviewController {
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException exception) {
-        return ResponseEntity.badRequest().body(Map.of("error", exception.getMessage()));
+    public ResponseEntity<ApiError> invalid(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest().body(ApiError.of("INVALID_REQUEST", exception.getMessage()));
     }
 
     @ExceptionHandler(NotFound.class)
-    public ResponseEntity<Map<String, String>> notFound() {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Appointment not found"));
+    public ResponseEntity<ApiError> notFound() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiError.of("APPOINTMENT_NOT_FOUND", "Appointment not found"));
     }
 
     public record MonthlyCount(String month, long students) {

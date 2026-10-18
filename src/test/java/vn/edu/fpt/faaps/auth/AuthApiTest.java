@@ -46,6 +46,8 @@ class AuthApiTest {
 
         HttpResponse<String> currentUser = send(client, HttpRequest.newBuilder(baseUrl.resolve("/api/auth/me")).GET().build());
         assertEquals(401, currentUser.statusCode());
+        assertTrue(currentUser.body().contains("\"success\":false"));
+        assertTrue(currentUser.body().contains("\"code\":\"AUTHENTICATION_REQUIRED\""));
 
         HttpResponse<String> csrf = send(client, HttpRequest.newBuilder(baseUrl.resolve("/api/auth/csrf")).GET().build());
         assertEquals(200, csrf.statusCode());
@@ -59,7 +61,10 @@ class AuthApiTest {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString("{\"email\":\"admin@example.com\",\"password\":\"secret\"}"))
                 .build();
-        assertEquals(503, send(client, login).statusCode());
+        HttpResponse<String> unavailable = send(client, login);
+        assertEquals(503, unavailable.statusCode());
+        assertTrue(unavailable.body().contains("\"success\":false"));
+        assertTrue(unavailable.body().contains("\"code\":\"ACCOUNT_STORAGE_UNAVAILABLE\""));
 
         HttpRequest logout = HttpRequest.newBuilder(baseUrl.resolve("/api/auth/logout"))
                 .header("X-XSRF-TOKEN", csrfToken)

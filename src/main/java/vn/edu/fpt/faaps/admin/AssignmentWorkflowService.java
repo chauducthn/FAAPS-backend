@@ -21,9 +21,21 @@ public class AssignmentWorkflowService {
     }
 
     public List<Map<String, Object>> unassigned(UUID cohortId) {
+        return unassigned(cohortId, null, null, 0, 100).items();
+    }
+
+    public Page<Map<String, Object>> unassigned(UUID cohortId, String search, Boolean hasPendingRequest,
+            int page, int size) {
+        validatePage(page, size);
         String filter = cohortId == null ? "" : " AND cv.id = ?";
-        Object[] parameters = cohortId == null ? new Object[] {} : new Object[] {cohortId.toString()};
-        return jdbc.query("""
+        String term = search == null || search.isBlank() ? null : "%" + search.strip().toLowerCase() + "%";
+        String requestFilter = hasPendingRequest == null ? "" : " AND EXISTS(SELECT 1 FROM notifications nr WHERE nr.related_student_id=s.user_id AND nr.notification_type='ADVISOR_REQUEST' AND nr.resolved_at IS NULL) = ?";
+        String searchFilter = term == null ? "" : " AND (LOWER(s.student_code) LIKE ? OR LOWER(u.full_name) LIKE ? OR LOWER(m.code) LIKE ? OR LOWER(cv.version) LIKE ?)";
+        List<Object> params = new java.util.ArrayList<>();
+        if (cohortId != null) params.add(cohortId.toString());
+        if (hasPendingRequest != null) params.add(hasPendingRequest);
+        if (term != null) for (int i = 0; i < 4; i++) params.add(term);
+        String base = """
                 SELECT s.user_id, s.student_code, u.full_name, cv.id AS cohort_id,
                        cv.version AS cohort, m.code AS major_code,
                        EXISTS(SELECT 1 FROM notifications n
@@ -36,12 +48,17 @@ public class AssignmentWorkflowService {
                 WHERE NOT EXISTS(SELECT 1 FROM student_advisor_assignments sa
                                  WHERE sa.student_id = s.user_id AND sa.status = 'ACTIVE'
                                    AND sa.end_date IS NULL)
-                """ + filter + " ORDER BY cv.version, s.student_code",
+                """ + filter + requestFilter + searchFilter;
+        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM (" + base + ") filtered", Long.class, params.toArray());
+        params.add(size);
+        params.add(page * size);
+        List<Map<String, Object>> items = jdbc.query(base + " ORDER BY cv.version, s.student_code LIMIT ? OFFSET ?",
                 (result, row) -> Map.<String, Object>of(
                         "id", result.getString("user_id"), "studentCode", result.getString("student_code"),
                         "fullName", result.getString("full_name"), "cohortId", result.getString("cohort_id"),
                         "cohort", result.getString("cohort"), "majorCode", result.getString("major_code"),
-                        "hasPendingRequest", result.getBoolean("has_pending_request")), parameters);
+                        "hasPendingRequest", result.getBoolean("has_pending_request")), params.toArray());
+        return new Page<>(items, page, size, total == null ? 0 : total);
     }
 
     public Map<String, Object> summary() {
@@ -73,8 +90,14 @@ public class AssignmentWorkflowService {
     }
 
     public List<Map<String, Object>> advisorsWithCohorts() {
-        return jdbc.query("""
+        return advisorsWithCohorts(null, null, 0, 100).items();
+    }
+
+    public Page<Map<String, Object>> advisorsWithCohorts(UUID cohortId, String search, int page, int size) {
+        validatePage(page, size);
+        String base = """
                 SELECT a.user_id, a.advisor_code, u.full_name, a.max_advisees,
+                       u.email, u.avatar_url, a.status,
                        cv.id AS cohort_id, cv.version AS cohort, m.code AS major_code,
                        ca.cohort_id IS NOT NULL AS in_pool,
                        COUNT(sa.id) AS student_count
@@ -94,22 +117,40 @@ public class AssignmentWorkflowService {
                 LEFT JOIN student_advisor_assignments sa ON sa.student_id = s.user_id
                     AND sa.advisor_id = a.user_id AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
                 WHERE a.status = 'ACTIVE' AND u.status = 'ACTIVE'
+                  AND (? IS NULL OR cv.id = ?)
+                  AND (? IS NULL OR LOWER(a.advisor_code) LIKE ? OR LOWER(u.full_name) LIKE ? OR LOWER(m.code) LIKE ?)
                 GROUP BY a.user_id, a.advisor_code, u.full_name, a.max_advisees,
-                         cv.id, cv.version, m.code, ca.cohort_id
-                ORDER BY u.full_name, cv.version
-                """, (result, row) -> {
+                         u.email, u.avatar_url, a.status, cv.id, cv.version, m.code, ca.cohort_id
+                """;
+        String term = search == null || search.isBlank() ? null : "%" + search.strip().toLowerCase() + "%";
+        Object[] baseParams = {cohortId == null ? null : cohortId.toString(), cohortId == null ? null : cohortId.toString(), term, term, term, term};
+        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM (" + base + ") result_rows", Long.class, baseParams);
+        List<Object> params = new java.util.ArrayList<>(java.util.Arrays.asList(baseParams));
+        params.add(size);
+        params.add(page * size);
+        List<Map<String, Object>> items = jdbc.query(base + " ORDER BY full_name, cohort "
+                + "LIMIT ? OFFSET ?", (result, row) -> {
                     java.util.HashMap<String, Object> item = new java.util.HashMap<>();
                     item.put("advisorId", result.getString("user_id"));
                     item.put("advisorCode", result.getString("advisor_code"));
                     item.put("fullName", result.getString("full_name"));
                     item.put("maxAdvisees", result.getObject("max_advisees"));
+                    item.put("email", result.getString("email"));
+                    item.put("avatarUrl", result.getString("avatar_url"));
+                    item.put("status", result.getString("status"));
                     item.put("cohortId", result.getString("cohort_id"));
                     item.put("cohort", result.getString("cohort"));
                     item.put("majorCode", result.getString("major_code"));
                     item.put("inPool", result.getBoolean("in_pool"));
                     item.put("studentCount", result.getLong("student_count"));
                     return item;
-                });
+                }, params.toArray());
+        return new Page<>(items, page, size, total == null ? 0 : total);
+    }
+
+    private void validatePage(int page, int size) {
+        if (page < 0 || size < 1 || size > 100 || (long) page * size > Integer.MAX_VALUE)
+            throw new IllegalArgumentException("page or size is invalid");
     }
 
     @Transactional
@@ -124,6 +165,11 @@ public class AssignmentWorkflowService {
 
     @Transactional
     public Map<String, Object> assignCohort(UUID cohortId, UUID advisorId) {
+        return assignCohort(cohortId, advisorId, null, null);
+    }
+
+    @Transactional
+    public Map<String, Object> assignCohort(UUID cohortId, UUID advisorId, UUID actorId, String notes) {
         cohorts.lockCohort(cohortId);
         cohorts.include(cohortId, advisorId);
         assignments.lockAdvisor(advisorId);
@@ -132,7 +178,7 @@ public class AssignmentWorkflowService {
         for (UUID studentId : ids.stream().sorted().toList()) {
             assignments.lockStudent(studentId);
             if (assignments.activeAdvisor(studentId) == null) {
-                assignments.insertAssignment(studentId, advisorId);
+                assignments.insertAssignment(studentId, advisorId, actorId, notes);
                 count++;
             }
         }
@@ -153,6 +199,10 @@ public class AssignmentWorkflowService {
                 : (int) Math.max(0, after - advisor.maxAdvisees());
         return Map.of("cohortId", cohortId, "advisorId", advisorId, "unassignedStudents", count,
                 "totalAfter", after, "overLimitBy", excess, "warning", excess > 0);
+    }
+
+    public record Page<T>(List<T> items, int page, int size, long totalElements) {
+        public long totalPages() { return (totalElements + size - 1) / size; }
     }
 
 }

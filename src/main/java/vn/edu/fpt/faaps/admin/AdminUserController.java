@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vn.edu.fpt.faaps.auth.AuthSession;
+import vn.edu.fpt.faaps.ApiError;
 
 @RestController
 @RequestMapping("/api/admin/users")
@@ -66,18 +67,18 @@ public class AdminUserController {
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException exception) {
-        return ResponseEntity.badRequest().body(Map.of("error", exception.getMessage()));
+    public ResponseEntity<ApiError> invalid(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest().body(ApiError.of("INVALID_REQUEST", exception.getMessage()));
     }
 
     @ExceptionHandler(AdminUserService.NotFound.class)
-    public ResponseEntity<Map<String, String>> notFound() {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found"));
+    public ResponseEntity<ApiError> notFound() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiError.of("USER_NOT_FOUND", "User not found"));
     }
 
     @ExceptionHandler({AdminUserService.Conflict.class, DataIntegrityViolationException.class})
-    public ResponseEntity<Map<String, String>> conflict() {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "User update conflicts with current data"));
+    public ResponseEntity<ApiError> conflict() {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.of("USER_CONFLICT", "User update conflicts with current data"));
     }
 
     public record UpdateUser(@NotBlank @Size(max = 255) String fullName,

@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import vn.edu.fpt.faaps.auth.AuthSession;
 
 @RestController
 @RequestMapping("/api/admin/assignments")
@@ -25,8 +27,11 @@ public class AssignmentWorkflowController {
     }
 
     @GetMapping("/unassigned")
-    public List<Map<String, Object>> unassigned(@RequestParam(required = false) UUID cohortId) {
-        return workflow.unassigned(cohortId);
+    public AssignmentWorkflowService.Page<Map<String, Object>> unassigned(
+            @RequestParam(required = false) UUID cohortId, @RequestParam(required = false) String search,
+            @RequestParam(required = false) Boolean hasPendingRequest,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return workflow.unassigned(cohortId, search, hasPendingRequest, page, size);
     }
 
     @GetMapping("/summary")
@@ -35,8 +40,10 @@ public class AssignmentWorkflowController {
     }
 
     @GetMapping("/advisors/by-cohort")
-    public List<Map<String, Object>> advisorsWithCohorts() {
-        return workflow.advisorsWithCohorts();
+    public AssignmentWorkflowService.Page<Map<String, Object>> advisorsWithCohorts(
+            @RequestParam(required = false) UUID cohortId, @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return workflow.advisorsWithCohorts(cohortId, search, page, size);
     }
 
     @PatchMapping("/advisors/{advisorId}/limit")
@@ -45,8 +52,9 @@ public class AssignmentWorkflowController {
     }
 
     @PostMapping("/cohorts/{cohortId}/assign")
-    public Map<String, Object> assignCohort(@PathVariable UUID cohortId, @Valid @RequestBody CohortRequest request) {
-        return workflow.assignCohort(cohortId, request.advisorId());
+    public Map<String, Object> assignCohort(@AuthenticationPrincipal AuthSession session,
+            @PathVariable UUID cohortId, @Valid @RequestBody CohortRequest request) {
+        return workflow.assignCohort(cohortId, request.advisorId(), session.id(), request.notes());
     }
 
     @PostMapping("/cohorts/{cohortId}/preview")
@@ -56,5 +64,5 @@ public class AssignmentWorkflowController {
     }
 
     public record LimitRequest(@Min(1) int maxAdvisees) {}
-    public record CohortRequest(@NotNull UUID advisorId) {}
+    public record CohortRequest(@NotNull UUID advisorId, String notes) {}
 }

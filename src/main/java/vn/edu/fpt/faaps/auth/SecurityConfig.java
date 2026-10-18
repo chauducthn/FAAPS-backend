@@ -60,9 +60,9 @@ public class SecurityConfig {
                 .anyRequest().authenticated());
         http.exceptionHandling(errors -> errors
                 .authenticationEntryPoint((request, response, exception) ->
-                        writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required"))
+                        writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "AUTHENTICATION_REQUIRED", "Authentication required"))
                 .accessDeniedHandler((request, response, exception) ->
-                        writeError(response, HttpServletResponse.SC_FORBIDDEN, "Access denied")));
+                        writeError(response, HttpServletResponse.SC_FORBIDDEN, "ACCESS_DENIED", "Access denied")));
         http.addFilterAfter(new AccountStatusFilter(
                 accountStore(accountStores, dataSources)),
                 UsernamePasswordAuthenticationFilter.class);
@@ -90,9 +90,9 @@ public class SecurityConfig {
         return dataSource == null ? new UnavailableAuthAccountStore() : new JdbcAuthAccountStore(dataSource);
     }
 
-    private void writeError(HttpServletResponse response, int status, String message) throws IOException {
+    private void writeError(HttpServletResponse response, int status, String code, String message) throws IOException {
         response.setStatus(status);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.getWriter().write("{\"error\":\"" + message + "\"}");
+        response.getWriter().write("{\"success\":false,\"code\":\"" + code + "\",\"message\":\"" + message + "\"}");
     }
 }

@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import vn.edu.fpt.faaps.ApiError;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -60,21 +61,21 @@ public class AuthController {
     }
 
     @ExceptionHandler(BadCredentialsException.class)
-    public ResponseEntity<Map<String, String>> invalidCredentials() {
+    public ResponseEntity<ApiError> invalidCredentials() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(Map.of("error", "Invalid credentials"));
+                .body(ApiError.of("INVALID_CREDENTIALS", "Invalid credentials"));
     }
 
     @ExceptionHandler(DisabledException.class)
-    public ResponseEntity<Map<String, String>> disabledAccount() {
+    public ResponseEntity<ApiError> disabledAccount() {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(Map.of("error", "Account is not active"));
+                .body(ApiError.of("ACCOUNT_INACTIVE", "Account is not active"));
     }
 
     @ExceptionHandler(AuthUnavailableException.class)
-    public ResponseEntity<Map<String, String>> unavailable() {
+    public ResponseEntity<ApiError> unavailable() {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(Map.of("error", "Account storage is not configured"));
+                .body(ApiError.of("ACCOUNT_STORAGE_UNAVAILABLE", "Account storage is not configured"));
     }
 
     public record AdminLoginRequest(@NotBlank String email, @NotBlank String password) {
