@@ -55,3 +55,40 @@ Trước khi gọi các endpoint AI report, DBA cần chạy `sql/2026-10-15_adm
 | POST | `/api/admin/ai-reports/{id}/resolve` | Body `{"status":"RESOLVED","resolutionNote":"..."}`; cũng hỗ trợ `DISMISSED` |
 
 Các list API trả `items`, `page`, `size`, `totalElements`, `totalPages`. Dữ liệu mới do Student tạo ticket là phần API Student, chưa nằm trong các endpoint Admin này.
+
+## Ngành học (Majors)
+
+| Method | URL | Mục đích |
+| --- | --- | --- |
+| GET | `/api/admin/majors/paged?cohort=&status=ACTIVE&search=&page=0&size=20&sort=createdAt,desc` | Danh sách ngành học, lọc theo cohort, trạng thái, phân trang |
+| GET | `/api/admin/majors/{id}` | Chi tiết ngành học |
+| POST | `/api/admin/majors` | Tạo ngành học mới: `{"code":"SE","name":"Software Engineering","totalCredits":140,"durationYears":4.0,"status":"ACTIVE","cohort":"K18"}` |
+| PUT | `/api/admin/majors/{id}` | Cập nhật thông tin ngành học |
+| DELETE | `/api/admin/majors/{id}` | Xóa ngành học (kiểm tra ràng buộc sinh viên và curriculum) |
+| POST | `/api/admin/majors/bulk-delete` | Xóa hàng loạt: `{"ids":["uuid"]}` |
+
+## Môn học (Courses)
+
+| Method | URL | Mục đích |
+| --- | --- | --- |
+| GET | `/api/admin/courses?search=&status=ACTIVE&categoryId=&page=0&size=20&sort=code,asc` | Danh sách môn học |
+| GET | `/api/admin/courses/categories` | Danh sách khối kiến thức/danh mục môn học |
+| GET | `/api/admin/courses/{id}` | Chi tiết môn học và danh sách môn tiên quyết/song hành |
+| POST | `/api/admin/courses` | Tạo môn học mới kèm môn tiên quyết |
+| PUT | `/api/admin/courses/{id}` | Cập nhật môn học và môn tiên quyết |
+| DELETE | `/api/admin/courses/{id}` | Xóa môn học (kiểm tra ràng buộc môn tiên quyết và curriculum) |
+| POST | `/api/admin/courses/bulk-delete` | Xóa hàng loạt môn học |
+| POST | `/api/admin/courses/import/preview` | Upload file Excel (.xlsx), kiểm tra schema, mã trùng, trả kết quả preview và lỗi |
+| POST | `/api/admin/courses/import/confirm` | Xác nhận và lưu danh sách môn học hợp lệ vào DB |
+
+## Quy chế học vụ (Academic Rules)
+
+| Method | URL | Mục đích |
+| --- | --- | --- |
+| GET | `/api/admin/academic-rules?search=&status=ACTIVE&policyType=&curriculumVersionId=&page=0&size=20` | Danh sách quy chế học vụ |
+| GET | `/api/admin/academic-rules/types` | Danh sách các loại quy chế hỗ trợ |
+| GET | `/api/admin/academic-rules/{id}` | Chi tiết quy chế học vụ |
+| POST | `/api/admin/academic-rules` | Tạo quy chế mới cho khung chương trình |
+| PUT | `/api/admin/academic-rules/{id}` | Cập nhật quy chế học vụ |
+| PATCH | `/api/admin/academic-rules/{id}/status` | Bật/tắt trạng thái hiệu lực: `{"isActive":true}` |
+| DELETE | `/api/admin/academic-rules/{id}` | Xóa quy chế học vụ |
