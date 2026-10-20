@@ -8,10 +8,6 @@ server:
 spring:
   application:
     name: faaps-api
-  servlet:
-    multipart:
-      max-file-size: 2MB
-      max-request-size: 3MB
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/faaps?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh}
     username: ${DB_USERNAME:faaps}
@@ -22,10 +18,6 @@ spring:
     open-in-view: false
 faaps:
   frontend-url: ${FAAPS_FRONTEND_URL:http://localhost:5173}
-  avatar:
-    enabled: ${FAAPS_AVATAR_ENABLED:false}
-    bucket: ${FAAPS_AVATAR_BUCKET:}
-    region: ${FAAPS_AVATAR_REGION:ap-southeast-1}
 springdoc:
   swagger-ui:
     csrf:

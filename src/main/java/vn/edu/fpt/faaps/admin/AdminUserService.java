@@ -74,6 +74,7 @@ public class AdminUserService {
                        u.full_name, u.email, u.phone, u.avatar_url, r.code AS role, u.status,
                        u.created_at, u.updated_at, s.major_id, m.name AS major_name,
                        s.curriculum_version_id, cv.version AS curriculum_code,
+                       s.enrollment_semester_id,
                        s.current_semester, s.academic_status, a.advisor_code
                 FROM users u JOIN roles r ON r.id = u.role_id
                 LEFT JOIN students s ON s.user_id = u.id
@@ -89,24 +90,9 @@ public class AdminUserService {
                 result.getTimestamp("updated_at").toLocalDateTime(),
                 result.getString("major_id"), result.getString("major_name"),
                 result.getString("curriculum_version_id"), result.getString("curriculum_code"),
+                result.getString("enrollment_semester_id"),
                 (Integer) result.getObject("current_semester"), result.getString("academic_status"),
                 result.getString("advisor_code")), id.toString()).stream().findFirst().orElseThrow(NotFound::new);
-    }
-
-    @Transactional
-    public Detail update(UUID id, String fullName, String phone, String avatarUrl) {
-        if (avatarUrl != null && !avatarUrl.isBlank()
-                && !(avatarUrl.startsWith("https://") || avatarUrl.startsWith("http://localhost:"))
-                && !avatarUrl.equals(detail(id).avatarUrl())) {
-            throw new IllegalArgumentException("avatarUrl must use HTTPS or match the current avatar");
-        }
-        int changed = jdbc.update("UPDATE users SET full_name = ?, phone = ?, avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                fullName.strip(), phone == null || phone.isBlank() ? null : phone.strip(),
-                avatarUrl == null || avatarUrl.isBlank() ? null : avatarUrl.strip(), id.toString());
-        if (changed == 0) {
-            throw new NotFound();
-        }
-        return detail(id);
     }
 
     @Transactional
@@ -154,6 +140,7 @@ public class AdminUserService {
     public record Detail(UUID id, String userId, String fullName, String email, String phone,
             String avatarUrl, String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
             String majorId, String majorName, String curriculumVersionId, String curriculumCode,
+            String enrollmentSemesterId,
             Integer currentSemester, String academicStatus, String advisorCode) {
     }
 

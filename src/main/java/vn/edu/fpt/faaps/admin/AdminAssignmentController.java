@@ -77,6 +77,21 @@ public class AdminAssignmentController {
                 "warning", !appointments.isEmpty());
     }
 
+    @PostMapping("/unassign/preview")
+    public Map<String, Object> previewUnassign(@Valid @RequestBody UnassignPreviewRequest request) {
+        List<AdminAssignmentService.AppointmentImpact> appointments =
+                assignments.appointmentImpacts(request.studentIds(), null);
+        return Map.of("scheduledAppointments", appointments, "appointmentCount", appointments.size(),
+                "warning", !appointments.isEmpty());
+    }
+
+    @PostMapping("/unassign")
+    public Map<String, Integer> unassign(@AuthenticationPrincipal AuthSession session,
+            @Valid @RequestBody UnassignRequest request) {
+        return Map.of("unassigned", assignments.unassign(request.studentIds(),
+                Boolean.TRUE.equals(request.acknowledgeAppointmentCancellation()), session.id(), request.notes()));
+    }
+
     @PostMapping("/auto-assign/preview")
     public AdminAssignmentService.Preview preview(@Valid @RequestBody AutoAssignRequest request) {
         return assignments.preview(request.cohort(), request.advisorIds());
@@ -140,6 +155,11 @@ public class AdminAssignmentController {
     }
 
     public record PreviewAssignRequest(@NotEmpty List<UUID> studentIds, @NotNull UUID advisorId) {}
+
+    public record UnassignPreviewRequest(@NotEmpty List<UUID> studentIds) {}
+
+    public record UnassignRequest(@NotEmpty List<UUID> studentIds,
+            Boolean acknowledgeAppointmentCancellation, String notes) {}
 
     public record AutoAssignRequest(@NotNull String cohort, @NotEmpty List<UUID> advisorIds, String notes) {
     }

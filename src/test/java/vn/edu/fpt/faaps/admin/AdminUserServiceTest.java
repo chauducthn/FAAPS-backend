@@ -27,10 +27,12 @@ class AdminUserServiceTest {
                     full_name VARCHAR(255), phone VARCHAR(20), avatar_url VARCHAR(500), status VARCHAR(20),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
                 """);
-        jdbc.execute("CREATE TABLE students (user_id VARCHAR(36) PRIMARY KEY, student_code VARCHAR(50), major_id VARCHAR(36), curriculum_version_id VARCHAR(36), current_semester INT, academic_status VARCHAR(20))");
+        jdbc.execute("CREATE TABLE students (user_id VARCHAR(36) PRIMARY KEY, student_code VARCHAR(50), major_id VARCHAR(36), curriculum_version_id VARCHAR(36), enrollment_semester_id VARCHAR(36), current_semester INT, academic_status VARCHAR(20), updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY, advisor_code VARCHAR(50))");
         jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, code VARCHAR(50), name VARCHAR(255))");
-        jdbc.execute("CREATE TABLE curriculum_versions (id VARCHAR(36) PRIMARY KEY, version VARCHAR(50))");
+        jdbc.execute("CREATE TABLE curriculum_versions (id VARCHAR(36) PRIMARY KEY, major_id VARCHAR(36), version VARCHAR(50), name VARCHAR(100))");
+        jdbc.execute("CREATE TABLE semesters (id VARCHAR(36) PRIMARY KEY, code VARCHAR(50), name VARCHAR(100), start_date DATE)");
+        jdbc.execute("CREATE TABLE student_advisor_assignments (student_id VARCHAR(36), status VARCHAR(20), end_date DATE)");
         String adminRole = UUID.randomUUID().toString();
         String studentRole = UUID.randomUUID().toString();
         jdbc.update("INSERT INTO roles VALUES (?, 'ADMIN')", adminRole);
@@ -82,25 +84,11 @@ class AdminUserServiceTest {
     }
 
     @Test
-    void updatesProfileAndProtectsOwnAdminAccount() {
-        users.update(studentId, "New Name", "123", "https://example.com/avatar.png");
-        assertEquals("New Name", users.detail(studentId).fullName());
+    void protectsOwnAdminAccountAndChangesStudentStatus() {
         assertThrows(AdminUserService.Conflict.class, () ->
                 users.changeStatus(List.of(adminId), "SUSPENDED", adminId));
         assertEquals(1, users.changeStatus(List.of(studentId), "SUSPENDED", adminId));
         assertEquals("SUSPENDED", users.detail(studentId).status());
         assertEquals(1, users.changeStatus(List.of(studentId), "ACTIVE", adminId));
-        assertThrows(IllegalArgumentException.class, () ->
-                users.update(studentId, "Student", null, "javascript:alert(1)"));
-    }
-
-    @Test
-    void keepsUploadedAvatarDuringProfileEdit() {
-        String avatarUrl = "/api/avatars/" + studentId + "/" + UUID.randomUUID();
-        jdbc.update("UPDATE users SET avatar_url = ? WHERE id = ?", avatarUrl, studentId.toString());
-        users.update(studentId, "Student", null, avatarUrl);
-        assertEquals(avatarUrl, users.detail(studentId).avatarUrl());
-        assertThrows(IllegalArgumentException.class, () ->
-                users.update(studentId, "Student", null, "/api/avatars/" + studentId + "/" + UUID.randomUUID()));
     }
 }

@@ -3,7 +3,6 @@ package vn.edu.fpt.faaps.admin;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -48,11 +47,6 @@ public class AdminUserController {
         return users.detail(id);
     }
 
-    @PatchMapping("/{id}")
-    public AdminUserService.Detail update(@PathVariable UUID id, @Valid @RequestBody UpdateUser request) {
-        return users.update(id, request.fullName(), request.phone(), request.avatarUrl());
-    }
-
     @PatchMapping("/{id}/status")
     public AdminUserService.Detail status(@PathVariable UUID id, @Valid @RequestBody ChangeStatus request,
             @AuthenticationPrincipal AuthSession actor) {
@@ -79,10 +73,6 @@ public class AdminUserController {
     @ExceptionHandler({AdminUserService.Conflict.class, DataIntegrityViolationException.class})
     public ResponseEntity<ApiError> conflict() {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.of("USER_CONFLICT", "User update conflicts with current data"));
-    }
-
-    public record UpdateUser(@NotBlank @Size(max = 255) String fullName,
-            @Size(max = 20) String phone, @Size(max = 500) String avatarUrl) {
     }
 
     public record ChangeStatus(@NotBlank String status) {

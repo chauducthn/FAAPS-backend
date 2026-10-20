@@ -95,18 +95,14 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
         UUID userId = UUID.randomUUID();
         String fullName = identity.fullName() == null || identity.fullName().isBlank()
                 ? email : identity.fullName().strip();
-        String avatarUrl = identity.avatarUrl();
-        if (avatarUrl != null && avatarUrl.length() > 500) {
-            avatarUrl = null;
-        }
         try {
             int inserted = jdbcTemplate.update("""
                     INSERT INTO users (id, role_id, email, auth_provider, external_id,
-                                       full_name, avatar_url, status, email_verified_at)
-                    SELECT ?, r.id, ?, 'GOOGLE', ?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP
+                                       full_name, status, email_verified_at)
+                    SELECT ?, r.id, ?, 'GOOGLE', ?, ?, 'ACTIVE', CURRENT_TIMESTAMP
                     FROM roles r WHERE r.code = 'STUDENT'
                     """, userId.toString(), email, subject,
-                    fullName.substring(0, Math.min(fullName.length(), 255)), avatarUrl);
+                    fullName.substring(0, Math.min(fullName.length(), 255)));
             if (inserted != 1) {
                 throw new IllegalStateException("STUDENT role is missing");
             }

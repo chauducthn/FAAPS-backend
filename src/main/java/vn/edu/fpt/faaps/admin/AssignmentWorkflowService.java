@@ -76,7 +76,11 @@ public class AssignmentWorkflowService {
                         "majorCode", result.getString("major_code"), "total", result.getLong("total"),
                         "assigned", result.getLong("assigned"),
                         "unassigned", result.getLong("total") - result.getLong("assigned")));
-        long total = cohorts.stream().mapToLong(item -> (long) item.get("total")).sum();
+        long profiled = cohorts.stream().mapToLong(item -> (long) item.get("total")).sum();
+        long total = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM users u JOIN roles r ON r.id = u.role_id
+                WHERE r.code = 'STUDENT'
+                """, Long.class);
         long assigned = cohorts.stream().mapToLong(item -> (long) item.get("assigned")).sum();
         Long pending = jdbc.queryForObject("""
                 SELECT COUNT(DISTINCT n.related_student_id) FROM notifications n
@@ -85,7 +89,8 @@ public class AssignmentWorkflowService {
                       WHERE sa.student_id = n.related_student_id AND sa.status = 'ACTIVE'
                         AND sa.end_date IS NULL)
                 """, Long.class);
-        return Map.of("total", total, "assigned", assigned, "unassigned", total - assigned,
+        return Map.of("total", total, "assigned", assigned, "unassigned", profiled - assigned,
+                "missingAcademicProfile", total - profiled,
                 "pendingAdvisorRequests", pending, "cohorts", cohorts);
     }
 

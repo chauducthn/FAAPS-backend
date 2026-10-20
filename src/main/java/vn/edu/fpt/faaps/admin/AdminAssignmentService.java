@@ -222,7 +222,7 @@ public class AdminAssignmentService {
         List<AppointmentImpact> impacts = new ArrayList<>();
         for (UUID studentId : studentIds) {
             String currentAdvisorId = activeAdvisor(studentId);
-            if (currentAdvisorId == null || currentAdvisorId.equals(newAdvisorId.toString())) continue;
+            if (currentAdvisorId == null || (newAdvisorId != null && currentAdvisorId.equals(newAdvisorId.toString()))) continue;
             impacts.addAll(jdbc.query("""
                     SELECT id, student_id, advisor_id, scheduled_at FROM advising_sessions
                     WHERE student_id = ? AND advisor_id = ? AND status = 'SCHEDULED'
@@ -234,6 +234,50 @@ public class AdminAssignmentService {
                     studentId.toString(), currentAdvisorId));
         }
         return impacts;
+    }
+
+    @Transactional
+    public int unassign(List<UUID> studentIds, boolean acknowledgeAppointmentCancellation, UUID actorId, String notes) {
+        validateIds(studentIds);
+        List<UUID> sortedStudents = studentIds.stream().sorted().toList();
+        for (UUID studentId : sortedStudents) lockStudent(studentId);
+        List<AppointmentImpact> impacts = appointmentImpacts(sortedStudents, null);
+        if (!impacts.isEmpty() && !acknowledgeAppointmentCancellation) {
+            throw new AppointmentWarningRequired(impacts);
+        }
+        int changed = 0;
+        for (UUID studentId : sortedStudents) {
+            String advisorId = activeAdvisor(studentId);
+            if (advisorId == null) continue;
+            changed += jdbc.update("""
+                    UPDATE student_advisor_assignments SET status = 'COMPLETED',
+                        end_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP,
+                        notes = CASE WHEN ? IS NULL THEN notes ELSE ? END
+                    WHERE student_id = ? AND status = 'ACTIVE' AND end_date IS NULL
+                    """, notes, notes, studentId.toString());
+            jdbc.update("""
+                    UPDATE advising_requests SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+                    WHERE student_id = ? AND status IN ('PENDING', 'IN_PROGRESS')
+                    """, studentId.toString());
+            int cancelled = jdbc.update("""
+                    UPDATE advising_sessions SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+                    WHERE student_id = ? AND advisor_id = ?
+                      AND status = 'SCHEDULED' AND scheduled_at > CURRENT_TIMESTAMP
+                    """, studentId.toString(), advisorId);
+            if (cancelled > 0) {
+                jdbc.update("""
+                        INSERT INTO notifications (id, user_id, notification_type, title, message, is_read)
+                        VALUES (?, ?, 'INFO', 'Appointment cancelled',
+                            'Your future appointment was cancelled after advisor unassignment.', FALSE)
+                        """, UUID.randomUUID().toString(), studentId.toString());
+            }
+            jdbc.update("""
+                    INSERT INTO notifications (id, user_id, notification_type, title, message, is_read)
+                    VALUES (?, ?, 'INFO', 'Advisor unassigned',
+                        'You currently have no assigned advisor.', FALSE)
+                    """, UUID.randomUUID().toString(), studentId.toString());
+        }
+        return changed;
     }
 
     public Preview preview(String cohort, List<UUID> advisorIds) {

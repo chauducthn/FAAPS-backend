@@ -40,7 +40,7 @@ public class GoogleLoginSuccessHandler implements AuthenticationSuccessHandler {
         }
         try {
             GoogleIdentity identity = new GoogleIdentity(googleUser.getSubject(), googleUser.getEmail(),
-                    googleUser.getFullName(), (String) googleUser.getClaims().get("picture"));
+                    googleUser.getFullName(), null);
             AuthSession session = authService.loginGoogle(identity);
             request.changeSessionId();
             SecurityContext context = SecurityContextHolder.createEmptyContext();

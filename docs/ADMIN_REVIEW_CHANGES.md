@@ -1,0 +1,6 @@
+# Admin review changes (2026-10-20)
+
+- User Accounts is read-only. The list omits `createdAt`; the detail view still shows it. The profile-edit API and S3 avatar upload/view APIs were removed. Existing `users.avatar_url` data is left in the database for a non-destructive migration; the UI does not display it and new Google accounts do not save a picture.
+- Admin handover is an **audit event**, not an automatic role transfer. More than one admin may remain active. An admin records outgoing admin, incoming admin, handover date, and optional notes in the Admin tab. `GET/POST /api/admin/handovers` return history. Provisioning a new admin account and disabling an old one remain separate access-control actions.
+- Advisor schedule is set in Advisor Assignment Details. `GET/PUT /api/admin/advisors/{advisorId}/schedule` stores ISO weekdays (`1` Monday through `7` Sunday) and `assignmentStartDate`. The start date is recorded metadata; it does not retroactively alter existing assignments or block manual/automatic assignment.
+- Apply `sql/2026-10-20_admin_handovers_advisor_schedule.sql` to an existing MySQL database before starting this version. The shared RDS was migrated separately. Do not apply the entire base schema to RDS. Check for the two advisor columns before rerunning the SQL file because `ALTER TABLE ADD COLUMN` is not repeatable.
