@@ -40,7 +40,8 @@ public class AssignmentRequestService {
                 """, (result, row) -> result.getString(1), studentId.toString());
         if (!pending.isEmpty()) return Map.of("id", pending.get(0), "status", "PENDING", "created", false);
         List<String> admins = jdbc.query("""
-                SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id
+                SELECT u.id FROM admin_control ac JOIN users u ON u.id = ac.current_admin_id
+                JOIN roles r ON r.id = u.role_id
                 WHERE r.code = 'ADMIN' AND u.status = 'ACTIVE'
                 """, (result, row) -> result.getString(1));
         if (admins.isEmpty()) throw new AdminAssignmentService.Conflict();
@@ -49,7 +50,7 @@ public class AssignmentRequestService {
             String id = UUID.randomUUID().toString();
             if (firstId == null) firstId = id;
             jdbc.update("""
-                    INSERT INTO notifications (id, user_id, notification_type, title, message,
+                    INSERT INTO notifications (id, recipient_user_id, notification_type, title, message,
                                                action_url, related_student_id, is_read)
                     VALUES (?, ?, 'ADVISOR_REQUEST', 'Advisor assignment requested',
                             'A student needs an advisor assignment.', '/admin/assignments', ?, FALSE)
@@ -87,7 +88,7 @@ public class AssignmentRequestService {
                 VALUES (?, ?, ?, 'ACADEMIC_GUIDANCE', ?, ?, 'PENDING')
                 """, id, studentId.toString(), advisors.get(0), title, description);
         jdbc.update("""
-                INSERT INTO notifications (id, user_id, notification_type, title, message, is_read)
+                INSERT INTO notifications (id, recipient_user_id, notification_type, title, message, is_read)
                 VALUES (?, ?, 'INFO', 'New advising request', 'A student requested advising support.', FALSE)
                 """, UUID.randomUUID().toString(), advisors.get(0));
         return Map.of("id", id, "status", "PENDING", "advisorId", advisors.get(0));

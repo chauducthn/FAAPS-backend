@@ -39,7 +39,7 @@ class AuthServiceTest {
 
     @Test
     void adminLoginAcceptsAdminAlias() {
-        AuthAccount admin = new AuthAccount(UUID.randomUUID(), "admin@faaps.local", "Admin", null,
+        AuthAccount admin = new AuthAccount(UUID.randomUUID(), "admin@faaps.local", "Admin",
                 "ADMIN", "ACTIVE", passwordEncoder.encode("secret"));
         when(accountStore.findAdminByEmail(admin.email())).thenReturn(Optional.of(admin));
 
@@ -60,7 +60,7 @@ class AuthServiceTest {
 
     @Test
     void googleLoginUsesStoredRoleAndRejectsSuspendedAccount() {
-        GoogleIdentity identity = new GoogleIdentity("google-sub", "person@example.com", "Person", null);
+        GoogleIdentity identity = new GoogleIdentity("google-sub", "person@example.com", "Person");
         AuthAccount advisor = account("ADVISOR", "ACTIVE", null);
         when(accountStore.resolveGoogleAccount(identity)).thenReturn(advisor);
 
@@ -72,7 +72,7 @@ class AuthServiceTest {
     }
 
     private AuthAccount account(String role, String status, String passwordHash) {
-        return new AuthAccount(UUID.randomUUID(), "person@example.com", "Person", null,
+        return new AuthAccount(UUID.randomUUID(), "person@example.com", "Person",
                 role, status, passwordHash);
     }
 }

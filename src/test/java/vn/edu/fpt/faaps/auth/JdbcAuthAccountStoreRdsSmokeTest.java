@@ -26,7 +26,7 @@ class JdbcAuthAccountStoreRdsSmokeTest {
                 var accountStore = new JdbcAuthAccountStore(dataSource);
                 String testId = UUID.randomUUID().toString();
                 String studentEmail = "faaps-smoke-" + testId + "@example.invalid";
-                GoogleIdentity studentIdentity = new GoogleIdentity(testId, studentEmail, "Smoke Student", null);
+                GoogleIdentity studentIdentity = new GoogleIdentity(testId, studentEmail, "Smoke Student");
 
                 AuthAccount student = accountStore.resolveGoogleAccount(studentIdentity);
                 assertEquals("STUDENT", student.role());
@@ -43,14 +43,14 @@ class JdbcAuthAccountStoreRdsSmokeTest {
                         """, advisorId, "faaps-advisor-smoke-" + testId + "@example.invalid");
                 AuthAccount advisor = accountStore.resolveGoogleAccount(new GoogleIdentity(
                         "advisor-" + testId, "faaps-advisor-smoke-" + testId + "@example.invalid",
-                        "Smoke Advisor", null));
+                        "Smoke Advisor"));
                 assertEquals("ADVISOR", advisor.role());
                 assertEquals(advisorId, advisor.id().toString());
                 assertNotNull(jdbcTemplate.queryForObject(
                         "SELECT external_id FROM users WHERE id = ?", String.class, advisorId));
 
                 assertThrows(BadCredentialsException.class, () -> accountStore.resolveGoogleAccount(
-                        new GoogleIdentity("other-" + testId, studentEmail, "Other", null)));
+                        new GoogleIdentity("other-" + testId, studentEmail, "Other")));
             } finally {
                 connection.rollback();
             }

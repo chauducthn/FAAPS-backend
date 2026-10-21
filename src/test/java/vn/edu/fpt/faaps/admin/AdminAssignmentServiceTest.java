@@ -32,7 +32,7 @@ class AdminAssignmentServiceTest {
         transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         jdbc.execute("CREATE TABLE roles (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20))");
         jdbc.execute("INSERT INTO roles VALUES ('student-role', 'STUDENT')");
-        jdbc.execute("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY, role_id VARCHAR(36), full_name VARCHAR(255), email VARCHAR(255), avatar_url VARCHAR(500), status VARCHAR(20))");
+        jdbc.execute("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY, role_id VARCHAR(36), full_name VARCHAR(255), email VARCHAR(255), status VARCHAR(20))");
         jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY, advisor_code VARCHAR(50), max_advisees INT, status VARCHAR(20), updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20))");
         jdbc.execute("CREATE TABLE curriculum_versions (id VARCHAR(36) PRIMARY KEY, version VARCHAR(50), major_id VARCHAR(36))");
@@ -47,7 +47,7 @@ class AdminAssignmentServiceTest {
         jdbc.execute("CREATE TABLE advising_requests (student_id VARCHAR(36), advisor_id VARCHAR(36), status VARCHAR(20), updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE cohort_advisors (cohort_id VARCHAR(36), advisor_id VARCHAR(36), is_active BOOLEAN, PRIMARY KEY (cohort_id, advisor_id))");
         jdbc.execute("CREATE TABLE advising_sessions (id VARCHAR(36), student_id VARCHAR(36), advisor_id VARCHAR(36), status VARCHAR(20), scheduled_at TIMESTAMP, updated_at TIMESTAMP)");
-        jdbc.execute("CREATE TABLE notifications (id VARCHAR(36), user_id VARCHAR(36), notification_type VARCHAR(20), title VARCHAR(255), message VARCHAR(500), is_read BOOLEAN, related_student_id VARCHAR(36), resolved_at TIMESTAMP)");
+        jdbc.execute("CREATE TABLE notifications (id VARCHAR(36), recipient_user_id VARCHAR(36), notification_type VARCHAR(20), title VARCHAR(255), message VARCHAR(500), is_read BOOLEAN, related_student_id VARCHAR(36), resolved_at TIMESTAMP)");
         firstAdvisor = addAdvisor("A", 3);
         secondAdvisor = addAdvisor("B", 3);
         majorId = UUID.randomUUID();
@@ -100,7 +100,7 @@ class AdminAssignmentServiceTest {
         assertEquals("CANCELLED", jdbc.queryForObject(
                 "SELECT status FROM advising_sessions WHERE student_id = ?", String.class, assignedToFirst.toString()));
         assertEquals(3, jdbc.queryForObject(
-                "SELECT COUNT(*) FROM notifications WHERE user_id = ?", Integer.class, assignedToFirst.toString()).intValue());
+                "SELECT COUNT(*) FROM notifications WHERE recipient_user_id = ?", Integer.class, assignedToFirst.toString()).intValue());
     }
 
     @Test
@@ -170,7 +170,7 @@ class AdminAssignmentServiceTest {
         assertEquals(1, advisorPage.items().size());
 
         UUID newcomer = addStudent("S3", upcomingCohort.toString());
-        jdbc.update("INSERT INTO notifications (id, user_id, notification_type, title, message, is_read, related_student_id) VALUES (?, ?, 'ADVISOR_REQUEST', 'Request', 'Assign', TRUE, ?)",
+        jdbc.update("INSERT INTO notifications (id, recipient_user_id, notification_type, title, message, is_read, related_student_id) VALUES (?, ?, 'ADVISOR_REQUEST', 'Request', 'Assign', TRUE, ?)",
                 UUID.randomUUID().toString(), firstAdvisor.toString(), newcomer.toString());
         assertEquals(1L, workflow.summary().get("pendingAdvisorRequests"));
         assertEquals(true, workflow.unassigned(upcomingCohort).get(0).get("hasPendingRequest"));
@@ -250,7 +250,7 @@ class AdminAssignmentServiceTest {
 
     private UUID addAdvisor(String code, int capacity) {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, full_name, email, avatar_url, status) VALUES (?, ?, ?, NULL, 'ACTIVE')", id.toString(), code, code + "@test.local");
+        jdbc.update("INSERT INTO users (id, full_name, email, status) VALUES (?, ?, ?, 'ACTIVE')", id.toString(), code, code + "@test.local");
         jdbc.update("INSERT INTO advisors (user_id, advisor_code, max_advisees, status) VALUES (?, ?, ?, 'ACTIVE')",
                 id.toString(), code, capacity);
         return id;
@@ -258,7 +258,7 @@ class AdminAssignmentServiceTest {
 
     private UUID addStudent(String code, String curriculum) {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, role_id, full_name, email, avatar_url, status) VALUES (?, 'student-role', ?, ?, NULL, 'ACTIVE')", id.toString(), code, code + "@test.local");
+        jdbc.update("INSERT INTO users (id, role_id, full_name, email, status) VALUES (?, 'student-role', ?, ?, 'ACTIVE')", id.toString(), code, code + "@test.local");
         jdbc.update("INSERT INTO students (user_id, student_code, curriculum_version_id) VALUES (?, ?, ?)",
                 id.toString(), code, curriculum);
         return id;

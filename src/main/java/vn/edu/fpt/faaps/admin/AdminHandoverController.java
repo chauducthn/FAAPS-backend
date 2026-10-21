@@ -27,6 +27,15 @@ public class AdminHandoverController {
         this.jdbc = jdbc;
     }
 
+    @GetMapping("/current")
+    public CurrentAdmin current() {
+        return jdbc.queryForObject("""
+                SELECT u.id, u.full_name FROM admin_control ac
+                JOIN users u ON u.id = ac.current_admin_id WHERE ac.control_id = 1
+                """, (result, row) -> new CurrentAdmin(
+                UUID.fromString(result.getString("id")), result.getString("full_name")));
+    }
+
     @GetMapping
     public List<Handover> list() {
         return jdbc.query("""
@@ -52,6 +61,20 @@ public class AdminHandoverController {
         if (request.fromAdminId().equals(request.toAdminId())) {
             throw new IllegalArgumentException("Handover requires two different admins");
         }
+        if (request.handoverDate().isAfter(LocalDate.now())) {
+            throw new IllegalArgumentException("Handover date cannot be in the future");
+        }
+        String currentAdmin = jdbc.queryForObject(
+                "SELECT current_admin_id FROM admin_control WHERE control_id = 1 FOR UPDATE", String.class);
+        if (currentAdmin == null || !currentAdmin.equals(request.fromAdminId().toString())
+                || !currentAdmin.equals(actor.id().toString())) {
+            throw new IllegalArgumentException("Only the current admin can hand over their own role");
+        }
+        LocalDate latestDate = jdbc.query("SELECT handover_date FROM admin_handovers ORDER BY handover_date DESC LIMIT 1",
+                (result, row) -> result.getDate(1).toLocalDate()).stream().findFirst().orElse(null);
+        if (latestDate != null && request.handoverDate().isBefore(latestDate)) {
+            throw new IllegalArgumentException("Handover date cannot precede the latest handover");
+        }
         for (UUID adminId : List.of(request.fromAdminId(), request.toAdminId())) {
             Integer count = jdbc.queryForObject("""
                     SELECT COUNT(*) FROM users u JOIN roles r ON r.id=u.role_id
@@ -65,6 +88,27 @@ public class AdminHandoverController {
                 VALUES (?,?,?,?,?,?)
                 """, id.toString(), request.fromAdminId().toString(), request.toAdminId().toString(),
                 request.handoverDate(), request.notes(), actor.id().toString());
+        jdbc.update("""
+                INSERT INTO notifications (id, recipient_user_id, notification_type, title, message,
+                                           action_url, related_student_id, is_read)
+                SELECT UUID(), ?, 'ADVISOR_REQUEST', 'Advisor assignment requested',
+                       'A student needs an advisor assignment.', '/admin/assignments',
+                       n.related_student_id, FALSE
+                FROM notifications n
+                WHERE n.recipient_user_id = ? AND n.notification_type = 'ADVISOR_REQUEST'
+                  AND n.resolved_at IS NULL AND n.related_student_id IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM notifications successor
+                      WHERE successor.recipient_user_id = ? AND successor.related_student_id = n.related_student_id
+                        AND successor.notification_type = 'ADVISOR_REQUEST' AND successor.resolved_at IS NULL)
+                GROUP BY n.related_student_id
+                """, request.toAdminId().toString(), request.fromAdminId().toString(),
+                request.toAdminId().toString());
+        jdbc.update("""
+                UPDATE notifications SET resolved_at = CURRENT_TIMESTAMP
+                WHERE recipient_user_id = ? AND notification_type = 'ADVISOR_REQUEST' AND resolved_at IS NULL
+                """, request.fromAdminId().toString());
+        jdbc.update("UPDATE admin_control SET current_admin_id = ?, updated_at = CURRENT_TIMESTAMP WHERE control_id = 1",
+                request.toAdminId().toString());
         return list().stream().filter(item -> item.id().equals(id)).findFirst().orElseThrow();
     }
 
@@ -75,6 +119,8 @@ public class AdminHandoverController {
 
     public record CreateHandover(@NotNull UUID fromAdminId, @NotNull UUID toAdminId,
             @NotNull LocalDate handoverDate, String notes) {}
+
+    public record CurrentAdmin(UUID id, String fullName) {}
 
     public record Handover(UUID id, UUID fromAdminId, String fromAdminName, UUID toAdminId,
             String toAdminName, LocalDate handoverDate, String notes, UUID recordedByUserId,

@@ -30,14 +30,14 @@ public class AdminNotificationController {
             @RequestParam(defaultValue = "false") boolean unreadOnly,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("page or size is invalid");
-        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND (? = FALSE OR is_read = FALSE)",
+        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM notifications WHERE recipient_user_id = ? AND (? = FALSE OR is_read = FALSE)",
                 Long.class, session.id().toString(), unreadOnly);
         List<Map<String, Object>> items = jdbc.query("""
                 SELECT n.id, n.notification_type, n.title, n.message, n.action_url, n.is_read,
                        n.related_student_id, st.student_code, st.curriculum_version_id AS cohort_id,
                        n.resolved_at, n.created_at
                 FROM notifications n LEFT JOIN students st ON st.user_id=n.related_student_id
-                WHERE n.user_id = ? AND (? = FALSE OR n.is_read = FALSE)
+                WHERE n.recipient_user_id = ? AND (? = FALSE OR n.is_read = FALSE)
                 ORDER BY n.created_at DESC, n.id DESC LIMIT ? OFFSET ?
                 """, (result, row) -> {
                     java.util.HashMap<String, Object> item = new java.util.HashMap<>();
@@ -63,14 +63,14 @@ public class AdminNotificationController {
     public Map<String, Boolean> markRead(@AuthenticationPrincipal AuthSession session, @PathVariable UUID id) {
         int updated = jdbc.update("""
                 UPDATE notifications SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND user_id = ? AND is_read = FALSE
+                WHERE id = ? AND recipient_user_id = ? AND is_read = FALSE
                 """, id.toString(), session.id().toString());
         return Map.of("updated", updated > 0);
     }
 
     @PatchMapping("/read-all")
     public Map<String, Integer> markAllRead(@AuthenticationPrincipal AuthSession session) {
-        int updated = jdbc.update("UPDATE notifications SET is_read=TRUE, read_at=CURRENT_TIMESTAMP WHERE user_id=? AND is_read=FALSE",
+        int updated = jdbc.update("UPDATE notifications SET is_read=TRUE, read_at=CURRENT_TIMESTAMP WHERE recipient_user_id=? AND is_read=FALSE",
                 session.id().toString());
         return Map.of("updated", updated);
     }

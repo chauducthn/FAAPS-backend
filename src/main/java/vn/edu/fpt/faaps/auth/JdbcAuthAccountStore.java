@@ -21,20 +21,22 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
     @Override
     public Optional<AuthAccount> findById(UUID id) {
         return jdbcTemplate.query("""
-                SELECT u.id, u.email, u.full_name, u.avatar_url, r.code AS role,
+                SELECT u.id, u.email, u.full_name, r.code AS role,
                        u.status, u.password_hash
                 FROM users u JOIN roles r ON r.id = u.role_id
-                WHERE u.id = ?
+                WHERE u.id = ? AND (r.code <> 'ADMIN' OR EXISTS (
+                    SELECT 1 FROM admin_control ac WHERE ac.current_admin_id = u.id))
                 """, this::mapAccount, id.toString()).stream().findFirst();
     }
 
     @Override
     public Optional<AuthAccount> findAdminByEmail(String email) {
         return jdbcTemplate.query("""
-                SELECT u.id, u.email, u.full_name, u.avatar_url, r.code AS role,
+                SELECT u.id, u.email, u.full_name, r.code AS role,
                        u.status, u.password_hash
                 FROM users u JOIN roles r ON r.id = u.role_id
                 WHERE u.email = ? AND r.code = 'ADMIN'
+                  AND EXISTS (SELECT 1 FROM admin_control ac WHERE ac.current_admin_id = u.id)
                 """, this::mapAccount, email).stream().findFirst();
     }
 
@@ -115,7 +117,7 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
 
     private Optional<AuthAccount> findByGoogleSubject(String subject) {
         return jdbcTemplate.query("""
-                SELECT u.id, u.email, u.full_name, u.avatar_url, r.code AS role,
+                SELECT u.id, u.email, u.full_name, r.code AS role,
                        u.status, u.password_hash
                 FROM users u JOIN roles r ON r.id = u.role_id
                 WHERE u.auth_provider = 'GOOGLE' AND u.external_id = ?
@@ -124,8 +126,7 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
 
     private AuthAccount mapAccount(ResultSet resultSet, int rowNumber) throws SQLException {
         return new AuthAccount(UUID.fromString(resultSet.getString("id")), resultSet.getString("email"),
-                resultSet.getString("full_name"), resultSet.getString("avatar_url"),
-                resultSet.getString("role"), resultSet.getString("status"),
+                resultSet.getString("full_name"), resultSet.getString("role"), resultSet.getString("status"),
                 resultSet.getString("password_hash"));
     }
 

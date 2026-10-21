@@ -29,7 +29,9 @@ For Student or Advisor APIs, sign in through the frontend with Google in the sam
 
 For the shared development RDS database and Google OAuth setup, follow [the team setup guide](docs/RDS_TEAM_SETUP.md). The launcher is `./scripts/Start-Rds.ps1`; it keeps database and OAuth secrets out of Git.
 
-To start from a private environment file, copy `.env.example` to `.env`, replace the placeholder values, then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-FromEnv.ps1` from the backend directory. The launcher loads `.env` for this process and configures the RDS TLS truststore. The application does not load `.env` by itself. Never commit or send a filled `.env` through Git or group chat; share secrets privately, and each developer should create their own `.env`. AWS profile names are local to each machine, so each developer must configure their own AWS identity if avatar upload is enabled.
+To start from a private environment file, copy `.env.example` to `.env`, replace the placeholder values, then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-FromEnv.ps1` from the backend directory. The launcher loads `.env` for this process and configures the RDS TLS truststore. The application does not load `.env` by itself. Never commit or send a filled `.env` through Git or group chat; share secrets privately, and each developer should create their own `.env`.
+
+User profiles do not store or expose avatar images. The `users.avatar_url` column and all S3 avatar integration were removed by the 2026-10-21 migration.
 
 ## Authentication API
 
@@ -48,5 +50,7 @@ Set `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID` and `SPRING_SE
 The browser must send cookies with requests. Send the `X-XSRF-TOKEN` header containing the value returned by `/api/auth/csrf` on login and logout requests. After Google login, the backend redirects to `<FAAPS_FRONTEND_URL>/auth/callback`; this frontend route should call `/api/auth/me`. A failed Google login redirects to `/login?error=...`. The API returns 401 when unauthenticated and 403 when the role is not allowed. Paths under `/api/admin/**`, `/api/advisor/**` and `/api/student/**` require the matching role; other API paths require authentication except the health and CSRF endpoints.
 
 Admin password login uses `JdbcAuthAccountStore` when a datasource is available. The initial Admin is stored as `admin@faaps.local`; the alias `admin` is accepted by the login endpoint. The password is not seeded by application startup and must never be committed. `findById` is used on authenticated requests so suspended users lose access immediately.
+
+Only the Admin referenced by the singleton `admin_control` row can log in or continue using an existing session. The current Admin may record a dated handover to another active Admin; this updates the singleton and revokes the old Admin's next request without deleting either account. Apply `sql/2026-10-21_single_active_admin_up.sql` before deploying this code. If several Admins are ACTIVE, explicitly set the initial Admin UUID in that script. New databases must create the initial Admin and singleton together.
 
 Google account persistence uses Google's stable `sub`. A first-time Google user creates an active `users` row with the `STUDENT` role; the academic `students` row is created only after the required student code, major, curriculum and enrollment semester are available. An existing active Advisor account with a matching verified email and no password or Google link can be linked on first sign-in. Admin accounts are never auto-linked by email. Existing Google links are resolved by `sub`, not by email, and suspended accounts are denied. Never derive Advisor or Admin rights from the email domain.

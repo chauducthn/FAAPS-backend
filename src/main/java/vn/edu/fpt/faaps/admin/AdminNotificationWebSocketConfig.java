@@ -33,7 +33,7 @@ public class AdminNotificationWebSocketConfig implements WebSocketMessageBrokerC
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/topic");
+        registry.enableSimpleBroker("/queue");
         registry.setApplicationDestinationPrefixes("/app");
     }
 
@@ -49,7 +49,7 @@ public class AdminNotificationWebSocketConfig implements WebSocketMessageBrokerC
                     requireAdmin(accessor.getUser());
                 } else if (command == StompCommand.SUBSCRIBE) {
                     requireAdmin(accessor.getUser());
-                    if (!"/topic/admin/notifications".equals(accessor.getDestination()))
+                    if (!"/user/queue/admin/notifications".equals(accessor.getDestination()))
                         throw new IllegalArgumentException("Subscription is not allowed");
                 } else if (command == StompCommand.SEND) {
                     throw new IllegalArgumentException("Client messages are not supported");

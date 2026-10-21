@@ -30,11 +30,12 @@ class JdbcAuthAccountStoreTest {
                     id VARCHAR(36) PRIMARY KEY, role_id VARCHAR(36) NOT NULL,
                     email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255),
                     auth_provider VARCHAR(20), external_id VARCHAR(255),
-                    full_name VARCHAR(255) NOT NULL, avatar_url VARCHAR(500),
+                    full_name VARCHAR(255) NOT NULL,
                     status VARCHAR(20), email_verified_at TIMESTAMP, updated_at TIMESTAMP,
                     UNIQUE (auth_provider, external_id)
                 )
                 """);
+        jdbcTemplate.execute("CREATE TABLE admin_control (control_id TINYINT PRIMARY KEY, current_admin_id VARCHAR(36))");
         for (String role : new String[] { "ADMIN", "ADVISOR", "STUDENT" }) {
             jdbcTemplate.update("INSERT INTO roles (id, code) VALUES (?, ?)", UUID.randomUUID().toString(), role);
         }
@@ -43,7 +44,7 @@ class JdbcAuthAccountStoreTest {
 
     @Test
     void firstGoogleSignInCreatesOnlyStudentUserAndSubsequentSignInFindsSameUser() {
-        GoogleIdentity identity = new GoogleIdentity("google-sub", "STUDENT@example.com", "Student", null);
+        GoogleIdentity identity = new GoogleIdentity("google-sub", "STUDENT@example.com", "Student");
 
         AuthAccount first = accountStore.resolveGoogleAccount(identity);
         AuthAccount second = accountStore.resolveGoogleAccount(identity);
@@ -64,37 +65,52 @@ class JdbcAuthAccountStoreTest {
                 new BCryptPasswordEncoder().encode("secret"));
 
         AuthAccount advisor = accountStore.resolveGoogleAccount(
-                new GoogleIdentity("advisor-sub", "advisor@example.com", "Advisor", null));
+                new GoogleIdentity("advisor-sub", "advisor@example.com", "Advisor"));
 
         assertEquals(advisorId, advisor.id().toString());
         assertEquals("ADVISOR", advisor.role());
         assertEquals("advisor-sub", jdbcTemplate.queryForObject(
                 "SELECT external_id FROM users WHERE id = ?", String.class, advisorId));
         assertThrows(BadCredentialsException.class, () -> accountStore.resolveGoogleAccount(
-                new GoogleIdentity("admin-sub", "admin@example.com", "Admin", null)));
+                new GoogleIdentity("admin-sub", "admin@example.com", "Admin")));
         assertNull(jdbcTemplate.queryForObject("SELECT external_id FROM users WHERE id = ?", String.class, adminId));
     }
 
     @Test
     void differentGoogleSubjectCannotTakeOverAnExistingEmail() {
         AuthAccount original = accountStore.resolveGoogleAccount(
-                new GoogleIdentity("original-sub", "student@example.com", "Student", null));
+                new GoogleIdentity("original-sub", "student@example.com", "Student"));
 
         assertThrows(BadCredentialsException.class, () -> accountStore.resolveGoogleAccount(
-                new GoogleIdentity("different-sub", "student@example.com", "Student", null)));
+                new GoogleIdentity("different-sub", "student@example.com", "Student")));
         assertEquals(original.id(), accountStore.resolveGoogleAccount(
-                new GoogleIdentity("original-sub", "student@example.com", "Student", null)).id());
+                new GoogleIdentity("original-sub", "student@example.com", "Student")).id());
     }
 
     @Test
     void suspendedAccountCannotStartGoogleSession() {
         AuthAccount account = accountStore.resolveGoogleAccount(
-                new GoogleIdentity("student-sub", "student@example.com", "Student", null));
+                new GoogleIdentity("student-sub", "student@example.com", "Student"));
         jdbcTemplate.update("UPDATE users SET status = 'SUSPENDED' WHERE id = ?", account.id().toString());
 
         AuthService authService = new AuthService(accountStore, new BCryptPasswordEncoder());
         assertThrows(DisabledException.class, () -> authService.loginGoogle(
-                new GoogleIdentity("student-sub", "student@example.com", "Student", null)));
+                new GoogleIdentity("student-sub", "student@example.com", "Student")));
+    }
+
+    @Test
+    void onlyCurrentAdminCanLogInOrKeepSession() {
+        String passwordHash = new BCryptPasswordEncoder().encode("secret");
+        String originalId = addUser("original@example.com", "ADMIN", "ACTIVE", null, passwordHash);
+        String successorId = addUser("successor@example.com", "ADMIN", "ACTIVE", null, passwordHash);
+        jdbcTemplate.update("INSERT INTO admin_control VALUES (1, ?)", originalId);
+        assertEquals(originalId, accountStore.findAdminByEmail("original@example.com").orElseThrow().id().toString());
+        assertNull(accountStore.findAdminByEmail("successor@example.com").orElse(null));
+
+        jdbcTemplate.update("UPDATE admin_control SET current_admin_id = ? WHERE control_id = 1", successorId);
+        assertNull(accountStore.findById(UUID.fromString(originalId)).orElse(null));
+        assertNull(accountStore.findAdminByEmail("original@example.com").orElse(null));
+        assertEquals(successorId, accountStore.findAdminByEmail("successor@example.com").orElseThrow().id().toString());
     }
 
     private String addUser(String email, String role, String status, String externalId, String passwordHash) {

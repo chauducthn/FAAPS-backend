@@ -12,3 +12,9 @@ mysql -u root -p --execute="SOURCE sql/faaps_demo_seed.sql"
 ```
 
 Run the schema only on a new local database. The shared RDS database already has its schema and demo rows; teammates connecting to that same RDS database should not import these files again. Keep database credentials outside Git.
+
+For an existing database, run `2026-10-21_single_active_admin_up.sql` after the earlier migrations. With one ACTIVE Admin it selects that account. With several, replace `NULL` in the first line with the chosen current Admin UUID. The migration also removes `users.avatar_url` and renames `notifications.user_id` to `notifications.recipient_user_id`. Do not use MySQL's `--force` option: the preflight must stop execution on failure. The DOWN script removes the singleton, restores the nullable legacy avatar column, and renames the notification recipient column back; it restores access to every ACTIVE Admin and must not be run casually.
+
+On the FAAPS RDS instance, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\scripts\Apply-Single-Admin-Rds.ps1'` from the backend directory and enter the master password only in PowerShell. If there are several ACTIVE Admins, pass `-CurrentAdminId '<chosen-admin-uuid>'`. This script verifies the database connection, refuses to overwrite an existing singleton, and confirms the avatar and notification column changes.
+
+MySQL DDL commits implicitly: take a backup before applying the UP script and inspect the result before deploying the matching backend and frontend. On a new database, after creating the initial Admin account, initialize the singleton with `INSERT INTO admin_control (control_id, current_admin_id) SELECT 1, id FROM users WHERE email = 'admin@faaps.local' AND status = 'ACTIVE';`. Verify this inserted exactly one row. Do not run the full schema against an existing database.

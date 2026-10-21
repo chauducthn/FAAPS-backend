@@ -24,7 +24,7 @@ class AdminUserServiceTest {
         jdbc.execute("CREATE TABLE roles (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20))");
         jdbc.execute("""
                 CREATE TABLE users (id VARCHAR(36) PRIMARY KEY, role_id VARCHAR(36), email VARCHAR(255),
-                    full_name VARCHAR(255), phone VARCHAR(20), avatar_url VARCHAR(500), status VARCHAR(20),
+                    full_name VARCHAR(255), phone VARCHAR(20), status VARCHAR(20),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
                 """);
         jdbc.execute("CREATE TABLE students (user_id VARCHAR(36) PRIMARY KEY, student_code VARCHAR(50), major_id VARCHAR(36), curriculum_version_id VARCHAR(36), enrollment_semester_id VARCHAR(36), current_semester INT, academic_status VARCHAR(20), updated_at TIMESTAMP)");

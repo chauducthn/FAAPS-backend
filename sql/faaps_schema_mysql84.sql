@@ -19,7 +19,6 @@ CREATE TABLE `users` (
   `external_id` varchar(255) COMMENT 'Provider user id (Google "sub" claim)',
   `full_name` varchar(255) NOT NULL,
   `phone` varchar(20),
-  `avatar_url` varchar(500),
   `status` varchar(20) DEFAULT 'ACTIVE' COMMENT 'ACTIVE, INACTIVE, SUSPENDED, LOCKED',
   `email_verified_at` timestamp,
   `last_login_at` timestamp,
@@ -27,6 +26,14 @@ CREATE TABLE `users` (
   `locked_until` timestamp,
   `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
   `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
+);
+
+CREATE TABLE `admin_control` (
+  `control_id` tinyint PRIMARY KEY,
+  `current_admin_id` char(36) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `chk_admin_control_singleton` CHECK (`control_id` = 1),
+  CONSTRAINT `fk_admin_control_current` FOREIGN KEY (`current_admin_id`) REFERENCES `users` (`id`)
 );
 
 CREATE TABLE `admin_handovers` (
@@ -501,7 +508,7 @@ CREATE TABLE `ai_usage_logs` (
 
 CREATE TABLE `notifications` (
   `id` char(36) PRIMARY KEY DEFAULT (UUID()),
-  `user_id` char(36) NOT NULL,
+  `recipient_user_id` char(36) NOT NULL,
   `notification_type` varchar(20) DEFAULT 'INFO' COMMENT 'INFO, WARNING, REMINDER, PLAN_STATUS, MESSAGE, ADVISOR_REQUEST',
   `title` varchar(255) NOT NULL,
   `message` text NOT NULL,
@@ -651,7 +658,7 @@ CREATE INDEX `ai_usage_logs_index_49` ON `ai_usage_logs` (`user_id`, `created_at
 
 CREATE INDEX `ai_usage_logs_index_50` ON `ai_usage_logs` (`feature`, `status`);
 
-CREATE INDEX `notifications_index_51` ON `notifications` (`user_id`, `is_read`);
+CREATE INDEX `notifications_index_51` ON `notifications` (`recipient_user_id`, `is_read`);
 
 CREATE INDEX `audit_logs_index_52` ON `audit_logs` (`entity_type`, `entity_id`);
 
@@ -803,7 +810,7 @@ ALTER TABLE `ai_usage_logs` ADD FOREIGN KEY (`message_id`) REFERENCES `ai_messag
 
 ALTER TABLE `ai_usage_logs` ADD FOREIGN KEY (`ai_configuration_id`) REFERENCES `ai_configurations` (`id`) ON DELETE SET NULL;
 
-ALTER TABLE `notifications` ADD FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+ALTER TABLE `notifications` ADD FOREIGN KEY (`recipient_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 ALTER TABLE `notifications` ADD FOREIGN KEY (`related_student_id`) REFERENCES `students` (`user_id`) ON DELETE SET NULL;
 ALTER TABLE `cohort_advisors` ADD FOREIGN KEY (`cohort_id`) REFERENCES `curriculum_versions` (`id`);
 ALTER TABLE `cohort_advisors` ADD FOREIGN KEY (`advisor_id`) REFERENCES `advisors` (`user_id`);

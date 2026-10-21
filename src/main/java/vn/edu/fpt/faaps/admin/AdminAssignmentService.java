@@ -120,12 +120,12 @@ public class AdminAssignmentService {
                 WHERE sa.advisor_id = ? AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
                 ORDER BY cv.version, s.student_code
                 """, this::mapStudent, advisorId.toString());
-        Map<String, Object> profile = jdbc.queryForMap("SELECT u.email,u.avatar_url,a.status FROM advisors a JOIN users u ON u.id=a.user_id WHERE a.user_id=?", advisorId.toString());
+        Map<String, Object> profile = jdbc.queryForMap("SELECT u.email,a.status FROM advisors a JOIN users u ON u.id=a.user_id WHERE a.user_id=?", advisorId.toString());
         List<Cohort> allCohorts = jdbc.query("SELECT cv.id AS cohort_id,cv.version AS cohort,m.code AS major_code,COUNT(s.user_id) AS students FROM curriculum_versions cv JOIN majors m ON m.id=cv.major_id LEFT JOIN students s ON s.curriculum_version_id=cv.id GROUP BY cv.id,cv.version,m.code ORDER BY m.code,cv.version",
                 (rs, row) -> new Cohort(UUID.fromString(rs.getString("cohort_id")), rs.getString("cohort"), rs.getString("major_code"), rs.getLong("students")));
         List<Cohort> configured = jdbc.query("SELECT cv.id AS cohort_id,cv.version AS cohort,m.code AS major_code,COUNT(s.user_id) AS students FROM cohort_advisors ca JOIN curriculum_versions cv ON cv.id=ca.cohort_id JOIN majors m ON m.id=cv.major_id LEFT JOIN students s ON s.curriculum_version_id=cv.id WHERE ca.advisor_id=? AND ca.is_active=TRUE GROUP BY cv.id,cv.version,m.code ORDER BY m.code,cv.version",
                 (rs, row) -> new Cohort(UUID.fromString(rs.getString("cohort_id")), rs.getString("cohort"), rs.getString("major_code"), rs.getLong("students")), advisorId.toString());
-        return new AdvisorDetail(advisor, (String) profile.get("email"), (String) profile.get("avatar_url"),
+        return new AdvisorDetail(advisor, (String) profile.get("email"),
                 (String) profile.get("status"), students, allCohorts, configured);
     }
 
@@ -204,7 +204,7 @@ public class AdminAssignmentService {
                 if (cancelled > 0) {
                     jdbc.update("""
                             INSERT INTO notifications
-                                (id, user_id, notification_type, title, message, is_read)
+                                (id, recipient_user_id, notification_type, title, message, is_read)
                             VALUES (?, ?, 'INFO', 'Appointment cancelled',
                                 'Your future appointment was cancelled after advisor reassignment. Please book a new slot.', FALSE)
                             """, UUID.randomUUID().toString(), studentId.toString());
@@ -266,13 +266,13 @@ public class AdminAssignmentService {
                     """, studentId.toString(), advisorId);
             if (cancelled > 0) {
                 jdbc.update("""
-                        INSERT INTO notifications (id, user_id, notification_type, title, message, is_read)
+                        INSERT INTO notifications (id, recipient_user_id, notification_type, title, message, is_read)
                         VALUES (?, ?, 'INFO', 'Appointment cancelled',
                             'Your future appointment was cancelled after advisor unassignment.', FALSE)
                         """, UUID.randomUUID().toString(), studentId.toString());
             }
             jdbc.update("""
-                    INSERT INTO notifications (id, user_id, notification_type, title, message, is_read)
+                    INSERT INTO notifications (id, recipient_user_id, notification_type, title, message, is_read)
                     VALUES (?, ?, 'INFO', 'Advisor unassigned',
                         'You currently have no assigned advisor.', FALSE)
                     """, UUID.randomUUID().toString(), studentId.toString());
@@ -477,7 +477,7 @@ public class AdminAssignmentService {
                   AND resolved_at IS NULL
                 """, studentId.toString());
         jdbc.update("""
-                INSERT INTO notifications (id, user_id, notification_type, title, message, is_read)
+                INSERT INTO notifications (id, recipient_user_id, notification_type, title, message, is_read)
                 VALUES (?, ?, 'INFO', 'Advisor assigned', 'An advisor has been assigned to you.', FALSE)
                 """, UUID.randomUUID().toString(), studentId.toString());
         jdbc.update("""
@@ -523,7 +523,7 @@ public class AdminAssignmentService {
             String cohort, String majorCode, String advisorId, String advisorName, LocalDate assignedDate) {
     }
 
-    public record AdvisorDetail(Advisor advisor, String email, String avatarUrl, String status,
+    public record AdvisorDetail(Advisor advisor, String email, String status,
             List<Student> students, List<Cohort> cohorts, List<Cohort> configuredCohorts) {
     }
 

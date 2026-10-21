@@ -22,9 +22,9 @@ class AdminNotificationControllerTest {
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:notifications-" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         jdbc.execute("CREATE TABLE students (user_id VARCHAR(36), student_code VARCHAR(30), curriculum_version_id VARCHAR(36))");
-        jdbc.execute("CREATE TABLE notifications (id VARCHAR(36), user_id VARCHAR(36), notification_type VARCHAR(50), title VARCHAR(100), message VARCHAR(255), action_url VARCHAR(255), is_read BOOLEAN, related_student_id VARCHAR(36), resolved_at TIMESTAMP, created_at TIMESTAMP, read_at TIMESTAMP)");
-        admin = new AuthSession(UUID.randomUUID(), "Admin", "admin@example.com", null, "ADMIN", "ACTIVE");
-        otherAdmin = new AuthSession(UUID.randomUUID(), "Other", "other@example.com", null, "ADMIN", "ACTIVE");
+        jdbc.execute("CREATE TABLE notifications (id VARCHAR(36), recipient_user_id VARCHAR(36), notification_type VARCHAR(50), title VARCHAR(100), message VARCHAR(255), action_url VARCHAR(255), is_read BOOLEAN, related_student_id VARCHAR(36), resolved_at TIMESTAMP, created_at TIMESTAMP, read_at TIMESTAMP)");
+        admin = new AuthSession(UUID.randomUUID(), "Admin", "admin@example.com", "ADMIN", "ACTIVE");
+        otherAdmin = new AuthSession(UUID.randomUUID(), "Other", "other@example.com", "ADMIN", "ACTIVE");
         unreadId = UUID.randomUUID();
         jdbc.update("INSERT INTO students VALUES ('student-1', 'SE001', 'cohort-1')");
         jdbc.update("INSERT INTO notifications VALUES (?, ?, 'ADVISOR_REQUEST', 'Request', 'Assign advisor', '/admin/assignments', FALSE, 'student-1', NULL, CURRENT_TIMESTAMP, NULL)", unreadId.toString(), admin.id().toString());

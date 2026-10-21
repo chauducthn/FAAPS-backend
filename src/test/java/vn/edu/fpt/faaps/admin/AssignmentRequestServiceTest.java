@@ -25,12 +25,15 @@ class AssignmentRequestServiceTest {
         jdbc.execute("CREATE TABLE students (user_id VARCHAR(36), student_code VARCHAR(50), curriculum_version_id VARCHAR(36))");
         jdbc.execute("CREATE TABLE student_advisor_assignments (student_id VARCHAR(36), advisor_id VARCHAR(36), status VARCHAR(20), end_date DATE)");
         jdbc.execute("CREATE TABLE advising_requests (id VARCHAR(36), student_id VARCHAR(36), advisor_id VARCHAR(36), request_type VARCHAR(30), title VARCHAR(255), description VARCHAR(255), status VARCHAR(20))");
-        jdbc.execute("CREATE TABLE notifications (id VARCHAR(36), user_id VARCHAR(36), notification_type VARCHAR(20), title VARCHAR(255), message VARCHAR(255), action_url VARCHAR(255), is_read BOOLEAN, related_student_id VARCHAR(36), resolved_at TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+        jdbc.execute("CREATE TABLE notifications (id VARCHAR(36), recipient_user_id VARCHAR(36), notification_type VARCHAR(20), title VARCHAR(255), message VARCHAR(255), action_url VARCHAR(255), is_read BOOLEAN, related_student_id VARCHAR(36), resolved_at TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+        jdbc.execute("CREATE TABLE admin_control (control_id TINYINT PRIMARY KEY, current_admin_id VARCHAR(36))");
         studentId = UUID.randomUUID();
         advisorId = UUID.randomUUID();
         UUID adminRole = UUID.randomUUID();
         jdbc.update("INSERT INTO roles VALUES (?, 'ADMIN')", adminRole.toString());
-        jdbc.update("INSERT INTO users VALUES (?, ?, 'ACTIVE')", UUID.randomUUID().toString(), adminRole.toString());
+        UUID adminId = UUID.randomUUID();
+        jdbc.update("INSERT INTO users VALUES (?, ?, 'ACTIVE')", adminId.toString(), adminRole.toString());
+        jdbc.update("INSERT INTO admin_control VALUES (1, ?)", adminId.toString());
         jdbc.update("INSERT INTO students VALUES (?, 'S0001', ?)", studentId.toString(), UUID.randomUUID().toString());
         requests = new AssignmentRequestService(jdbc);
     }

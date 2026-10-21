@@ -8,13 +8,10 @@ Tất cả endpoint dưới đây yêu cầu phiên đăng nhập có role `ADMI
 | --- | --- | --- |
 | GET | `/api/admin/users?role=STUDENT&status=ACTIVE&majorId=uuid&search=&page=0&size=20&sort=createdAt,desc` | Danh sách, lọc, phân trang; `majorId` tùy chọn, khi dùng chỉ trả tài khoản Student thuộc ngành đó |
 | GET | `/api/admin/users/{id}` | Chi tiết tài khoản và thông tin học thuật hiện có |
-| PATCH | `/api/admin/users/{id}` | Sửa `fullName`, `phone`, `avatarUrl` |
 | PATCH | `/api/admin/users/{id}/status` | Đổi trạng thái với body `{"status":"SUSPENDED"}` hoặc `ACTIVE` |
 | POST | `/api/admin/users/status` | Bulk action với `{"userIds":["uuid"],"status":"SUSPENDED"}` |
 
-Admin có thể chọn ảnh từ máy và gửi `POST /api/admin/users/{id}/avatar` dạng `multipart/form-data` với trường `file`. API nhận JPEG, PNG hoặc WebP tối đa 2 MB và trả `{"avatarUrl":"/api/avatars/{id}/{imageId}"}`. Ảnh nằm trong S3 bucket riêng tư; `GET /api/avatars/{id}/{imageId}` yêu cầu đăng nhập và trả ảnh hiện tại. FE dùng `avatarUrl` trực tiếp làm `src` (Vite đã proxy `/api`), đồng thời gửi cookie phiên và CSRF token khi upload. `PATCH /api/admin/users/{id}` vẫn nhận URL HTTPS hoặc URL avatar hiện tại; không dùng `PATCH` để gửi file nhị phân.
-
-Để bật upload, đặt `FAAPS_AVATAR_ENABLED=true`, `FAAPS_AVATAR_BUCKET=faaps-bucket`, `FAAPS_AVATAR_REGION=ap-southeast-1`. AWS SDK dùng credential chain mặc định; không lưu AWS key trong repo. Cấp cho IAM identity chạy backend đúng `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` trên `arn:aws:s3:::faaps-bucket/avatars/*`. Giữ bucket Block Public Access bật và ACL disabled. Nếu chưa cấu hình bucket, các endpoint avatar không được đăng ký; các API Admin khác vẫn chạy bình thường.
+User Accounts là read-only đối với thông tin hồ sơ. Hệ thống không lưu hoặc cung cấp ảnh đại diện; giao diện dùng chữ viết tắt từ tên người dùng.
 
 ## Phân công advisor
 

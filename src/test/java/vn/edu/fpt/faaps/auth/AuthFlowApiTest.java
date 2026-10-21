@@ -43,7 +43,7 @@ class AuthFlowApiTest {
 
     @Test
     void adminSessionSupportsMeRoleChecksLogoutAndSuspension() throws Exception {
-        AuthAccount admin = new AuthAccount(UUID.randomUUID(), "admin@example.com", "Admin", null,
+        AuthAccount admin = new AuthAccount(UUID.randomUUID(), "admin@example.com", "Admin",
                 "ADMIN", "ACTIVE", passwordEncoder.encode("secret"));
         accountStore.account.set(admin);
         URI baseUrl = URI.create("http://localhost:" + environment.getRequiredProperty("local.server.port"));
@@ -75,7 +75,7 @@ class AuthFlowApiTest {
                 .build();
         assertEquals(200, send(client, loginAgain).statusCode());
         accountStore.account.set(new AuthAccount(admin.id(), admin.email(), admin.fullName(),
-                null, "ADMIN", "SUSPENDED", admin.passwordHash()));
+                "ADMIN", "SUSPENDED", admin.passwordHash()));
         assertEquals(401, get(client, baseUrl.resolve("/api/auth/me")).statusCode());
     }
 

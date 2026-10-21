@@ -64,14 +64,14 @@ public class AdminUserService {
         List<Object> pageParameters = new ArrayList<>(parameters);
         pageParameters.add(size);
         pageParameters.add(page * size);
-        List<Summary> items = jdbc.query("SELECT u.id, COALESCE(s.student_code, a.advisor_code, u.email) AS user_code, u.full_name, u.email, u.avatar_url, r.code AS role, u.status, u.created_at" + from + where + " ORDER BY " + order + " LIMIT ? OFFSET ?", this::summary, pageParameters.toArray());
+        List<Summary> items = jdbc.query("SELECT u.id, COALESCE(s.student_code, a.advisor_code, u.email) AS user_code, u.full_name, u.email, r.code AS role, u.status, u.created_at" + from + where + " ORDER BY " + order + " LIMIT ? OFFSET ?", this::summary, pageParameters.toArray());
         return new Page(items, page, size, total, (total + size - 1) / size);
     }
 
     public Detail detail(UUID id) {
         return jdbc.query("""
                 SELECT u.id, COALESCE(s.student_code, a.advisor_code, u.email) AS user_code,
-                       u.full_name, u.email, u.phone, u.avatar_url, r.code AS role, u.status,
+                       u.full_name, u.email, u.phone, r.code AS role, u.status,
                        u.created_at, u.updated_at, s.major_id, m.name AS major_name,
                        s.curriculum_version_id, cv.version AS curriculum_code,
                        s.enrollment_semester_id,
@@ -85,7 +85,7 @@ public class AdminUserService {
                 """, (result, row) -> new Detail(
                 UUID.fromString(result.getString("id")), result.getString("user_code"),
                 result.getString("full_name"), result.getString("email"), result.getString("phone"),
-                result.getString("avatar_url"), result.getString("role"), result.getString("status"),
+                result.getString("role"), result.getString("status"),
                 result.getTimestamp("created_at").toLocalDateTime(),
                 result.getTimestamp("updated_at").toLocalDateTime(),
                 result.getString("major_id"), result.getString("major_name"),
@@ -129,16 +129,16 @@ public class AdminUserService {
     private Summary summary(ResultSet result, int row) throws SQLException {
         return new Summary(UUID.fromString(result.getString("id")), result.getString("user_code"),
                 result.getString("full_name"), result.getString("email"),
-                result.getString("avatar_url"), result.getString("role"), result.getString("status"),
+                result.getString("role"), result.getString("status"),
                 result.getTimestamp("created_at").toLocalDateTime());
     }
 
-    public record Summary(UUID id, String userId, String fullName, String email, String avatarUrl,
+    public record Summary(UUID id, String userId, String fullName, String email,
             String role, String status, LocalDateTime createdAt) {
     }
 
     public record Detail(UUID id, String userId, String fullName, String email, String phone,
-            String avatarUrl, String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
+            String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
             String majorId, String majorName, String curriculumVersionId, String curriculumCode,
             String enrollmentSemesterId,
             Integer currentSemester, String academicStatus, String advisorCode) {

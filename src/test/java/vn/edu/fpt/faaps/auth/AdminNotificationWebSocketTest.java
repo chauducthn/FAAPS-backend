@@ -3,6 +3,9 @@ package vn.edu.fpt.faaps.auth;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
 import java.net.CookieManager;
 import java.net.URI;
@@ -64,8 +67,10 @@ class AdminNotificationWebSocketTest {
         assertThrows(CompletionException.class,
                 () -> anonymous.newWebSocketBuilder().buildAsync(socketUrl, new Frames()).join());
 
-        accountStore.account.set(new AuthAccount(UUID.randomUUID(), "admin@example.com", "Admin", null,
+        accountStore.account.set(new AuthAccount(UUID.randomUUID(), "admin@example.com", "Admin",
                 "ADMIN", "ACTIVE", passwordEncoder.encode("secret")));
+        when(jdbcTemplate.queryForObject(anyString(), eq(String.class)))
+                .thenReturn(accountStore.account.get().id().toString());
         HttpClient admin = HttpClient.newBuilder().cookieHandler(new CookieManager()).build();
         HttpResponse<String> csrf = admin.send(HttpRequest.newBuilder(httpUrl.resolve("/api/auth/csrf")).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -83,13 +88,13 @@ class AdminNotificationWebSocketTest {
         try {
             socket.sendText("CONNECT\naccept-version:1.2\nhost:localhost\n\n\0", true).join();
             assertTrue(frames.next().startsWith("CONNECTED"));
-            socket.sendText("SUBSCRIBE\nid:admin-alerts\ndestination:/topic/admin/notifications\n\n\0", true).join();
+            socket.sendText("SUBSCRIBE\nid:admin-alerts\ndestination:/user/queue/admin/notifications\n\n\0", true).join();
             for (int attempt = 0; attempt < 100 && userRegistry.findSubscriptions(
-                    subscription -> "/topic/admin/notifications".equals(subscription.getDestination())).isEmpty(); attempt++) {
+                    subscription -> "/user/queue/admin/notifications".equals(subscription.getDestination())).isEmpty(); attempt++) {
                 Thread.sleep(50);
             }
             assertTrue(!userRegistry.findSubscriptions(
-                    subscription -> "/topic/admin/notifications".equals(subscription.getDestination())).isEmpty());
+                    subscription -> "/user/queue/admin/notifications".equals(subscription.getDestination())).isEmpty());
             publisher.advisorRequestCreated("SE0001", UUID.randomUUID().toString());
             String event = frames.next();
             assertTrue(event.startsWith("MESSAGE"));

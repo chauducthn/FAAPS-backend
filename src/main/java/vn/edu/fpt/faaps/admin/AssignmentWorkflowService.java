@@ -102,7 +102,7 @@ public class AssignmentWorkflowService {
         validatePage(page, size);
         String base = """
                 SELECT a.user_id, a.advisor_code, u.full_name, a.max_advisees,
-                       u.email, u.avatar_url, a.status,
+                       u.email, a.status,
                        cv.id AS cohort_id, cv.version AS cohort, m.code AS major_code,
                        ca.cohort_id IS NOT NULL AS in_pool,
                        COUNT(sa.id) AS student_count
@@ -125,7 +125,7 @@ public class AssignmentWorkflowService {
                   AND (? IS NULL OR cv.id = ?)
                   AND (? IS NULL OR LOWER(a.advisor_code) LIKE ? OR LOWER(u.full_name) LIKE ? OR LOWER(m.code) LIKE ?)
                 GROUP BY a.user_id, a.advisor_code, u.full_name, a.max_advisees,
-                         u.email, u.avatar_url, a.status, cv.id, cv.version, m.code, ca.cohort_id
+                         u.email, a.status, cv.id, cv.version, m.code, ca.cohort_id
                 """;
         String term = search == null || search.isBlank() ? null : "%" + search.strip().toLowerCase() + "%";
         Object[] baseParams = {cohortId == null ? null : cohortId.toString(), cohortId == null ? null : cohortId.toString(), term, term, term, term};
@@ -141,7 +141,6 @@ public class AssignmentWorkflowService {
                     item.put("fullName", result.getString("full_name"));
                     item.put("maxAdvisees", result.getObject("max_advisees"));
                     item.put("email", result.getString("email"));
-                    item.put("avatarUrl", result.getString("avatar_url"));
                     item.put("status", result.getString("status"));
                     item.put("cohortId", result.getString("cohort_id"));
                     item.put("cohort", result.getString("cohort"));

@@ -42,7 +42,7 @@ For an existing MySQL database, run these additive migrations once and in order:
   all students for that major-specific curriculum version (assigned and unassigned),
   including `majorCode`, `advisorId`, `advisorName`, and `assignedDate`.
 - `GET /api/admin/assignments/advisors/{advisorId}` includes advisor email,
-  `avatarUrl`, status, assigned students, all cohorts, and configured cohorts.
+  status, assigned students, all cohorts, and configured cohorts.
 - `GET /api/admin/assignments/students/{studentId}/history` includes advisor
   code, assigning admin, exact assignment time, and notes.
 - `POST /api/admin/assignments/cohorts/{cohortId}/preview` and `/assign`:
@@ -67,12 +67,14 @@ For an existing MySQL database, run these additive migrations once and in order:
   marks one read; `PATCH /api/admin/notifications/read-all` marks all the
   current admin's notifications read. Pending request count is independent of read state.
 - Admin clients connect to `/ws` using their authenticated HTTP session and
-  subscribe to `/topic/admin/notifications`. Only authenticated admins can
+  subscribe to `/user/queue/admin/notifications`. Only the current authenticated Admin can
   subscribe; new advisor requests publish an `ADVISOR_REQUEST` event after the
   database transaction commits. The event contains `studentCode`, `cohortId`,
   and `createdAt`. On reconnect, reload `GET /api/admin/notifications` because
   the in-process broker does not retain missed events or share them between
   multiple backend instances.
+
+Notifications use `recipient_user_id` for their destination account. User and advisor responses do not contain avatar fields; the frontend renders initials instead.
 
 API errors use `{ "success": false, "code": "...", "message": "..." }`.
 Conflicts distinguish `ADVISOR_INACTIVE`, `ADVISOR_NOT_IN_COHORT`, and

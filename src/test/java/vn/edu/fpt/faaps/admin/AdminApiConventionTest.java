@@ -218,7 +218,7 @@ class AdminApiConventionTest {
         assertEquals(401, send(anonClient, HttpRequest.newBuilder(baseUrl.resolve("/api/admin/academic-rules")).GET().build()).statusCode());
 
         // 2. Non-admin login attempts to admin login endpoint return 401
-        AuthAccount student = new AuthAccount(UUID.randomUUID(), "student@example.com", "Student User", null,
+        AuthAccount student = new AuthAccount(UUID.randomUUID(), "student@example.com", "Student User",
                 "STUDENT", "ACTIVE", passwordEncoder.encode("secret"));
         accountStore.account.set(student);
 
@@ -492,7 +492,7 @@ class AdminApiConventionTest {
 
     private HttpClient loginAsAdmin() throws Exception {
         HttpClient client = HttpClient.newBuilder().cookieHandler(new CookieManager()).build();
-        AuthAccount admin = new AuthAccount(UUID.randomUUID(), "admin@example.com", "Admin User", null,
+        AuthAccount admin = new AuthAccount(UUID.randomUUID(), "admin@example.com", "Admin User",
                 "ADMIN", "ACTIVE", passwordEncoder.encode("secret"));
         accountStore.account.set(admin);
 

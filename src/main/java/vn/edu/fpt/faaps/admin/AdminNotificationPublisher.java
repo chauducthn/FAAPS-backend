@@ -2,6 +2,7 @@ package vn.edu.fpt.faaps.admin;
 
 import java.util.Map;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -9,16 +10,22 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Component
 public class AdminNotificationPublisher {
     private final SimpMessagingTemplate messaging;
+    private final JdbcTemplate jdbc;
 
-    public AdminNotificationPublisher(SimpMessagingTemplate messaging) {
+    public AdminNotificationPublisher(SimpMessagingTemplate messaging, JdbcTemplate jdbc) {
         this.messaging = messaging;
+        this.jdbc = jdbc;
     }
 
     public void advisorRequestCreated(String studentCode, String cohortId) {
         Object event = Map.of(
                 "type", "ADVISOR_REQUEST", "studentCode", studentCode,
                 "cohortId", cohortId, "createdAt", java.time.Instant.now().toString());
-        Runnable publish = () -> messaging.convertAndSend("/topic/admin/notifications", event);
+        Runnable publish = () -> {
+            String adminId = jdbc.queryForObject(
+                    "SELECT current_admin_id FROM admin_control WHERE control_id = 1", String.class);
+            messaging.convertAndSendToUser(adminId, "/queue/admin/notifications", event);
+        };
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
