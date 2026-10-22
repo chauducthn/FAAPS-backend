@@ -2,6 +2,7 @@ package vn.edu.fpt.faaps.admin;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.ByteArrayInputStream;
@@ -99,6 +100,26 @@ class AdminCourseServiceTest {
         assertEquals(1, page.totalElements());
         assertEquals("PRO192", page.items().get(0).code());
         assertEquals(1, page.items().get(0).prerequisiteCount());
+    }
+
+    @Test
+    void acceptsReplacementAndRejectsUnsupportedRelationType() {
+        AdminCourseService.CourseDetail original = courses.create("PRF192", "Programming Fundamentals", 3,
+                catGeneral, null, null, null, "ACTIVE", List.of());
+        AdminCourseService.CourseDetail replacement = courses.create("PRF193", "Programming Fundamentals II", 3,
+                catGeneral, null, null, null, "ACTIVE", List.of());
+        AdminCourseService.CourseDetail target = courses.create("PRO192", "Object-Oriented Programming", 3,
+                catSpecialized, null, null, null, "ACTIVE", List.of(
+                        new AdminCourseService.PrerequisiteInput(original.id(), 1, "PREREQUISITE", null),
+                        new AdminCourseService.PrerequisiteInput(replacement.id(), 1, "REPLACEMENT", null)));
+
+        assertEquals(2, target.prerequisites().size());
+        assertEquals("REPLACEMENT", target.prerequisites().get(1).type());
+        assertNull(target.prerequisites().get(1).minimumScore());
+        assertThrows(IllegalArgumentException.class, () -> courses.update(target.id(), null, null, null,
+                null, null, null, null, null, List.of(
+                        new AdminCourseService.PrerequisiteInput(original.id(), 1, "UNSUPPORTED", null))));
+        assertEquals(2, courses.detail(target.id()).prerequisites().size());
     }
 
     @Test

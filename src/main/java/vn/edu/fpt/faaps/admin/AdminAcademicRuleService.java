@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AdminAcademicRuleService {
     public static final List<String> POLICY_TYPES = List.of(
-            "CO_REQUISITE", "ADVANCED_STUDY", "RETAKE", "MAX_CREDITS_PER_SEMESTER",
+            "ADVANCED_STUDY", "RETAKE", "MAX_CREDITS_PER_SEMESTER",
             "MIN_CREDITS_PER_SEMESTER", "COURSE_REPEAT_LIMIT", "GPA_WARNING",
             "ACADEMIC_PROBATION", "OTHER"
     );

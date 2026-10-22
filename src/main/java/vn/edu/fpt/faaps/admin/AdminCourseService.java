@@ -83,7 +83,8 @@ public class AdminCourseService {
                        cat.code AS category_code, cat.name AS category_name,
                        c.description, c.objectives, c.learning_outcomes,
                        c.status, c.created_at, c.updated_at,
-                       (SELECT COUNT(*) FROM course_prerequisites cp WHERE cp.course_id = c.id) AS prerequisite_count
+                       (SELECT COUNT(*) FROM course_prerequisites cp WHERE cp.course_id = c.id) AS prerequisite_count,
+                       (SELECT COUNT(*) FROM curriculum_courses cc WHERE cc.course_id = c.id) AS curriculum_count
                 FROM courses c
                 LEFT JOIN course_categories cat ON cat.id = c.category_id
                 """ + where + orderBy + " LIMIT ? OFFSET ?";
@@ -101,7 +102,8 @@ public class AdminCourseService {
                 SELECT c.id, c.code, c.name, c.credits, c.category_id,
                        cat.code AS category_code, cat.name AS category_name,
                        c.description, c.objectives, c.learning_outcomes,
-                       c.status, c.created_at, c.updated_at
+                       c.status, c.created_at, c.updated_at,
+                       (SELECT COUNT(*) FROM curriculum_courses cc WHERE cc.course_id = c.id) AS curriculum_count
                 FROM courses c
                 LEFT JOIN course_categories cat ON cat.id = c.category_id
                 WHERE c.id = ?
@@ -131,10 +133,120 @@ public class AdminCourseService {
                 ),
                 id.toString());
 
+        List<CourseReference> referencedBy = jdbc.query("""
+                SELECT c.id, c.code, c.name
+                FROM course_prerequisites cp
+                JOIN courses c ON c.id = cp.course_id
+                WHERE cp.prerequisite_course_id = ? AND cp.type = 'PREREQUISITE'
+                ORDER BY c.code ASC, c.id ASC
+                """, (rs, rowNum) -> new CourseReference(UUID.fromString(rs.getString("id")),
+                rs.getString("code"), rs.getString("name")), id.toString());
+
         return new CourseDetail(base.id(), base.code(), base.name(), base.credits(),
                 base.categoryId(), base.categoryCode(), base.categoryName(),
                 base.description(), base.objectives(), base.learningOutcomes(),
-                base.status(), base.createdAt(), base.updatedAt(), prerequisites);
+                base.status(), base.createdAt(), base.updatedAt(), prerequisites,
+                referencedBy, base.usedInCurriculumCount());
+    }
+
+    public List<CourseRelation> relations(UUID courseId) {
+        return detail(courseId).prerequisites().stream()
+                .map(relation -> new CourseRelation(relation.id(), relation.type(), relation.groupNo(),
+                        relation.prerequisiteCourseId(), relation.prerequisiteCode(),
+                        relation.prerequisiteName(), relation.minimumScore()))
+                .toList();
+    }
+
+    @Transactional
+    public CourseRelation addRelation(UUID courseId, String kind, Integer groupNo,
+            UUID otherCourseId, BigDecimal minimumScore) {
+        detail(courseId);
+        validateRelation(courseId, kind, groupNo, otherCourseId, minimumScore);
+        detail(otherCourseId);
+
+        String relationType = kind.strip().toUpperCase();
+        Integer duplicateCount = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM course_prerequisites
+                WHERE course_id = ? AND prerequisite_course_id = ? AND type = ?
+                """, Integer.class, courseId.toString(), otherCourseId.toString(), relationType);
+        if (duplicateCount != null && duplicateCount > 0) {
+            throw new Conflict("This course relation already exists");
+        }
+        int relationGroup = relationType.equals("REPLACEMENT") ? 1 : groupNo;
+        BigDecimal score = relationType.equals("REPLACEMENT") ? null : minimumScore;
+        try {
+            jdbc.update("""
+                    INSERT INTO course_prerequisites
+                        (id, course_id, prerequisite_course_id, group_no, type, minimum_score, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    UUID.randomUUID().toString(), courseId.toString(), otherCourseId.toString(),
+                    relationGroup, relationType, score);
+        } catch (DuplicateKeyException exception) {
+            throw new Conflict("This course relation already exists");
+        }
+        return relations(courseId).stream()
+                .filter(relation -> relation.otherCourseId().equals(otherCourseId)
+                        && relation.kind().equals(relationType))
+                .findFirst().orElseThrow(() -> new IllegalStateException("Created relation could not be loaded"));
+    }
+
+    @Transactional
+    public CourseRelation updateRelation(UUID courseId, UUID relationId,
+            Integer groupNo, BigDecimal minimumScore) {
+        CourseRelation current = relation(courseId, relationId);
+        int relationGroup = current.kind().equals("REPLACEMENT") ? 1
+                : groupNo == null ? current.groupNo() : groupNo;
+        if (relationGroup < 1 || relationGroup > 20) {
+            throw new IllegalArgumentException("groupNo must be between 1 and 20");
+        }
+        BigDecimal score = current.kind().equals("REPLACEMENT") ? null : minimumScore;
+        validateMinimumScore(score);
+        jdbc.update("""
+                UPDATE course_prerequisites
+                SET group_no = ?, minimum_score = ?
+                WHERE id = ? AND course_id = ?
+                """, relationGroup, score, relationId.toString(), courseId.toString());
+        return relation(courseId, relationId);
+    }
+
+    @Transactional
+    public CourseRelation deleteRelation(UUID courseId, UUID relationId) {
+        CourseRelation current = relation(courseId, relationId);
+        jdbc.update("DELETE FROM course_prerequisites WHERE id = ? AND course_id = ?",
+                relationId.toString(), courseId.toString());
+        return current;
+    }
+
+    private CourseRelation relation(UUID courseId, UUID relationId) {
+        CourseRelation relation = relations(courseId).stream()
+                .filter(item -> item.relationId().equals(relationId))
+                .findFirst().orElse(null);
+        if (relation == null) {
+            throw new NotFound("Course relation not found");
+        }
+        return relation;
+    }
+
+    private void validateRelation(UUID courseId, String kind, Integer groupNo,
+            UUID otherCourseId, BigDecimal minimumScore) {
+        if (kind == null || !List.of("PREREQUISITE", "REPLACEMENT").contains(kind.strip().toUpperCase())) {
+            throw new IllegalArgumentException("kind must be PREREQUISITE or REPLACEMENT");
+        }
+        if (otherCourseId == null || otherCourseId.equals(courseId)) {
+            throw new IllegalArgumentException("otherCourseId must identify a different course");
+        }
+        if (groupNo == null || groupNo < 1 || groupNo > 20) {
+            throw new IllegalArgumentException("groupNo must be between 1 and 20");
+        }
+        validateMinimumScore(minimumScore);
+    }
+
+    private void validateMinimumScore(BigDecimal minimumScore) {
+        if (minimumScore != null && (minimumScore.compareTo(BigDecimal.ZERO) < 0
+                || minimumScore.compareTo(BigDecimal.TEN) > 0)) {
+            throw new IllegalArgumentException("minimumScore must be between 0 and 10");
+        }
     }
 
     @Transactional
@@ -150,13 +262,13 @@ public class AdminCourseService {
         if (categoryId == null) {
             throw new IllegalArgumentException("categoryId is required");
         }
-
         String courseStatus = (status == null || status.isBlank()) ? "ACTIVE" : status.toUpperCase();
         if (!List.of("ACTIVE", "INACTIVE").contains(courseStatus)) {
             throw new IllegalArgumentException("status is invalid");
         }
 
         UUID id = UUID.randomUUID();
+        validatePrerequisites(id, prerequisites);
         try {
             jdbc.update("""
                     INSERT INTO courses (id, code, name, credits, category_id, description, objectives, learning_outcomes, status, created_at, updated_at)
@@ -177,6 +289,7 @@ public class AdminCourseService {
             String description, String objectives, String learningOutcomes,
             String status, List<PrerequisiteInput> prerequisites) {
         CourseDetail current = detail(id);
+        validatePrerequisites(id, prerequisites);
         String newCode = (code != null && !code.isBlank()) ? code.strip().toUpperCase() : current.code();
         String newName = (name != null && !name.isBlank()) ? name.strip() : current.name();
         int newCredits = (credits != null && credits > 0) ? credits : current.credits();
@@ -551,25 +664,41 @@ public class AdminCourseService {
         return "";
     }
 
+    private void validatePrerequisites(UUID courseId, List<PrerequisiteInput> prerequisites) {
+        if (prerequisites == null) {
+            return;
+        }
+        for (PrerequisiteInput relation : prerequisites) {
+            if (relation == null || relation.prerequisiteCourseId() == null
+                    || relation.prerequisiteCourseId().equals(courseId)) {
+                throw new IllegalArgumentException("Related course must be different from this course");
+            }
+            String type = relation.type() == null || relation.type().isBlank()
+                    ? "PREREQUISITE" : relation.type().strip().toUpperCase();
+            if (!List.of("PREREQUISITE", "REPLACEMENT").contains(type)) {
+                throw new IllegalArgumentException("Unsupported course relation type: " + type);
+            }
+        }
+    }
+
     private void savePrerequisites(UUID courseId, List<PrerequisiteInput> prerequisites) {
         if (prerequisites == null || prerequisites.isEmpty()) {
             return;
         }
         for (PrerequisiteInput p : prerequisites) {
-            if (p.prerequisiteCourseId() == null || p.prerequisiteCourseId().equals(courseId)) {
-                continue;
-            }
             UUID pid = UUID.randomUUID();
-            String type = (p.type() != null && !p.type().isBlank()) ? p.type().toUpperCase() : "PREREQUISITE";
+            String type = (p.type() != null && !p.type().isBlank()) ? p.type().strip().toUpperCase() : "PREREQUISITE";
             int group = p.groupNo() != null && p.groupNo() > 0 ? p.groupNo() : 1;
-            BigDecimal minScore = p.minimumScore() != null ? p.minimumScore() : new BigDecimal("5.00");
+            BigDecimal minScore = type.equals("REPLACEMENT") ? null
+                    : p.minimumScore() != null ? p.minimumScore() : new BigDecimal("5.00");
             try {
                 jdbc.update("""
                         INSERT INTO course_prerequisites (id, course_id, prerequisite_course_id, group_no, type, minimum_score, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                         """,
                         pid.toString(), courseId.toString(), p.prerequisiteCourseId().toString(), group, type, minScore);
-            } catch (Exception ignored) {
+            } catch (Exception exception) {
+                throw new IllegalArgumentException("Could not save course relation", exception);
             }
         }
     }
@@ -603,6 +732,7 @@ public class AdminCourseService {
                 rs.getString("description"),
                 rs.getString("status"),
                 rs.getInt("prerequisite_count"),
+                rs.getInt("curriculum_count"),
                 rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null,
                 rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null
         );
@@ -623,23 +753,31 @@ public class AdminCourseService {
                 rs.getString("status"),
                 rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null,
                 rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null,
-                List.of()
+                List.of(), List.of(), rs.getInt("curriculum_count")
         );
     }
 
     public record CourseSummary(UUID id, String code, String name, int credits, UUID categoryId,
             String categoryCode, String categoryName, String description, String status, int prerequisiteCount,
-            LocalDateTime createdAt, LocalDateTime updatedAt) {
+            int usedInCurriculumCount, LocalDateTime createdAt, LocalDateTime updatedAt) {
     }
 
     public record CourseDetail(UUID id, String code, String name, int credits, UUID categoryId,
             String categoryCode, String categoryName, String description, String objectives,
             String learningOutcomes, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
-            List<PrerequisiteItem> prerequisites) {
+            List<PrerequisiteItem> prerequisites, List<CourseReference> referencedBy,
+            int usedInCurriculumCount) {
+    }
+
+    public record CourseReference(UUID courseId, String courseCode, String courseName) {
     }
 
     public record PrerequisiteItem(UUID id, UUID prerequisiteCourseId, String prerequisiteCode,
             String prerequisiteName, int groupNo, String type, BigDecimal minimumScore) {
+    }
+
+    public record CourseRelation(UUID relationId, String kind, int groupNo, UUID otherCourseId,
+            String otherCourseCode, String otherCourseName, BigDecimal minimumScore) {
     }
 
     public record PrerequisiteInput(UUID prerequisiteCourseId, Integer groupNo, String type, BigDecimal minimumScore) {
@@ -675,6 +813,13 @@ public class AdminCourseService {
     }
 
     public static class NotFound extends RuntimeException {
+        public NotFound() {
+            super("Course not found");
+        }
+
+        public NotFound(String message) {
+            super(message);
+        }
     }
 
     public static class Conflict extends RuntimeException {

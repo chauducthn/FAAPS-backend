@@ -4,6 +4,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.io.IOException;
@@ -56,6 +60,34 @@ public class AdminCourseController {
     @GetMapping("/{id}")
     public AdminCourseService.CourseDetail detail(@PathVariable UUID id) {
         return courses.detail(id);
+    }
+
+    @GetMapping("/{id}/relations")
+    public ApiResponse<List<AdminCourseService.CourseRelation>> relations(@PathVariable UUID id) {
+        return ApiResponse.success("Course relations loaded", courses.relations(id));
+    }
+
+    @PostMapping("/{id}/relations")
+    public ResponseEntity<ApiResponse<AdminCourseService.CourseRelation>> addRelation(
+            @PathVariable UUID id, @Valid @RequestBody AddRelationRequest request) {
+        AdminCourseService.CourseRelation relation = courses.addRelation(id, request.kind(),
+                request.groupNo(), request.otherCourseId(), request.minimumScore());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Course relation created", relation));
+    }
+
+    @PutMapping("/{id}/relations/{relationId}")
+    public ApiResponse<AdminCourseService.CourseRelation> updateRelation(
+            @PathVariable UUID id, @PathVariable UUID relationId,
+            @Valid @RequestBody UpdateRelationRequest request) {
+        return ApiResponse.success("Course relation updated",
+                courses.updateRelation(id, relationId, request.groupNo(), request.minimumScore()));
+    }
+
+    @DeleteMapping("/{id}/relations/{relationId}")
+    public ApiResponse<AdminCourseService.CourseRelation> deleteRelation(
+            @PathVariable UUID id, @PathVariable UUID relationId) {
+        return ApiResponse.success("Course relation deleted", courses.deleteRelation(id, relationId));
     }
 
     @PostMapping
@@ -128,12 +160,12 @@ public class AdminCourseController {
     }
 
     @ExceptionHandler(AdminCourseService.NotFound.class)
-    public ResponseEntity<Map<String, Object>> notFound() {
+    public ResponseEntity<Map<String, Object>> notFound(AdminCourseService.NotFound exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
                 "success", false,
                 "code", "NOT_FOUND",
-                "message", "Course not found",
-                "error", "Course not found"
+                "message", exception.getMessage(),
+                "error", exception.getMessage()
         ));
     }
 
@@ -175,5 +207,23 @@ public class AdminCourseController {
     }
 
     public record ConfirmImportRequest(@NotEmpty List<AdminCourseService.ImportConfirmItem> items) {
+    }
+
+    public record AddRelationRequest(
+            @NotBlank String kind,
+            @NotNull @Min(1) @Max(20) Integer groupNo,
+            @NotNull UUID otherCourseId,
+            @DecimalMin("0.00") @DecimalMax("10.00") BigDecimal minimumScore) {
+    }
+
+    public record UpdateRelationRequest(
+            @Min(1) @Max(20) Integer groupNo,
+            @DecimalMin("0.00") @DecimalMax("10.00") BigDecimal minimumScore) {
+    }
+
+    public record ApiResponse<T>(boolean success, String message, T data) {
+        public static <T> ApiResponse<T> success(String message, T data) {
+            return new ApiResponse<>(true, message, data);
+        }
     }
 }

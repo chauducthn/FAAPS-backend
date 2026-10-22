@@ -136,9 +136,10 @@ CREATE TABLE `course_prerequisites` (
   `course_id` char(36) NOT NULL,
   `prerequisite_course_id` char(36) NOT NULL,
   `group_no` int NOT NULL DEFAULT 1 COMMENT 'Rows with the same group_no are alternatives (OR). Different group_no are all required (AND). Example: (A OR B) AND C -> A:1, B:1, C:2',
-  `type` varchar(20) DEFAULT 'PREREQUISITE' COMMENT 'PREREQUISITE, CO_REQUISITE',
+  `type` varchar(20) NOT NULL DEFAULT 'PREREQUISITE' COMMENT 'PREREQUISITE, REPLACEMENT',
   `minimum_score` decimal(4,2) COMMENT 'Minimum score, 10-point scale (e.g. 5.00)',
-  `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
+  `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
+  CONSTRAINT `course_prerequisites_type_ck` CHECK (`type` IN ('PREREQUISITE', 'REPLACEMENT'))
 );
 
 CREATE TABLE `curriculum_courses` (
@@ -283,7 +284,7 @@ CREATE TABLE `course_recommendations` (
 CREATE TABLE `academic_policies` (
   `id` char(36) PRIMARY KEY DEFAULT (UUID()),
   `curriculum_version_id` char(36) NOT NULL,
-  `policy_type` varchar(30) NOT NULL COMMENT 'CO_REQUISITE, ADVANCED_STUDY, RETAKE, MAX_CREDITS_PER_SEMESTER, MIN_CREDITS_PER_SEMESTER, COURSE_REPEAT_LIMIT, GPA_WARNING, ACADEMIC_PROBATION, OTHER',
+  `policy_type` varchar(30) NOT NULL COMMENT 'ADVANCED_STUDY, RETAKE, MAX_CREDITS_PER_SEMESTER, MIN_CREDITS_PER_SEMESTER, COURSE_REPEAT_LIMIT, GPA_WARNING, ACADEMIC_PROBATION, OTHER',
   `condition_expression` text COMMENT 'JSON, e.g. {"min_gpa": 5.0, "min_credits": 30}',
   `restriction_expression` text COMMENT 'JSON, restrictions when the policy applies',
   `approval_required` boolean DEFAULT false,
@@ -292,7 +293,12 @@ CREATE TABLE `academic_policies` (
   `display_message` text COMMENT 'Message shown to the student',
   `is_active` boolean DEFAULT true,
   `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
-  `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
+  `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
+  CONSTRAINT `academic_policies_type_ck` CHECK (`policy_type` IN (
+    'ADVANCED_STUDY', 'RETAKE', 'MAX_CREDITS_PER_SEMESTER',
+    'MIN_CREDITS_PER_SEMESTER', 'COURSE_REPEAT_LIMIT', 'GPA_WARNING',
+    'ACADEMIC_PROBATION', 'OTHER'
+  ))
 );
 
 CREATE TABLE `graduation_requirements` (

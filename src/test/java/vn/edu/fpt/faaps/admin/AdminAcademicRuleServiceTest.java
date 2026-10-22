@@ -78,6 +78,12 @@ class AdminAcademicRuleServiceTest {
     }
 
     @Test
+    void rejectsUnsupportedPolicyType() {
+        assertThrows(IllegalArgumentException.class, () -> rules.create(
+                cvId, "UNSUPPORTED", "{}", null, false, 0, null, null, true));
+    }
+
+    @Test
     void updatesRuleStatusAndDeletes() {
         AdminAcademicRuleService.RuleSummary rule = rules.create(
                 cvId, "GPA_WARNING", "{\"min_gpa\": 5.0}", null, false, 5,
