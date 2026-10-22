@@ -101,8 +101,8 @@ public class AssignmentWorkflowService {
     public Page<Map<String, Object>> advisorsWithCohorts(UUID cohortId, String search, int page, int size) {
         validatePage(page, size);
         String base = """
-                SELECT a.user_id, a.advisor_code, u.full_name, a.max_advisees,
-                       u.email, a.status,
+                SELECT a.user_id, u.email, u.full_name, a.max_advisees,
+                       a.status,
                        cv.id AS cohort_id, cv.version AS cohort, m.code AS major_code,
                        ca.cohort_id IS NOT NULL AS in_pool,
                        COUNT(sa.id) AS student_count
@@ -123,9 +123,9 @@ public class AssignmentWorkflowService {
                     AND sa.advisor_id = a.user_id AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
                 WHERE a.status = 'ACTIVE' AND u.status = 'ACTIVE'
                   AND (? IS NULL OR cv.id = ?)
-                  AND (? IS NULL OR LOWER(a.advisor_code) LIKE ? OR LOWER(u.full_name) LIKE ? OR LOWER(m.code) LIKE ?)
-                GROUP BY a.user_id, a.advisor_code, u.full_name, a.max_advisees,
-                         u.email, a.status, cv.id, cv.version, m.code, ca.cohort_id
+                  AND (? IS NULL OR LOWER(u.email) LIKE ? OR LOWER(u.full_name) LIKE ? OR LOWER(m.code) LIKE ?)
+                GROUP BY a.user_id, u.email, u.full_name, a.max_advisees,
+                         a.status, cv.id, cv.version, m.code, ca.cohort_id
                 """;
         String term = search == null || search.isBlank() ? null : "%" + search.strip().toLowerCase() + "%";
         Object[] baseParams = {cohortId == null ? null : cohortId.toString(), cohortId == null ? null : cohortId.toString(), term, term, term, term};
@@ -137,10 +137,9 @@ public class AssignmentWorkflowService {
                 + "LIMIT ? OFFSET ?", (result, row) -> {
                     java.util.HashMap<String, Object> item = new java.util.HashMap<>();
                     item.put("advisorId", result.getString("user_id"));
-                    item.put("advisorCode", result.getString("advisor_code"));
+                    item.put("email", result.getString("email"));
                     item.put("fullName", result.getString("full_name"));
                     item.put("maxAdvisees", result.getObject("max_advisees"));
-                    item.put("email", result.getString("email"));
                     item.put("status", result.getString("status"));
                     item.put("cohortId", result.getString("cohort_id"));
                     item.put("cohort", result.getString("cohort"));

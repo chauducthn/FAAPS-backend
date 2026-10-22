@@ -37,8 +37,8 @@ public class AdminUserService {
             case "createdAt,desc" -> "u.created_at DESC, u.id DESC";
             case "fullName,asc" -> "u.full_name ASC, u.id ASC";
             case "fullName,desc" -> "u.full_name DESC, u.id DESC";
-            case "userId,asc" -> "COALESCE(s.student_code, a.advisor_code, u.email) ASC, u.id ASC";
-            case "userId,desc" -> "COALESCE(s.student_code, a.advisor_code, u.email) DESC, u.id DESC";
+            case "userId,asc" -> "COALESCE(s.student_code, u.email) ASC, u.id ASC";
+            case "userId,desc" -> "COALESCE(s.student_code, u.email) DESC, u.id DESC";
             default -> throw new IllegalArgumentException("sort is invalid");
         };
         StringBuilder where = new StringBuilder(" WHERE 1 = 1");
@@ -57,31 +57,30 @@ public class AdminUserService {
         }
         if (search != null && !search.isBlank()) {
             String term = "%" + search.strip().toLowerCase(Locale.ROOT) + "%";
-            where.append(" AND (LOWER(u.full_name) LIKE ? OR LOWER(u.email) LIKE ? OR LOWER(s.student_code) LIKE ? OR LOWER(a.advisor_code) LIKE ?)");
-            for (int index = 0; index < 4; index++) {
+            where.append(" AND (LOWER(u.full_name) LIKE ? OR LOWER(u.email) LIKE ? OR LOWER(s.student_code) LIKE ?)");
+            for (int index = 0; index < 3; index++) {
                 parameters.add(term);
             }
         }
-        String from = " FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN students s ON s.user_id = u.id LEFT JOIN advisors a ON a.user_id = u.id";
+        String from = " FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN students s ON s.user_id = u.id";
         Long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, parameters.toArray());
         List<Object> pageParameters = new ArrayList<>(parameters);
         pageParameters.add(size);
         pageParameters.add(page * size);
-        List<Summary> items = jdbc.query("SELECT u.id, COALESCE(s.student_code, a.advisor_code, u.email) AS user_code, u.full_name, u.email, r.code AS role, u.status, u.created_at" + from + where + " ORDER BY " + order + " LIMIT ? OFFSET ?", this::summary, pageParameters.toArray());
+        List<Summary> items = jdbc.query("SELECT u.id, COALESCE(s.student_code, u.email) AS user_code, u.full_name, u.email, r.code AS role, u.status, u.created_at" + from + where + " ORDER BY " + order + " LIMIT ? OFFSET ?", this::summary, pageParameters.toArray());
         return new Page(items, page, size, total, (total + size - 1) / size);
     }
 
     public Detail detail(UUID id) {
         return jdbc.query("""
-                SELECT u.id, COALESCE(s.student_code, a.advisor_code, u.email) AS user_code,
+                SELECT u.id, COALESCE(s.student_code, u.email) AS user_code,
                        u.full_name, u.email, u.phone, r.code AS role, u.status,
                        u.created_at, u.updated_at, s.major_id, m.name AS major_name,
                        s.curriculum_version_id, cv.version AS curriculum_code,
                        s.enrollment_semester_id, s.expected_graduation_semester_id,
-                       s.current_semester, s.academic_status, a.advisor_code
+                       s.current_semester, s.academic_status
                 FROM users u JOIN roles r ON r.id = u.role_id
                 LEFT JOIN students s ON s.user_id = u.id
-                LEFT JOIN advisors a ON a.user_id = u.id
                 LEFT JOIN majors m ON m.id = s.major_id
                 LEFT JOIN curriculum_versions cv ON cv.id = s.curriculum_version_id
                 WHERE u.id = ?
@@ -94,8 +93,8 @@ public class AdminUserService {
                 result.getString("major_id"), result.getString("major_name"),
                 result.getString("curriculum_version_id"), result.getString("curriculum_code"),
                 result.getString("enrollment_semester_id"), result.getString("expected_graduation_semester_id"),
-                (Integer) result.getObject("current_semester"), result.getString("academic_status"),
-                result.getString("advisor_code")), id.toString()).stream().findFirst().orElseThrow(NotFound::new);
+                (Integer) result.getObject("current_semester"), result.getString("academic_status")),
+                id.toString()).stream().findFirst().orElseThrow(NotFound::new);
     }
 
     @Transactional
@@ -169,13 +168,12 @@ public class AdminUserService {
             } else {
                 int maxAdvisees = input.maxAdvisees() == null ? 30 : input.maxAdvisees();
                 jdbc.update("""
-                        INSERT INTO advisors (user_id, advisor_code, specialization, max_advisees, status,
-                                              created_at, updated_at)
-                        VALUES (?, ?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        """, resolvedUserId.toString(), input.advisorCode().strip(), input.specialization(), maxAdvisees);
+                        INSERT INTO advisors (user_id, max_advisees, status, created_at, updated_at)
+                        VALUES (?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """, resolvedUserId.toString(), maxAdvisees);
             }
         } catch (DuplicateKeyException exception) {
-            throw new Conflict("Email or student/advisor code already exists");
+            throw new Conflict("Email or student code already exists");
         } catch (DataIntegrityViolationException exception) {
             throw new Conflict("Account references invalid academic data or conflicts with an existing record");
         }
@@ -214,9 +212,6 @@ public class AdminUserService {
     }
 
     private void validateAdvisorInput(CreateAccount input) {
-        if (input.advisorCode() == null || input.advisorCode().isBlank() || input.advisorCode().length() > 50) {
-            throw new IllegalArgumentException("advisorCode is required and must be at most 50 characters");
-        }
         if (input.maxAdvisees() != null && input.maxAdvisees() < 1) {
             throw new IllegalArgumentException("maxAdvisees must be at least 1");
         }
@@ -290,13 +285,12 @@ public class AdminUserService {
             String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
             String majorId, String majorName, String curriculumVersionId, String curriculumCode,
             String enrollmentSemesterId, String expectedGraduationSemesterId,
-            Integer currentSemester, String academicStatus, String advisorCode) {
+            Integer currentSemester, String academicStatus) {
     }
 
     public record CreateAccount(String role, String email, String fullName, String phone,
             String studentCode, UUID curriculumVersionId, UUID enrollmentSemesterId,
-            UUID expectedGraduationSemesterId, Integer currentSemester,
-            String advisorCode, String specialization, Integer maxAdvisees) {
+            UUID expectedGraduationSemesterId, Integer currentSemester, Integer maxAdvisees) {
     }
 
     private record ExistingAccount(UUID id, String role, String externalId, String status,

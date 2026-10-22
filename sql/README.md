@@ -1,6 +1,6 @@
 # FAAPS MySQL scripts
 
-For a new local MySQL 8.4 database, run `faaps_schema_mysql84.sql` once. It creates the `faaps` database, the 39 core tables, the two Admin AI report tables, and the three roles. It does not create an Admin password.
+For a new local MySQL 8.4 database, run `faaps_schema_mysql84.sql` once. It creates the `faaps` database, the core tables including `advisor_work_schedules`, the two Admin AI report tables, and the three roles. It does not create an Admin password.
 
 To add optional demo data, run `faaps_demo_seed.sql` after the schema. The demo seed is idempotent and creates one sample major, one curriculum, two advisors, four students, and two active advisor assignments. Demo accounts use `example.invalid` addresses and cannot sign in with Google.
 
@@ -20,3 +20,5 @@ On the FAAPS RDS instance, run `powershell.exe -NoProfile -ExecutionPolicy Bypas
 MySQL DDL commits implicitly: take a backup before applying the UP script and inspect the result before deploying the matching backend and frontend. On a new database, after creating the initial Admin account, initialize the singleton with `INSERT INTO admin_control (control_id, current_admin_id) SELECT 1, id FROM users WHERE email = 'admin@faaps.local' AND status = 'ACTIVE';`. Verify this inserted exactly one row. Do not run the full schema against an existing database.
 
 For the two supported course relation types, apply `2026-10-22_course_relation_types.sql` to an existing MySQL 8.4 database only after checking for unsupported rows. The migration stops without deleting data when either table contains an unsupported type; review those rows and decide their meaning rather than silently converting them. Use a backup and the MySQL client without `--force`; MySQL DDL is not transactional. The current DBML source is `sql/FAAPS_ERD_full.dbml`; the SQL schema file is not generated from it.
+
+To simplify advisor profiles in an existing database, review and back up advisor identifiers/specializations first, then apply `2026-10-22_simplify_advisor_profile.sql`. It copies existing `advisors.work_days` into `advisor_work_schedules` before removing `advisor_code`, `specialization`, and `work_days` from `advisors`. Advisor API identity is now the associated `users.email`. MySQL DDL commits implicitly; do not treat this migration as transactional. The DOWN script recreates the old columns but cannot recover the original advisor codes or specializations; it generates synthetic `LEGACY-<user_id>` codes, so use a database backup for a true restoration.

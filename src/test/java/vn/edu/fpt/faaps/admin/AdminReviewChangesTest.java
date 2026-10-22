@@ -26,7 +26,8 @@ class AdminReviewChangesTest {
                 "jdbc:h2:mem:review-" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         jdbc.execute("CREATE TABLE roles (id VARCHAR(36), code VARCHAR(20))");
         jdbc.execute("CREATE TABLE users (id VARCHAR(36), role_id VARCHAR(36), full_name VARCHAR(100), status VARCHAR(20))");
-        jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36), work_days VARCHAR(20), assignment_start_date DATE, updated_at TIMESTAMP)");
+        jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36), assignment_start_date DATE, updated_at TIMESTAMP)");
+        jdbc.execute("CREATE TABLE advisor_work_schedules (advisor_id VARCHAR(36) PRIMARY KEY, work_days VARCHAR(20), created_at TIMESTAMP, updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE admin_handovers (id VARCHAR(36), from_admin_id VARCHAR(36), to_admin_id VARCHAR(36), handover_date DATE, notes VARCHAR(255), recorded_by_user_id VARCHAR(36), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
         jdbc.execute("CREATE TABLE admin_control (control_id TINYINT PRIMARY KEY, current_admin_id VARCHAR(36), updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
         jdbc.execute("CREATE TABLE notifications (id VARCHAR(36), recipient_user_id VARCHAR(36), notification_type VARCHAR(20), title VARCHAR(255), message VARCHAR(255), action_url VARCHAR(255), related_student_id VARCHAR(36), is_read BOOLEAN, resolved_at TIMESTAMP)");

@@ -33,7 +33,7 @@ class AdminAssignmentServiceTest {
         jdbc.execute("CREATE TABLE roles (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20))");
         jdbc.execute("INSERT INTO roles VALUES ('student-role', 'STUDENT')");
         jdbc.execute("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY, role_id VARCHAR(36), full_name VARCHAR(255), email VARCHAR(255), status VARCHAR(20))");
-        jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY, advisor_code VARCHAR(50), max_advisees INT, status VARCHAR(20), updated_at TIMESTAMP)");
+        jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY, max_advisees INT, status VARCHAR(20), updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20))");
         jdbc.execute("CREATE TABLE curriculum_versions (id VARCHAR(36) PRIMARY KEY, version VARCHAR(50), major_id VARCHAR(36))");
         jdbc.execute("CREATE TABLE students (user_id VARCHAR(36) PRIMARY KEY, student_code VARCHAR(50), curriculum_version_id VARCHAR(36))");
@@ -165,7 +165,7 @@ class AdminAssignmentServiceTest {
                 .filter(item -> (boolean) item.get("inPool") && (long) item.get("studentCount") == 0)
                 .count());
         AssignmentWorkflowService.Page<Map<String, Object>> advisorPage =
-                workflow.advisorsWithCohorts(upcomingCohort, "A", 0, 1);
+                workflow.advisorsWithCohorts(upcomingCohort, "A@", 0, 1);
         assertEquals(1, advisorPage.totalElements());
         assertEquals(1, advisorPage.items().size());
 
@@ -251,8 +251,8 @@ class AdminAssignmentServiceTest {
     private UUID addAdvisor(String code, int capacity) {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO users (id, full_name, email, status) VALUES (?, ?, ?, 'ACTIVE')", id.toString(), code, code + "@test.local");
-        jdbc.update("INSERT INTO advisors (user_id, advisor_code, max_advisees, status) VALUES (?, ?, ?, 'ACTIVE')",
-                id.toString(), code, capacity);
+        jdbc.update("INSERT INTO advisors (user_id, max_advisees, status) VALUES (?, ?, 'ACTIVE')",
+                id.toString(), capacity);
         return id;
     }
 

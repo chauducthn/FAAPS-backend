@@ -25,14 +25,14 @@ SELECT UUID(), access_role.id, 'faaps-demo-advisor-02@example.invalid', 'LOCAL',
 FROM roles access_role WHERE access_role.code = 'ADVISOR'
   AND NOT EXISTS (SELECT 1 FROM users WHERE email = 'faaps-demo-advisor-02@example.invalid');
 
-INSERT INTO advisors (user_id, advisor_code, specialization, max_advisees)
-SELECT account.id, 'FAAPS_DEMO_ADV01', 'Software Engineering', 30 FROM users account
+INSERT INTO advisors (user_id, max_advisees)
+SELECT account.id, 30 FROM users account
 WHERE account.email = 'faaps-demo-advisor-01@example.invalid'
-  AND NOT EXISTS (SELECT 1 FROM advisors WHERE advisor_code = 'FAAPS_DEMO_ADV01');
-INSERT INTO advisors (user_id, advisor_code, specialization, max_advisees)
-SELECT account.id, 'FAAPS_DEMO_ADV02', 'Software Engineering', 30 FROM users account
+  AND NOT EXISTS (SELECT 1 FROM advisors WHERE user_id = account.id);
+INSERT INTO advisors (user_id, max_advisees)
+SELECT account.id, 30 FROM users account
 WHERE account.email = 'faaps-demo-advisor-02@example.invalid'
-  AND NOT EXISTS (SELECT 1 FROM advisors WHERE advisor_code = 'FAAPS_DEMO_ADV02');
+  AND NOT EXISTS (SELECT 1 FROM advisors WHERE user_id = account.id);
 
 INSERT INTO users (id, role_id, email, auth_provider, full_name, status)
 SELECT UUID(), access_role.id, 'faaps-demo-student-01@example.invalid', 'LOCAL', 'Demo Student 01', 'ACTIVE'
@@ -82,13 +82,15 @@ WHERE account.email = 'faaps-demo-student-04@example.invalid'
 
 INSERT INTO student_advisor_assignments (id, student_id, advisor_id, group_name, assigned_date, notes)
 SELECT UUID(), student.user_id, advisor.user_id, 'K99DEMO', CURRENT_DATE(), 'FAAPS demo seed'
-FROM students student JOIN advisors advisor ON advisor.advisor_code = 'FAAPS_DEMO_ADV01'
+FROM students student JOIN users advisor_account ON advisor_account.email = 'faaps-demo-advisor-01@example.invalid'
+JOIN advisors advisor ON advisor.user_id = advisor_account.id
 WHERE student.student_code = 'FAAPS_DEMO_ST01'
   AND NOT EXISTS (SELECT 1 FROM student_advisor_assignments assignment
                   WHERE assignment.student_id = student.user_id AND assignment.status = 'ACTIVE');
 INSERT INTO student_advisor_assignments (id, student_id, advisor_id, group_name, assigned_date, notes)
 SELECT UUID(), student.user_id, advisor.user_id, 'K99DEMO', CURRENT_DATE(), 'FAAPS demo seed'
-FROM students student JOIN advisors advisor ON advisor.advisor_code = 'FAAPS_DEMO_ADV02'
+FROM students student JOIN users advisor_account ON advisor_account.email = 'faaps-demo-advisor-02@example.invalid'
+JOIN advisors advisor ON advisor.user_id = advisor_account.id
 WHERE student.student_code = 'FAAPS_DEMO_ST02'
   AND NOT EXISTS (SELECT 1 FROM student_advisor_assignments assignment
                   WHERE assignment.student_id = student.user_id AND assignment.status = 'ACTIVE');
@@ -97,7 +99,9 @@ COMMIT;
 
 SELECT 'demo_majors' AS item, COUNT(*) AS total FROM majors WHERE code = 'FAAPS_DEMO_SE'
 UNION ALL SELECT 'demo_curricula', COUNT(*) FROM curriculum_versions WHERE version = 'K99DEMO'
-UNION ALL SELECT 'demo_advisors', COUNT(*) FROM advisors WHERE advisor_code LIKE 'FAAPS_DEMO_ADV%'
+UNION ALL SELECT 'demo_advisors', COUNT(*) FROM advisors advisor
+JOIN users account ON account.id = advisor.user_id
+WHERE account.email LIKE 'faaps-demo-advisor-%@example.invalid'
 UNION ALL SELECT 'demo_students', COUNT(*) FROM students WHERE student_code LIKE 'FAAPS_DEMO_ST%'
 UNION ALL SELECT 'demo_active_assignments', COUNT(*) FROM student_advisor_assignments
 WHERE group_name = 'K99DEMO' AND status = 'ACTIVE';

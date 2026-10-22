@@ -26,13 +26,13 @@ public class AdminAssignmentService {
 
     public List<Advisor> advisors() {
         return jdbc.query("""
-                SELECT a.user_id, a.advisor_code, u.full_name, a.max_advisees,
+                SELECT a.user_id, u.email, u.full_name, a.max_advisees,
                        COUNT(sa.id) AS active_students
                 FROM advisors a JOIN users u ON u.id = a.user_id
                 LEFT JOIN student_advisor_assignments sa ON sa.advisor_id = a.user_id
                     AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
                 WHERE a.status = 'ACTIVE' AND u.status = 'ACTIVE'
-                GROUP BY a.user_id, a.advisor_code, u.full_name, a.max_advisees
+                GROUP BY a.user_id, u.email, u.full_name, a.max_advisees
                 ORDER BY u.full_name
                 """, this::mapAdvisor);
     }
@@ -44,18 +44,18 @@ public class AdminAssignmentService {
         if (state != null && !List.of("ACTIVE", "INACTIVE", "ON_LEAVE").contains(state)) {
             throw new IllegalArgumentException("status must be ACTIVE, INACTIVE, or ON_LEAVE");
         }
-        String where = " WHERE (? IS NULL OR a.status = ?) AND (? IS NULL OR LOWER(a.advisor_code) LIKE ? OR LOWER(u.full_name) LIKE ? OR LOWER(u.email) LIKE ?)";
+        String where = " WHERE (? IS NULL OR a.status = ?) AND (? IS NULL OR LOWER(u.email) LIKE ? OR LOWER(u.full_name) LIKE ?)";
         Long total = jdbc.queryForObject("SELECT COUNT(*) FROM advisors a JOIN users u ON u.id = a.user_id" + where,
-                Long.class, state, state, term, term, term, term);
+                Long.class, state, state, term, term, term);
         List<Advisor> items = jdbc.query("""
-                SELECT a.user_id, a.advisor_code, u.full_name, a.max_advisees,
+                SELECT a.user_id, u.email, u.full_name, a.max_advisees,
                        COUNT(sa.id) AS active_students
                 FROM advisors a JOIN users u ON u.id = a.user_id
                 LEFT JOIN student_advisor_assignments sa ON sa.advisor_id = a.user_id
                     AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
-                """ + where + " GROUP BY a.user_id, a.advisor_code, u.full_name, a.max_advisees "
+                """ + where + " GROUP BY a.user_id, u.email, u.full_name, a.max_advisees "
                 + "ORDER BY u.full_name LIMIT ? OFFSET ?", this::mapAdvisor,
-                state, state, term, term, term, term, size, page * size);
+                state, state, term, term, term, size, page * size);
         return new Page<>(items, page, size, total == null ? 0 : total);
     }
 
@@ -131,15 +131,14 @@ public class AdminAssignmentService {
 
     public List<History> history(UUID studentId) {
         return jdbc.query("""
-                SELECT sa.id, sa.advisor_id, a.advisor_code, u.full_name AS advisor_name,
+                SELECT sa.id, sa.advisor_id, u.email AS advisor_email, u.full_name AS advisor_name,
                        sa.assigned_date, sa.assigned_at, sa.assigned_by_user_id,
                        actor.full_name AS actor_name, sa.notes, sa.end_date, sa.status
                 FROM student_advisor_assignments sa JOIN users u ON u.id = sa.advisor_id
-                JOIN advisors a ON a.user_id=sa.advisor_id
                 LEFT JOIN users actor ON actor.id=sa.assigned_by_user_id
                 WHERE sa.student_id = ? ORDER BY sa.assigned_at DESC, sa.id DESC
                 """, (result, row) -> new History(result.getString("id"),
-                result.getString("advisor_id"), result.getString("advisor_code"), result.getString("advisor_name"),
+                result.getString("advisor_id"), result.getString("advisor_email"), result.getString("advisor_name"),
                 result.getDate("assigned_date").toLocalDate(), result.getTimestamp("assigned_at") == null
                         ? null : result.getTimestamp("assigned_at").toLocalDateTime(),
                 result.getString("assigned_by_user_id"), result.getString("actor_name"), result.getString("notes"),
@@ -488,7 +487,7 @@ public class AdminAssignmentService {
     }
 
     private Advisor mapAdvisor(ResultSet result, int row) throws SQLException {
-        return new Advisor(UUID.fromString(result.getString("user_id")), result.getString("advisor_code"),
+        return new Advisor(UUID.fromString(result.getString("user_id")), result.getString("email"),
                 result.getString("full_name"), (Integer) result.getObject("max_advisees"),
                 result.getLong("active_students"));
     }
@@ -512,7 +511,7 @@ public class AdminAssignmentService {
         return result;
     }
 
-    public record Advisor(UUID id, String advisorCode, String fullName,
+    public record Advisor(UUID id, String email, String fullName,
             Integer maxAdvisees, long activeStudents) {
     }
 
@@ -527,7 +526,7 @@ public class AdminAssignmentService {
             List<Student> students, List<Cohort> cohorts, List<Cohort> configuredCohorts) {
     }
 
-    public record History(String id, String advisorId, String advisorCode, String advisorName,
+    public record History(String id, String advisorId, String advisorEmail, String advisorName,
             LocalDate assignedDate, LocalDateTime assignedAt, String assignedByUserId,
             String assignedByName, String notes, LocalDate endDate, String status) {
     }

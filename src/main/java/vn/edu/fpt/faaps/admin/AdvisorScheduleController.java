@@ -32,9 +32,12 @@ public class AdvisorScheduleController {
     @GetMapping
     public ResponseEntity<Schedule> get(@PathVariable UUID advisorId) {
         return jdbc.query("""
-                SELECT work_days, assignment_start_date FROM advisors WHERE user_id=?
+                SELECT schedule.work_days, advisor.assignment_start_date
+                FROM advisors advisor
+                LEFT JOIN advisor_work_schedules schedule ON schedule.advisor_id = advisor.user_id
+                WHERE advisor.user_id=?
                 """, (result, row) -> new Schedule(advisorId,
-                result.getString("work_days") == null ? List.of() :
+                result.getString("work_days") == null || result.getString("work_days").isBlank() ? List.of() :
                         java.util.Arrays.stream(result.getString("work_days").split(","))
                                 .map(Integer::parseInt).toList(),
                 result.getDate("assignment_start_date") == null ? null :
@@ -53,11 +56,28 @@ public class AdvisorScheduleController {
         }
         String days = request.workDays().stream().sorted().map(String::valueOf)
                 .collect(java.util.stream.Collectors.joining(","));
-        int changed = jdbc.update("""
-                UPDATE advisors SET work_days=?, assignment_start_date=?, updated_at=CURRENT_TIMESTAMP
+        if (jdbc.query("SELECT user_id FROM advisors WHERE user_id=? FOR UPDATE",
+                (result, row) -> result.getString(1), advisorId.toString()).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        jdbc.update("""
+                UPDATE advisors SET assignment_start_date=?, updated_at=CURRENT_TIMESTAMP
                 WHERE user_id=?
-                """, days, request.assignmentStartDate(), advisorId.toString());
-        return changed == 0 ? ResponseEntity.notFound().build() : get(advisorId);
+                """, request.assignmentStartDate(), advisorId.toString());
+        Integer scheduleExists = jdbc.queryForObject("SELECT COUNT(*) FROM advisor_work_schedules WHERE advisor_id=?",
+                Integer.class, advisorId.toString());
+        if (scheduleExists != null && scheduleExists > 0) {
+            jdbc.update("""
+                    UPDATE advisor_work_schedules SET work_days=?, updated_at=CURRENT_TIMESTAMP
+                    WHERE advisor_id=?
+                    """, days, advisorId.toString());
+        } else {
+            jdbc.update("""
+                    INSERT INTO advisor_work_schedules (advisor_id, work_days, created_at, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, advisorId.toString(), days);
+        }
+        return get(advisorId);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

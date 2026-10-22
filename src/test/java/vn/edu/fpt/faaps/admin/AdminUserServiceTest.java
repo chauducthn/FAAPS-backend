@@ -30,7 +30,7 @@ class AdminUserServiceTest {
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
                 """);
         jdbc.execute("CREATE TABLE students (user_id VARCHAR(36) PRIMARY KEY, student_code VARCHAR(50), major_id VARCHAR(36), curriculum_version_id VARCHAR(36), enrollment_semester_id VARCHAR(36), expected_graduation_semester_id VARCHAR(36), current_semester INT, current_gpa DECIMAL(4,2), total_credits_earned INT, academic_status VARCHAR(20), created_at TIMESTAMP, updated_at TIMESTAMP)");
-        jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY, advisor_code VARCHAR(50), specialization TEXT, max_advisees INT, status VARCHAR(20), work_days VARCHAR(20), assignment_start_date DATE, created_at TIMESTAMP, updated_at TIMESTAMP)");
+        jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY, max_advisees INT, status VARCHAR(20), assignment_start_date DATE, created_at TIMESTAMP, updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, code VARCHAR(50), name VARCHAR(255), status VARCHAR(20))");
         jdbc.execute("CREATE TABLE curriculum_versions (id VARCHAR(36) PRIMARY KEY, major_id VARCHAR(36), version VARCHAR(50), name VARCHAR(100), status VARCHAR(20))");
         jdbc.execute("CREATE TABLE semesters (id VARCHAR(36) PRIMARY KEY, code VARCHAR(50), name VARCHAR(100), start_date DATE, end_date DATE)");
@@ -113,7 +113,7 @@ class AdminUserServiceTest {
 
         AdminUserService.Detail created = users.create(new AdminUserService.CreateAccount(
                 "STUDENT", "new.student@example.com", "New Student", "0900000000",
-                "SE20001", curriculumId, enrollmentSemesterId, graduationSemesterId, 1, null, null, null));
+                "SE20001", curriculumId, enrollmentSemesterId, graduationSemesterId, 1, null));
 
         assertEquals("STUDENT", created.role());
         assertEquals("SE20001", created.userId());
@@ -130,11 +130,14 @@ class AdminUserServiceTest {
     void createsAdvisorAccountWithDefaultCapacity() {
         AdminUserService.Detail created = users.create(new AdminUserService.CreateAccount(
                 "ADVISOR", "new.advisor@example.com", "New Advisor", null,
-                null, null, null, null, null, "ADV20001", "Software Engineering", null));
+                null, null, null, null, null, null));
 
         assertEquals("ADVISOR", created.role());
-        assertEquals("ADV20001", created.advisorCode());
+        assertEquals("new.advisor@example.com", created.userId());
+        assertEquals("new.advisor@example.com", created.email());
         assertEquals(30, jdbc.queryForObject("SELECT max_advisees FROM advisors WHERE user_id = ?",
                 Integer.class, created.id().toString()));
+        assertEquals("ACTIVE", jdbc.queryForObject("SELECT status FROM advisors WHERE user_id = ?",
+                String.class, created.id().toString()));
     }
 }

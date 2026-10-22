@@ -55,8 +55,7 @@ public class AdminUserController {
         AdminUserService.Detail created = users.create(new AdminUserService.CreateAccount(
                 request.role(), request.email(), request.fullName(), request.phone(),
                 request.studentCode(), request.curriculumVersionId(), request.enrollmentSemesterId(),
-                request.expectedGraduationSemesterId(), request.currentSemester(),
-                request.advisorCode(), request.specialization(), request.maxAdvisees()));
+                request.expectedGraduationSemesterId(), request.currentSemester(), request.maxAdvisees()));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -107,8 +106,6 @@ public class AdminUserController {
             UUID enrollmentSemesterId,
             UUID expectedGraduationSemesterId,
             @Positive Integer currentSemester,
-            @Size(max = 50) String advisorCode,
-            String specialization,
             @Positive Integer maxAdvisees) {
     }
 }

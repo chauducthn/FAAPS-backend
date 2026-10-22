@@ -17,7 +17,7 @@ public class CohortAdvisorService {
     public List<CohortAdvisor> list(UUID cohortId) {
         requireCohort(cohortId);
         return jdbc.query("""
-                SELECT ca.advisor_id, a.advisor_code, u.full_name, a.max_advisees,
+                SELECT ca.advisor_id, u.email, u.full_name, a.max_advisees,
                        COUNT(sa.id) AS cohort_students
                 FROM cohort_advisors ca JOIN advisors a ON a.user_id = ca.advisor_id
                 JOIN users u ON u.id = a.user_id
@@ -26,11 +26,11 @@ public class CohortAdvisorService {
                   AND EXISTS (SELECT 1 FROM students s WHERE s.user_id = sa.student_id
                               AND s.curriculum_version_id = ca.cohort_id)
                 WHERE ca.cohort_id = ? AND ca.is_active = TRUE
-                GROUP BY ca.advisor_id, a.advisor_code, u.full_name, a.max_advisees
+                GROUP BY ca.advisor_id, u.email, u.full_name, a.max_advisees
                 ORDER BY u.full_name, ca.advisor_id
                 """, (result, row) -> new CohortAdvisor(
                         UUID.fromString(result.getString("advisor_id")),
-                        result.getString("advisor_code"), result.getString("full_name"),
+                        result.getString("email"), result.getString("full_name"),
                         (Integer) result.getObject("max_advisees"), result.getLong("cohort_students")),
                 cohortId.toString());
     }
@@ -97,6 +97,6 @@ public class CohortAdvisorService {
         if (count == null || count == 0) throw new AdminAssignmentService.AssignmentError("ADVISOR_INACTIVE", "Advisor is not active");
     }
 
-    public record CohortAdvisor(UUID advisorId, String advisorCode, String fullName,
+    public record CohortAdvisor(UUID advisorId, String email, String fullName,
             Integer maxAdvisees, long cohortStudents) {}
 }

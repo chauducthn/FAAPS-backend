@@ -170,12 +170,16 @@ CREATE TABLE `students` (
 
 CREATE TABLE `advisors` (
   `user_id` char(36) PRIMARY KEY,
-  `advisor_code` varchar(50) UNIQUE NOT NULL,
-  `specialization` text,
   `max_advisees` int DEFAULT 30,
   `status` varchar(20) DEFAULT 'ACTIVE' COMMENT 'ACTIVE, INACTIVE, ON_LEAVE',
-  `work_days` varchar(20) COMMENT 'Comma-separated ISO weekdays 1=Monday..7=Sunday',
   `assignment_start_date` date,
+  `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
+  `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
+);
+
+CREATE TABLE `advisor_work_schedules` (
+  `advisor_id` char(36) PRIMARY KEY,
+  `work_days` varchar(20) COMMENT 'Comma-separated ISO weekdays 1=Monday..7=Sunday',
   `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
   `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
 );
@@ -697,6 +701,8 @@ ALTER TABLE `students` ADD FOREIGN KEY (`enrollment_semester_id`) REFERENCES `se
 ALTER TABLE `students` ADD FOREIGN KEY (`expected_graduation_semester_id`) REFERENCES `semesters` (`id`);
 
 ALTER TABLE `advisors` ADD FOREIGN KEY (`user_id`) REFERENCES `users` (`id`);
+ALTER TABLE `advisor_work_schedules` ADD CONSTRAINT `fk_advisor_work_schedules_advisor`
+  FOREIGN KEY (`advisor_id`) REFERENCES `advisors` (`user_id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE `student_advisor_assignments` ADD FOREIGN KEY (`student_id`) REFERENCES `students` (`user_id`);
 
