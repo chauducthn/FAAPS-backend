@@ -10,6 +10,15 @@
 
 Các địa chỉ và tên dịch vụ trên do nhóm cung cấp; hãy kiểm tra health endpoint và trạng thái EC2 trước khi demo. Không đưa mật khẩu RDS, Google OAuth hay file `.env` chứa bí mật lên Git. Tránh thử thao tác xóa/sửa dữ liệu quan trọng trên RDS chung.
 
+### Truy cập web đã deploy
+
+1. Mở [http://56.10.8.193](http://56.10.8.193) trên trình duyệt. Nếu không vào được, kiểm tra EC2/Nginx hoặc hỏi người phụ trách deploy; không cần cài FE/BE để dùng bản web này.
+2. Admin đăng nhập bằng tài khoản được bàn giao và mật khẩu nhận qua kênh riêng. Hệ thống chỉ cho **admin hiện hành** trong `admin_control` thao tác; admin cũ không đăng nhập được sau bàn giao.
+3. Student/Advisor chọn Google nếu OAuth đã được cấu hình cho địa chỉ triển khai. Tài khoản Google student mới có thể chưa có hồ sơ học tập/khóa, nên chưa dùng được đầy đủ các chức năng phân công.
+4. Mỗi thao tác tạo/sửa/xóa trên web này ghi vào **AWS RDS dùng chung**. Chỉ dùng dữ liệu demo được nhóm đồng ý; đăng xuất sau buổi test.
+
+Kiểm tra API nhanh: mở [http://56.10.8.193/api/health](http://56.10.8.193/api/health). Nếu web tải được nhưng API trả `502`, hãy kiểm tra service backend/Nginx; `401` là chưa đăng nhập, `403` là thiếu quyền hoặc CSRF, còn `500` cần xem log backend. HTTP hiện chưa mã hóa; không chia sẻ mật khẩu trên mạng công cộng, nên bổ sung HTTPS cho triển khai lâu dài.
+
 ## 2. Team Frontend — chạy local, dùng backend AWS
 
 Không cần cài hoặc khởi động backend ở máy FE. Cài Node.js/npm rồi chạy:
