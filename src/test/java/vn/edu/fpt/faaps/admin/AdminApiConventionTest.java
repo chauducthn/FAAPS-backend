@@ -459,7 +459,7 @@ class AdminApiConventionTest {
         String courseId = extractJsonString(createdCourse.body(), "id");
 
         // Categories list
-        assertEquals(200, send(adminClient, HttpRequest.newBuilder(baseUrl.resolve("/api/admin/courses/categories")).GET().build()).statusCode());
+        assertEquals(200, send(adminClient, HttpRequest.newBuilder(baseUrl.resolve("/api/admin/course-categories")).GET().build()).statusCode());
 
         // Detail
         assertEquals(200, send(adminClient, HttpRequest.newBuilder(baseUrl.resolve("/api/admin/courses/" + courseId)).GET().build()).statusCode());

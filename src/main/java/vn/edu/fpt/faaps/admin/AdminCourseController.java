@@ -52,11 +52,6 @@ public class AdminCourseController {
         return courses.list(search, status, categoryId, page, size, sort);
     }
 
-    @GetMapping("/categories")
-    public List<AdminCourseService.CategoryItem> categories() {
-        return courses.categories();
-    }
-
     @GetMapping("/{id}")
     public AdminCourseService.CourseDetail detail(@PathVariable UUID id) {
         return courses.detail(id);
