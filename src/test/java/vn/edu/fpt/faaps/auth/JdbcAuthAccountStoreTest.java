@@ -36,6 +36,8 @@ class JdbcAuthAccountStoreTest {
                 )
                 """);
         jdbcTemplate.execute("CREATE TABLE admin_control (control_id TINYINT PRIMARY KEY, current_admin_id VARCHAR(36))");
+        jdbcTemplate.execute("CREATE TABLE students (user_id VARCHAR(36) PRIMARY KEY)");
+        jdbcTemplate.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY)");
         for (String role : new String[] { "ADMIN", "ADVISOR", "STUDENT" }) {
             jdbcTemplate.update("INSERT INTO roles (id, code) VALUES (?, ?)", UUID.randomUUID().toString(), role);
         }
@@ -61,6 +63,7 @@ class JdbcAuthAccountStoreTest {
     @Test
     void verifiedGoogleEmailLinksPreauthorizedAdvisorButNotAdmin() {
         String advisorId = addUser("advisor@example.com", "ADVISOR", "ACTIVE", null, null);
+        jdbcTemplate.update("INSERT INTO advisors (user_id) VALUES (?)", advisorId);
         String adminId = addUser("admin@example.com", "ADMIN", "ACTIVE", null,
                 new BCryptPasswordEncoder().encode("secret"));
 
@@ -74,6 +77,20 @@ class JdbcAuthAccountStoreTest {
         assertThrows(BadCredentialsException.class, () -> accountStore.resolveGoogleAccount(
                 new GoogleIdentity("admin-sub", "admin@example.com", "Admin")));
         assertNull(jdbcTemplate.queryForObject("SELECT external_id FROM users WHERE id = ?", String.class, adminId));
+    }
+
+    @Test
+    void verifiedGoogleEmailLinksProvisionedStudentProfile() {
+        String studentId = addUser("student@example.com", "STUDENT", "ACTIVE", null, null);
+        jdbcTemplate.update("INSERT INTO students (user_id) VALUES (?)", studentId);
+
+        AuthAccount student = accountStore.resolveGoogleAccount(
+                new GoogleIdentity("student-sub", "student@example.com", "Student"));
+
+        assertEquals(studentId, student.id().toString());
+        assertEquals("STUDENT", student.role());
+        assertEquals("student-sub", jdbcTemplate.queryForObject(
+                "SELECT external_id FROM users WHERE id = ?", String.class, studentId));
     }
 
     @Test

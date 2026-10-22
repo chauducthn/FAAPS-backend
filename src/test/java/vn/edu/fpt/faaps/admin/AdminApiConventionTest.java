@@ -79,8 +79,20 @@ class AdminApiConventionTest {
                     role_id VARCHAR(36),
                     email VARCHAR(255) UNIQUE NOT NULL,
                     password_hash VARCHAR(255),
+                    auth_provider VARCHAR(20),
+                    external_id VARCHAR(255),
+                    email_verified_at TIMESTAMP,
                     full_name VARCHAR(255) NOT NULL,
+                    phone VARCHAR(20),
                     status VARCHAR(20) DEFAULT 'ACTIVE'
+                )
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE refresh_tokens (
+                    id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL,
+                    token VARCHAR(500) UNIQUE NOT NULL, expires_at TIMESTAMP NOT NULL,
+                    revoked_at TIMESTAMP, ip_address VARCHAR(45), user_agent VARCHAR(500),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
                 """);
         jdbcTemplate.execute("""
@@ -215,6 +227,7 @@ class AdminApiConventionTest {
         // 1. Unauthenticated requests to admin endpoints return 401
         assertEquals(401, send(anonClient, HttpRequest.newBuilder(baseUrl.resolve("/api/admin/majors")).GET().build()).statusCode());
         assertEquals(401, send(anonClient, HttpRequest.newBuilder(baseUrl.resolve("/api/admin/courses")).GET().build()).statusCode());
+        assertEquals(401, send(anonClient, HttpRequest.newBuilder(baseUrl.resolve("/api/admin/users")).GET().build()).statusCode());
         assertEquals(401, send(anonClient, HttpRequest.newBuilder(baseUrl.resolve("/api/admin/academic-rules")).GET().build()).statusCode());
 
         // 2. Non-admin login attempts to admin login endpoint return 401

@@ -58,20 +58,25 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
         }
 
         Optional<GoogleLinkTarget> existing = jdbcTemplate.query("""
-                SELECT u.id, r.code AS role, u.status, u.external_id, u.password_hash
+                SELECT u.id, r.code AS role, u.status, u.external_id, u.password_hash,
+                       EXISTS (SELECT 1 FROM students s WHERE s.user_id = u.id) AS has_student_profile,
+                       EXISTS (SELECT 1 FROM advisors a WHERE a.user_id = u.id) AS has_advisor_profile
                 FROM users u JOIN roles r ON r.id = u.role_id
                 WHERE u.email = ?
                 """, (resultSet, rowNumber) -> new GoogleLinkTarget(
                 resultSet.getString("id"), resultSet.getString("role"),
                 resultSet.getString("status"), resultSet.getString("external_id"),
-                resultSet.getString("password_hash")), email).stream().findFirst();
+                resultSet.getString("password_hash"), resultSet.getBoolean("has_student_profile"),
+                resultSet.getBoolean("has_advisor_profile")), email).stream().findFirst();
 
         if (existing.isPresent()) {
             GoogleLinkTarget target = existing.get();
             if (!"ACTIVE".equals(target.status())) {
                 throw new DisabledException("Account is not active");
             }
-            if (!"ADVISOR".equals(target.role()) || target.externalId() != null
+            boolean provisionedAdvisor = "ADVISOR".equals(target.role()) && target.hasAdvisorProfile();
+            boolean provisionedStudent = "STUDENT".equals(target.role()) && target.hasStudentProfile();
+            if ((!provisionedAdvisor && !provisionedStudent) || target.externalId() != null
                     || target.passwordHash() != null) {
                 throw new BadCredentialsException("Google account cannot be linked automatically");
             }
@@ -80,8 +85,8 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
                         UPDATE users SET auth_provider = 'GOOGLE', external_id = ?,
                             email_verified_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ? AND external_id IS NULL AND password_hash IS NULL
-                          AND status = 'ACTIVE' AND role_id = (SELECT id FROM roles WHERE code = 'ADVISOR')
-                        """, subject, target.id());
+                          AND status = 'ACTIVE' AND role_id = (SELECT id FROM roles WHERE code = ?)
+                        """, subject, target.id(), target.role());
                 if (updated == 1) {
                     return findByGoogleSubject(subject).orElseThrow();
                 }
@@ -131,6 +136,6 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
     }
 
     private record GoogleLinkTarget(String id, String role, String status,
-            String externalId, String passwordHash) {
+            String externalId, String passwordHash, boolean hasStudentProfile, boolean hasAdvisorProfile) {
     }
 }

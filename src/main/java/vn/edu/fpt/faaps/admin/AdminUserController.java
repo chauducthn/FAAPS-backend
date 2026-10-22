@@ -1,8 +1,11 @@
 package vn.edu.fpt.faaps.admin;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -47,6 +50,16 @@ public class AdminUserController {
         return users.detail(id);
     }
 
+    @PostMapping
+    public ResponseEntity<AdminUserService.Detail> create(@Valid @RequestBody CreateUserRequest request) {
+        AdminUserService.Detail created = users.create(new AdminUserService.CreateAccount(
+                request.role(), request.email(), request.fullName(), request.phone(),
+                request.studentCode(), request.curriculumVersionId(), request.enrollmentSemesterId(),
+                request.expectedGraduationSemesterId(), request.currentSemester(),
+                request.advisorCode(), request.specialization(), request.maxAdvisees()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
     @PatchMapping("/{id}/status")
     public AdminUserService.Detail status(@PathVariable UUID id, @Valid @RequestBody ChangeStatus request,
             @AuthenticationPrincipal AuthSession actor) {
@@ -66,18 +79,36 @@ public class AdminUserController {
     }
 
     @ExceptionHandler(AdminUserService.NotFound.class)
-    public ResponseEntity<ApiError> notFound() {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiError.of("USER_NOT_FOUND", "User not found"));
+    public ResponseEntity<ApiError> notFound(AdminUserService.NotFound exception) {
+        String message = exception.getMessage() == null ? "User not found" : exception.getMessage();
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiError.of("USER_NOT_FOUND", message));
     }
 
     @ExceptionHandler({AdminUserService.Conflict.class, DataIntegrityViolationException.class})
-    public ResponseEntity<ApiError> conflict() {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.of("USER_CONFLICT", "User update conflicts with current data"));
+    public ResponseEntity<ApiError> conflict(RuntimeException exception) {
+        String message = exception instanceof AdminUserService.Conflict && exception.getMessage() != null
+                ? exception.getMessage() : "User data conflicts with an existing account or reference";
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.of("USER_CONFLICT", message));
     }
 
     public record ChangeStatus(@NotBlank String status) {
     }
 
     public record BulkStatus(@NotEmpty List<UUID> userIds, @NotBlank String status) {
+    }
+
+    public record CreateUserRequest(
+            @NotBlank String role,
+            @NotBlank @Email @Size(max = 255) String email,
+            @NotBlank @Size(max = 255) String fullName,
+            @Size(max = 20) String phone,
+            @Size(max = 50) String studentCode,
+            UUID curriculumVersionId,
+            UUID enrollmentSemesterId,
+            UUID expectedGraduationSemesterId,
+            @Positive Integer currentSemester,
+            @Size(max = 50) String advisorCode,
+            String specialization,
+            @Positive Integer maxAdvisees) {
     }
 }

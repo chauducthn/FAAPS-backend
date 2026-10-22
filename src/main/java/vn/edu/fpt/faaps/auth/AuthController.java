@@ -5,14 +5,17 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,10 +30,13 @@ import vn.edu.fpt.faaps.ApiError;
 public class AuthController {
     private final AuthService authService;
     private final SecurityContextRepository securityContextRepository;
+    private final AuthRefreshTokenService refreshTokens;
 
-    public AuthController(AuthService authService, SecurityContextRepository securityContextRepository) {
+    public AuthController(AuthService authService, SecurityContextRepository securityContextRepository,
+            AuthRefreshTokenService refreshTokens) {
         this.authService = authService;
         this.securityContextRepository = securityContextRepository;
+        this.refreshTokens = refreshTokens;
     }
 
     @GetMapping("/csrf")
@@ -48,11 +54,40 @@ public class AuthController {
         } else {
             request.changeSessionId();
         }
+        refreshTokens.issueCookie(session.id(), request, response);
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authService.authentication(session));
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, request, response);
+        response.setHeader("Cache-Control", "no-store");
         return session;
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthSession> refresh(
+            @CookieValue(name = AuthRefreshTokenService.COOKIE_NAME, required = false) String refreshToken,
+            HttpServletRequest request, HttpServletResponse response) {
+        try {
+            UUID userId = refreshTokens.userIdFor(refreshToken);
+            AuthSession session = authService.sessionFor(userId);
+            String rotatedToken = refreshTokens.rotate(refreshToken, userId, request);
+            if (request.getSession(false) == null) {
+                request.getSession(true);
+            } else {
+                request.changeSessionId();
+            }
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(authService.authentication(session));
+            SecurityContextHolder.setContext(context);
+            securityContextRepository.saveContext(context, request, response);
+            refreshTokens.writeCookie(response, rotatedToken);
+            response.setHeader("Cache-Control", "no-store");
+            return ResponseEntity.ok(session);
+        } catch (AuthRefreshTokenService.InvalidRefreshTokenException | AuthenticationException exception) {
+            refreshTokens.revoke(refreshToken);
+            refreshTokens.clearCookie(response);
+            throw new AuthRefreshTokenService.InvalidRefreshTokenException();
+        }
     }
 
     @GetMapping("/me")
@@ -64,6 +99,12 @@ public class AuthController {
     public ResponseEntity<ApiError> invalidCredentials() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ApiError.of("INVALID_CREDENTIALS", "Invalid credentials"));
+    }
+
+    @ExceptionHandler(AuthRefreshTokenService.InvalidRefreshTokenException.class)
+    public ResponseEntity<ApiError> invalidRefreshToken() {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiError.of("INVALID_REFRESH_TOKEN", "Refresh token is invalid, expired, or revoked"));
     }
 
     @ExceptionHandler(DisabledException.class)

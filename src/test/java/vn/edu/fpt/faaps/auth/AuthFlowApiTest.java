@@ -2,8 +2,12 @@ package vn.edu.fpt.faaps.auth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
 import java.net.CookieManager;
+import java.net.HttpCookie;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -31,6 +35,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 class AuthFlowApiTest {
     @MockitoBean
     private JdbcTemplate jdbcTemplate;
+
+    @MockitoBean
+    private AuthRefreshTokenService refreshTokens;
 
     @Autowired
     private Environment environment;
@@ -77,6 +84,49 @@ class AuthFlowApiTest {
         accountStore.account.set(new AuthAccount(admin.id(), admin.email(), admin.fullName(),
                 "ADMIN", "SUSPENDED", admin.passwordHash()));
         assertEquals(401, get(client, baseUrl.resolve("/api/auth/me")).statusCode());
+    }
+
+    @Test
+    void refreshEndpointRotatesRefreshCookieAndReturns401ForInvalidToken() throws Exception {
+        URI baseUrl = URI.create("http://localhost:" + environment.getRequiredProperty("local.server.port"));
+        AuthAccount admin = new AuthAccount(UUID.randomUUID(), "admin@example.com", "Admin",
+                "ADMIN", "ACTIVE", passwordEncoder.encode("secret"));
+        accountStore.account.set(admin);
+        when(refreshTokens.userIdFor("valid-refresh-token")).thenReturn(admin.id());
+        when(refreshTokens.rotate(eq("valid-refresh-token"), eq(admin.id()), any()))
+                .thenReturn("rotated-refresh-token");
+
+        CookieManager cookieManager = new CookieManager();
+        HttpClient client = HttpClient.newBuilder().cookieHandler(cookieManager).build();
+        String csrfToken = getCsrfToken(client, baseUrl);
+        addRefreshCookie(cookieManager, baseUrl, "valid-refresh-token");
+        HttpRequest refreshRequest = HttpRequest.newBuilder(baseUrl.resolve("/api/auth/refresh"))
+                .header("X-XSRF-TOKEN", csrfToken)
+                .POST(HttpRequest.BodyPublishers.noBody()).build();
+
+        HttpResponse<String> refreshed = send(client, refreshRequest);
+        assertEquals(200, refreshed.statusCode(), refreshed.body());
+        assertTrue(refreshed.body().contains("\"role\":\"ADMIN\""));
+        assertEquals(200, get(client, baseUrl.resolve("/api/auth/me")).statusCode());
+
+        CookieManager invalidCookieManager = new CookieManager();
+        HttpClient invalidClient = HttpClient.newBuilder().cookieHandler(invalidCookieManager).build();
+        String invalidCsrf = getCsrfToken(invalidClient, baseUrl);
+        addRefreshCookie(invalidCookieManager, baseUrl, "expired-refresh-token");
+        when(refreshTokens.userIdFor("expired-refresh-token"))
+                .thenThrow(new AuthRefreshTokenService.InvalidRefreshTokenException());
+        HttpRequest invalidRefresh = HttpRequest.newBuilder(baseUrl.resolve("/api/auth/refresh"))
+                .header("X-XSRF-TOKEN", invalidCsrf)
+                .POST(HttpRequest.BodyPublishers.noBody()).build();
+        assertEquals(401, send(invalidClient, invalidRefresh).statusCode());
+    }
+
+    private void addRefreshCookie(CookieManager cookieManager, URI baseUrl, String value) {
+        HttpCookie cookie = new HttpCookie(AuthRefreshTokenService.COOKIE_NAME, value);
+        cookie.setPath("/api/auth");
+        cookie.setDomain("localhost");
+        cookie.setVersion(0);
+        cookieManager.getCookieStore().add(baseUrl.resolve("/api/auth/refresh"), cookie);
     }
 
     private String getCsrfToken(HttpClient client, URI baseUrl) throws Exception {

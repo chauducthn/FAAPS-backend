@@ -19,13 +19,16 @@ import org.springframework.stereotype.Component;
 public class GoogleLoginSuccessHandler implements AuthenticationSuccessHandler {
     private final AuthService authService;
     private final SecurityContextRepository securityContextRepository;
+    private final AuthRefreshTokenService refreshTokens;
     private final String frontendUrl;
 
     public GoogleLoginSuccessHandler(AuthService authService,
             SecurityContextRepository securityContextRepository,
+            AuthRefreshTokenService refreshTokens,
             @Value("${faaps.frontend-url:http://localhost:5173}") String frontendUrl) {
         this.authService = authService;
         this.securityContextRepository = securityContextRepository;
+        this.refreshTokens = refreshTokens;
         this.frontendUrl = frontendUrl;
     }
 
@@ -43,6 +46,7 @@ public class GoogleLoginSuccessHandler implements AuthenticationSuccessHandler {
                     googleUser.getFullName());
             AuthSession session = authService.loginGoogle(identity);
             request.changeSessionId();
+            refreshTokens.issueCookie(session.id(), request, response);
             SecurityContext context = SecurityContextHolder.createEmptyContext();
             context.setAuthentication(authService.authentication(session));
             SecurityContextHolder.setContext(context);

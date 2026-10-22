@@ -44,6 +44,7 @@ public class SecurityConfig {
             ObjectProvider<AuthAccountStore> accountStores,
             ObjectProvider<DataSource> dataSources,
             SecurityContextRepository securityContextRepository,
+            AuthRefreshTokenService refreshTokens,
             GoogleLoginSuccessHandler googleLoginSuccessHandler,
             ObjectProvider<ClientRegistrationRepository> clientRegistrations,
             @Value("${faaps.frontend-url:http://localhost:5173}") String frontendUrl) throws Exception {
@@ -53,7 +54,7 @@ public class SecurityConfig {
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                 .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()));
         http.authorizeHttpRequests(requests -> requests
-                .requestMatchers("/api/health", "/api/auth/csrf", "/api/auth/admin/login",
+                .requestMatchers("/api/health", "/api/auth/csrf", "/api/auth/admin/login", "/api/auth/refresh",
                         "/oauth2/**", "/login/oauth2/**",
                         "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
@@ -71,8 +72,11 @@ public class SecurityConfig {
         http.logout(logout -> logout.logoutUrl("/api/auth/logout")
                 .invalidateHttpSession(true)
                 .clearAuthentication(true)
-                .logoutSuccessHandler((request, response, authentication) ->
-                        response.setStatus(HttpServletResponse.SC_NO_CONTENT)));
+                .logoutSuccessHandler((request, response, authentication) -> {
+                    refreshTokens.revokeFromCookie(request);
+                    refreshTokens.clearCookie(response);
+                    response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+                }));
         if (clientRegistrations.getIfAvailable() != null) {
             http.oauth2Login(oauth -> oauth
                     .successHandler(googleLoginSuccessHandler)

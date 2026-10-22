@@ -1,13 +1,13 @@
 package vn.edu.fpt.faaps.auth;
 
 import java.util.List;
+import java.util.UUID;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
-
 public class AuthService {
     private final AuthAccountStore accountStore;
     private final PasswordEncoder passwordEncoder;
@@ -30,6 +30,12 @@ public class AuthService {
 
     public AuthSession loginGoogle(GoogleIdentity identity) {
         return activeSession(accountStore.resolveGoogleAccount(identity));
+    }
+
+    public AuthSession sessionFor(UUID userId) {
+        AuthAccount account = accountStore.findById(userId)
+                .orElseThrow(() -> new BadCredentialsException("Account is no longer available"));
+        return activeSession(account);
     }
 
     private AuthSession activeSession(AuthAccount account) {

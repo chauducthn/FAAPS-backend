@@ -2,8 +2,10 @@ server:
   port: 8080
   servlet:
     session:
+      timeout: ${FAAPS_SESSION_TIMEOUT:30m}
       cookie:
         http-only: true
+        secure: ${FAAPS_AUTH_COOKIE_SECURE:false}
         same-site: lax
 spring:
   application:
@@ -18,6 +20,9 @@ spring:
     open-in-view: false
 faaps:
   frontend-url: ${FAAPS_FRONTEND_URL:http://localhost:5173}
+  auth:
+    refresh-token-lifetime: ${FAAPS_REFRESH_TOKEN_LIFETIME:14d}
+    cookie-secure: ${FAAPS_AUTH_COOKIE_SECURE:false}
 springdoc:
   swagger-ui:
     csrf:
