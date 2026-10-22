@@ -72,6 +72,33 @@ class AuthApiTest {
         assertEquals(204, send(client, logout).statusCode());
     }
 
+    @Test
+    void corsPreflightAllowsOnlyConfiguredOriginsAndSupportsPatch() throws Exception {
+        int port = Integer.parseInt(environment.getRequiredProperty("local.server.port"));
+        URI url = URI.create("http://localhost:" + port + "/api/admin/notifications/read-all");
+        HttpClient client = HttpClient.newHttpClient();
+
+        for (String origin : new String[] {"http://localhost:5173", "http://56.10.8.193"}) {
+            HttpRequest request = HttpRequest.newBuilder(url)
+                    .header("Origin", origin)
+                    .header("Access-Control-Request-Method", "PATCH")
+                    .header("Access-Control-Request-Headers", "content-type,x-xsrf-token")
+                    .method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build();
+            HttpResponse<String> response = send(client, request);
+            assertEquals(200, response.statusCode());
+            assertEquals(origin, response.headers().firstValue("Access-Control-Allow-Origin").orElse(null));
+            assertEquals("true", response.headers().firstValue("Access-Control-Allow-Credentials").orElse(null));
+            assertTrue(response.headers().firstValue("Access-Control-Allow-Methods").orElse("").contains("PATCH"));
+        }
+
+        HttpRequest denied = HttpRequest.newBuilder(url)
+                .header("Origin", "http://untrusted.example")
+                .header("Access-Control-Request-Method", "PATCH")
+                .method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build();
+        HttpResponse<String> response = send(client, denied);
+        assertTrue(response.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+    }
+
     private HttpResponse<String> send(HttpClient client, HttpRequest request) throws Exception {
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }

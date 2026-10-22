@@ -7,6 +7,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -47,6 +48,7 @@ public class SecurityConfig {
             ObjectProvider<ClientRegistrationRepository> clientRegistrations,
             @Value("${faaps.frontend-url:http://localhost:5173}") String frontendUrl) throws Exception {
         http.securityContext(context -> context.securityContextRepository(securityContextRepository));
+        http.cors(Customizer.withDefaults());
         http.csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                 .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()));
