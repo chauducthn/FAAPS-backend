@@ -16,6 +16,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
@@ -130,6 +131,19 @@ class AdminCourseServiceTest {
                 null, null, null, "ACTIVE", List.of(new AdminCourseService.PrerequisiteInput(prf.id(), 1, "PREREQUISITE", null)));
 
         assertThrows(AdminCourseService.Conflict.class, () -> courses.delete(prf.id()));
+    }
+
+    @Test
+    void deletingCourseInCurriculumReturnsConflictAndPreservesCourse() {
+        AdminCourseService.CourseDetail course = courses.create("MAT101", "Mathematics", 3, catGeneral,
+                null, null, null, "ACTIVE", List.of());
+        jdbc.update("INSERT INTO curriculum_courses (id, curriculum_version_id, course_id) VALUES (?, ?, ?)",
+                UUID.randomUUID().toString(), UUID.randomUUID().toString(), course.id().toString());
+
+        AdminCourseService.Conflict conflict = assertThrows(AdminCourseService.Conflict.class,
+                () -> courses.delete(course.id()));
+        assertEquals(HttpStatus.CONFLICT, new AdminCourseController(courses).conflict(conflict).getStatusCode());
+        assertEquals(course.id(), courses.detail(course.id()).id());
     }
 
     @Test

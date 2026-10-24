@@ -58,9 +58,7 @@ public class AdminUserService {
         if (search != null && !search.isBlank()) {
             String term = "%" + search.strip().toLowerCase(Locale.ROOT) + "%";
             where.append(" AND (LOWER(u.full_name) LIKE ? OR LOWER(u.email) LIKE ? OR LOWER(s.student_code) LIKE ?)");
-            for (int index = 0; index < 3; index++) {
-                parameters.add(term);
-            }
+            parameters.addAll(List.of(term, term, term));
         }
         String from = " FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN students s ON s.user_id = u.id";
         Long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, parameters.toArray());
@@ -99,24 +97,50 @@ public class AdminUserService {
 
     @Transactional
     public Detail create(CreateAccount input) {
+        if (input == null) {
+            throw new IllegalArgumentException("account is required");
+        }
         String role = input.role() == null ? "" : input.role().strip().toUpperCase(Locale.ROOT);
         if (!List.of("STUDENT", "ADVISOR").contains(role)) {
             throw new IllegalArgumentException("role must be STUDENT or ADVISOR");
         }
-        if (input.email() == null || input.email().isBlank() || input.email().length() > 255) {
-            throw new IllegalArgumentException("email is required and must be at most 255 characters");
-        }
-        if (input.fullName() == null || input.fullName().isBlank() || input.fullName().length() > 255) {
-            throw new IllegalArgumentException("fullName is required and must be at most 255 characters");
-        }
+        requireText(input.email(), "email", 255);
+        requireText(input.fullName(), "fullName", 255);
         if (input.phone() != null && input.phone().length() > 20) {
             throw new IllegalArgumentException("phone must be at most 20 characters");
         }
 
         String email = input.email().strip().toLowerCase(Locale.ROOT);
-        UUID userId = null;
-        boolean completeGoogleStudent = false;
-        List<ExistingAccount> existing = jdbc.query("""
+        ExistingAccount existing = findByEmailForUpdate(email);
+        boolean completeGoogleStudent = existing != null && "STUDENT".equals(role)
+                && "STUDENT".equals(existing.role()) && existing.externalId() != null
+                && !existing.hasStudentProfile() && "ACTIVE".equals(existing.status());
+        if (existing != null && !completeGoogleStudent) {
+            throw new Conflict("An account with this email already exists");
+        }
+        if ("STUDENT".equals(role)) {
+            validateStudentInput(input);
+        } else {
+            validateAdvisorInput(input);
+        }
+        UUID userId = completeGoogleStudent ? existing.id() : UUID.randomUUID();
+        try {
+            saveUser(userId, email, role, input, completeGoogleStudent);
+            if ("STUDENT".equals(role)) {
+                addStudentProfile(userId, input);
+            } else {
+                saveAdvisorProfile(userId, input.maxAdvisees());
+            }
+        } catch (DuplicateKeyException exception) {
+            throw new Conflict("Email or student code already exists");
+        } catch (DataIntegrityViolationException exception) {
+            throw new Conflict("Account references invalid academic data or conflicts with an existing record");
+        }
+        return detail(userId);
+    }
+
+    private ExistingAccount findByEmailForUpdate(String email) {
+        return jdbc.query("""
                 SELECT u.id, r.code AS role, u.external_id, u.status,
                        EXISTS (SELECT 1 FROM students s WHERE s.user_id = u.id) AS has_student_profile
                 FROM users u JOIN roles r ON r.id = u.role_id
@@ -124,60 +148,38 @@ public class AdminUserService {
                 FOR UPDATE
                 """, (rs, rowNum) -> new ExistingAccount(UUID.fromString(rs.getString("id")),
                 rs.getString("role"), rs.getString("external_id"), rs.getString("status"),
-                rs.getBoolean("has_student_profile")), email);
-        if (!existing.isEmpty()) {
-            ExistingAccount account = existing.get(0);
-            completeGoogleStudent = "STUDENT".equals(role) && "STUDENT".equals(account.role())
-                    && account.externalId() != null && !account.hasStudentProfile()
-                    && "ACTIVE".equals(account.status());
-            if (!completeGoogleStudent) {
-                throw new Conflict("An account with this email already exists");
-            }
-            userId = account.id();
-        }
+                rs.getBoolean("has_student_profile")), email).stream().findFirst().orElse(null);
+    }
 
-        if ("STUDENT".equals(role)) {
-            validateStudentInput(input);
-        } else {
-            validateAdvisorInput(input);
+    private void saveUser(UUID userId, String email, String role, CreateAccount input, boolean existingGoogleStudent) {
+        if (existingGoogleStudent) {
+            jdbc.update("UPDATE users SET full_name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    input.fullName().strip(), input.phone(), userId.toString());
+            return;
         }
-
-        UUID resolvedUserId = userId == null ? UUID.randomUUID() : userId;
-        try {
-            if (!completeGoogleStudent) {
-                Integer roleCount = jdbc.queryForObject("SELECT COUNT(*) FROM roles WHERE code = ?", Integer.class, role);
-                if (roleCount == null || roleCount == 0) {
-                    throw new Conflict("Role " + role + " is not configured");
-                }
-                int inserted = jdbc.update("""
+        int inserted = jdbc.update("""
                         INSERT INTO users (id, role_id, email, auth_provider, full_name, phone, status,
                                            created_at, updated_at)
                         SELECT ?, r.id, ?, 'GOOGLE', ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         FROM roles r WHERE r.code = ?
-                        """, resolvedUserId.toString(), email, input.fullName().strip(), input.phone(), role);
-                if (inserted != 1) {
-                    throw new Conflict("Role " + role + " is not configured");
-                }
-            } else {
-                jdbc.update("UPDATE users SET full_name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                        input.fullName().strip(), input.phone(), resolvedUserId.toString());
-            }
+                        """, userId.toString(), email, input.fullName().strip(), input.phone(), role);
+        if (inserted != 1) {
+            throw new Conflict("Role " + role + " is not configured");
+        }
+    }
 
-            if ("STUDENT".equals(role)) {
-                addStudentProfile(resolvedUserId, input);
-            } else {
-                int maxAdvisees = input.maxAdvisees() == null ? 30 : input.maxAdvisees();
-                jdbc.update("""
+    private void saveAdvisorProfile(UUID userId, Integer requestedMaxAdvisees) {
+        int maxAdvisees = requestedMaxAdvisees == null ? 30 : requestedMaxAdvisees;
+        jdbc.update("""
                         INSERT INTO advisors (user_id, max_advisees, status, created_at, updated_at)
                         VALUES (?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        """, resolvedUserId.toString(), maxAdvisees);
-            }
-        } catch (DuplicateKeyException exception) {
-            throw new Conflict("Email or student code already exists");
-        } catch (DataIntegrityViolationException exception) {
-            throw new Conflict("Account references invalid academic data or conflicts with an existing record");
+                        """, userId.toString(), maxAdvisees);
+    }
+
+    private void requireText(String value, String field, int maxLength) {
+        if (value == null || value.isBlank() || value.length() > maxLength) {
+            throw new IllegalArgumentException(field + " is required and must be at most " + maxLength + " characters");
         }
-        return detail(resolvedUserId);
     }
 
     private void validateStudentInput(CreateAccount input) {
@@ -241,17 +243,19 @@ public class AdminUserService {
 
     @Transactional
     public int changeStatus(List<UUID> userIds, String status, UUID actorId) {
-        if (!List.of("ACTIVE", "SUSPENDED").contains(status)) {
+        if (status == null || !List.of("ACTIVE", "SUSPENDED").contains(status)) {
             throw new IllegalArgumentException("status must be ACTIVE or SUSPENDED");
         }
-        if (userIds.size() > 100 || userIds.stream().distinct().count() != userIds.size()) {
-            throw new IllegalArgumentException("userIds must be unique and contain at most 100 users");
+        if (userIds == null || userIds.isEmpty() || userIds.size() > 100
+                || userIds.stream().anyMatch(java.util.Objects::isNull)
+                || userIds.stream().distinct().count() != userIds.size()) {
+            throw new IllegalArgumentException("userIds must contain 1 to 100 unique, non-null users");
         }
         if ("SUSPENDED".equals(status) && userIds.contains(actorId)) {
             throw new Conflict();
         }
         int changed = 0;
-        for (UUID id : userIds) {
+        for (UUID id : userIds.stream().sorted().toList()) {
             List<String> current = jdbc.query("SELECT status FROM users WHERE id = ? FOR UPDATE",
                     (result, row) -> result.getString(1), id.toString());
             if (current.isEmpty()) {

@@ -33,7 +33,7 @@ try {
     $temporaryFile = New-TemporaryFile
     [IO.File]::WriteAllText($temporaryFile.FullName, $source, [Text.UTF8Encoding]::new($false))
     $sourcePath = $temporaryFile.FullName.Replace('\', '/')
-    & $mysql @connection '--abort-source-on-error' "--execute=SOURCE $sourcePath"
+    & $mysql @connection "--execute=SOURCE $sourcePath"
     if ($LASTEXITCODE -ne 0) { throw 'Migration failed; inspect admin_control before retrying.' }
     & $mysql @connection '--skip-column-names' '--execute=SELECT control_id, current_admin_id FROM admin_control;'
     if ($LASTEXITCODE -ne 0) { throw 'Migration ran but verification failed.' }

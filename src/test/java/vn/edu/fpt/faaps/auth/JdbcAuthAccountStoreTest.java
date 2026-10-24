@@ -122,12 +122,14 @@ class JdbcAuthAccountStoreTest {
         String successorId = addUser("successor@example.com", "ADMIN", "ACTIVE", null, passwordHash);
         jdbcTemplate.update("INSERT INTO admin_control VALUES (1, ?)", originalId);
         assertEquals(originalId, accountStore.findAdminByEmail("original@example.com").orElseThrow().id().toString());
+        assertEquals(originalId, accountStore.findAdminByEmail("admin").orElseThrow().id().toString());
         assertNull(accountStore.findAdminByEmail("successor@example.com").orElse(null));
 
         jdbcTemplate.update("UPDATE admin_control SET current_admin_id = ? WHERE control_id = 1", successorId);
         assertNull(accountStore.findById(UUID.fromString(originalId)).orElse(null));
         assertNull(accountStore.findAdminByEmail("original@example.com").orElse(null));
         assertEquals(successorId, accountStore.findAdminByEmail("successor@example.com").orElseThrow().id().toString());
+        assertEquals(successorId, accountStore.findAdminByEmail("admin").orElseThrow().id().toString());
     }
 
     private String addUser(String email, String role, String status, String externalId, String passwordHash) {

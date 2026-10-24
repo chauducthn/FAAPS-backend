@@ -97,6 +97,14 @@ class AdminUserServiceTest {
     }
 
     @Test
+    void rejectsInvalidBulkStatusInputsWithoutNullPointerException() {
+        assertThrows(IllegalArgumentException.class, () -> users.changeStatus(List.of(studentId), null, adminId));
+        assertThrows(IllegalArgumentException.class, () -> users.changeStatus(null, "ACTIVE", adminId));
+        assertThrows(IllegalArgumentException.class, () ->
+                users.changeStatus(java.util.Arrays.asList(studentId, null), "ACTIVE", adminId));
+    }
+
+    @Test
     void createsStudentAccountAndAcademicProfileAtomically() {
         UUID majorId = UUID.randomUUID();
         UUID curriculumId = UUID.randomUUID();

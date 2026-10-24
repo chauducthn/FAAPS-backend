@@ -24,7 +24,7 @@ public class AdminCurriculumService {
         this.jdbc = jdbc;
     }
 
-    public Page list(UUID majorId, String status, String search, int page, int size) {
+    public Page list(UUID majorId, String status, Boolean isCurrent, String search, int page, int size) {
         validatePage(page, size);
         String normalizedStatus = normalizeOptionalStatus(status);
         StringBuilder where = new StringBuilder(" WHERE 1 = 1");
@@ -37,6 +37,10 @@ public class AdminCurriculumService {
         if (normalizedStatus != null) {
             where.append(" AND cv.status = ?");
             params.add(normalizedStatus);
+        }
+        if (isCurrent != null) {
+            where.append(" AND COALESCE(cv.is_current, FALSE) = ?");
+            params.add(isCurrent);
         }
         if (search != null && !search.isBlank()) {
             where.append(" AND (LOWER(cv.version) LIKE ? OR LOWER(cv.name) LIKE ? OR LOWER(m.code) LIKE ? OR LOWER(m.name) LIKE ?)");
@@ -129,10 +133,15 @@ public class AdminCurriculumService {
             throw new IllegalArgumentException("An inactive curriculum cannot be current");
         }
 
-        CurriculumItem old = lockCurriculum(id);
+        CurriculumItem observed = detail(id);
         requireMajor(input.majorId());
         validateSemesters(input.effectiveFromSemesterId(), input.effectiveToSemesterId());
-        lockMajors(List.of(old.majorId(), input.majorId()));
+        // Keep the lock order consistent with create(): major rows before curriculum rows.
+        lockMajors(List.of(observed.majorId(), input.majorId()));
+        CurriculumItem old = lockCurriculum(id);
+        if (!old.majorId().equals(observed.majorId())) {
+            throw new Conflict("Curriculum changed while this update was being prepared; retry the request");
+        }
         try {
             if (current) {
                 clearCurrent(input.majorId(), id);
@@ -247,6 +256,7 @@ public class AdminCurriculumService {
                        st.end_date AS effective_to_date, cv.description,
                        COALESCE(cv.is_current, FALSE) AS is_current, cv.status,
                        (SELECT COUNT(*) FROM curriculum_courses cc WHERE cc.curriculum_version_id = cv.id) AS course_count,
+                       (SELECT COALESCE(SUM(c.credits), 0) FROM curriculum_courses cc JOIN courses c ON c.id = cc.course_id WHERE cc.curriculum_version_id = cv.id) AS total_credits,
                        cv.created_at, cv.updated_at
                 FROM curriculum_versions cv
                 JOIN majors m ON m.id = cv.major_id
@@ -263,7 +273,7 @@ public class AdminCurriculumService {
                 rs.getString("effective_from_semester_code"), localDate(rs, "effective_from_date"),
                 uuidOrNull(rs.getString("effective_to_semester_id")), rs.getString("effective_to_semester_code"),
                 localDate(rs, "effective_to_date"), rs.getString("description"), rs.getBoolean("is_current"),
-                rs.getString("status"), rs.getInt("course_count"), localDateTime(rs, "created_at"),
+                rs.getString("status"), rs.getInt("course_count"), rs.getInt("total_credits"), localDateTime(rs, "created_at"),
                 localDateTime(rs, "updated_at"));
     }
 
@@ -401,7 +411,7 @@ public class AdminCurriculumService {
             String name, UUID effectiveFromSemesterId, String effectiveFromSemesterCode, LocalDate effectiveFromDate,
             UUID effectiveToSemesterId, String effectiveToSemesterCode, LocalDate effectiveToDate,
             String description, boolean isCurrent, String status, int courseCount,
-            LocalDateTime createdAt, LocalDateTime updatedAt) {
+            int totalCredits, LocalDateTime createdAt, LocalDateTime updatedAt) {
     }
 
     public record CurriculumCourseItem(UUID id, UUID curriculumId, UUID courseId, String courseCode,

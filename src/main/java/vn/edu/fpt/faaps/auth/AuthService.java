@@ -18,7 +18,7 @@ public class AuthService {
     }
 
     public AuthSession loginAdmin(String email, String password) {
-        String loginEmail = email.strip().equalsIgnoreCase("admin") ? "admin@faaps.local" : email.strip();
+        String loginEmail = email.strip().equalsIgnoreCase("admin") ? "admin" : email.strip();
         AuthAccount account = accountStore.findAdminByEmail(loginEmail)
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
         if (!"ADMIN".equals(account.role()) || account.passwordHash() == null

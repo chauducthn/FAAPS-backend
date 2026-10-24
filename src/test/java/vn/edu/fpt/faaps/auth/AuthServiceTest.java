@@ -39,12 +39,12 @@ class AuthServiceTest {
 
     @Test
     void adminLoginAcceptsAdminAlias() {
-        AuthAccount admin = new AuthAccount(UUID.randomUUID(), "admin@faaps.local", "Admin",
+        AuthAccount admin = new AuthAccount(UUID.randomUUID(), "real-admin@example.com", "Admin",
                 "ADMIN", "ACTIVE", passwordEncoder.encode("secret"));
-        when(accountStore.findAdminByEmail(admin.email())).thenReturn(Optional.of(admin));
+        when(accountStore.findAdminByEmail("admin")).thenReturn(Optional.of(admin));
 
         assertEquals("ADMIN", authService.loginAdmin("admin", "secret").role());
-        verify(accountStore).findAdminByEmail("admin@faaps.local");
+        verify(accountStore).findAdminByEmail("admin");
     }
 
     @Test
