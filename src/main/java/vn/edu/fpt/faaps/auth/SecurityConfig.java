@@ -13,6 +13,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -78,7 +79,12 @@ public class SecurityConfig {
                     response.setStatus(HttpServletResponse.SC_NO_CONTENT);
                 }));
         if (clientRegistrations.getIfAvailable() != null) {
+            DefaultOAuth2AuthorizationRequestResolver resolver = new DefaultOAuth2AuthorizationRequestResolver(
+                    clientRegistrations.getIfAvailable(), "/oauth2/authorization");
+            resolver.setAuthorizationRequestCustomizer(builder ->
+                    builder.additionalParameters(parameters -> parameters.put("prompt", "select_account")));
             http.oauth2Login(oauth -> oauth
+                    .authorizationEndpoint(endpoint -> endpoint.authorizationRequestResolver(resolver))
                     .successHandler(googleLoginSuccessHandler)
                     .failureHandler((request, response, exception) ->
                             response.sendRedirect(frontendUrl + "/login?error=google-sign-in-failed")));

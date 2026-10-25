@@ -40,5 +40,5 @@ public class StudentAdvisingController {
     }
 
     public record AdvisingRequest(@NotBlank @Size(max = 255) String title,
-            @NotBlank String description) {}
+            @NotBlank @Size(max = 10000) String description) {}
 }
