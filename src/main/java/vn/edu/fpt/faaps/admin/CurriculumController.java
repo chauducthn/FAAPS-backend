@@ -24,14 +24,20 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.MediaType;
+import java.io.IOException;
 
 @RestController
 @RequestMapping("/api/admin/curriculums")
 public class CurriculumController {
     private final AdminCurriculumService curriculums;
+    private final CurriculumImportService imports;
 
-    public CurriculumController(AdminCurriculumService curriculums) {
+    public CurriculumController(AdminCurriculumService curriculums, CurriculumImportService imports) {
         this.curriculums = curriculums;
+        this.imports = imports;
     }
 
     @GetMapping
@@ -84,6 +90,35 @@ public class CurriculumController {
                 .body(ApiResponse.success("Courses added to curriculum", added));
     }
 
+    @PatchMapping("/{id}/courses/{courseId}")
+    public ApiResponse<AdminCurriculumService.CurriculumCourseItem> updateCourse(
+            @PathVariable UUID id, @PathVariable UUID courseId,
+            @Valid @RequestBody UpdateCurriculumCourseRequest request) {
+        return ApiResponse.success("Curriculum course updated", curriculums.updateCourse(
+                id, courseId, request.semesterNumber(), request.isMandatory(), request.groupName()));
+    }
+
+    @DeleteMapping("/{id}/courses/{courseId}")
+    public ApiResponse<Void> removeCourse(@PathVariable UUID id, @PathVariable UUID courseId) {
+        curriculums.removeCourse(id, courseId);
+        return ApiResponse.success("Course removed from curriculum", null);
+    }
+
+    @PostMapping(value = "/{id}/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public CurriculumImportService.Preview previewImport(@PathVariable UUID id,
+            @RequestPart("file") MultipartFile file) throws IOException {
+        curriculums.detail(id);
+        if (file.isEmpty()) throw new IllegalArgumentException("Uploaded file is empty");
+        return imports.preview(file.getInputStream());
+    }
+
+    @PostMapping("/{id}/import/confirm")
+    public Map<String, Object> confirmImport(@PathVariable UUID id,
+            @RequestBody CurriculumImportService.Preview preview) {
+        int count = imports.confirm(id, preview.items());
+        return Map.of("importedCount", count, "success", true);
+    }
+
     @PatchMapping("/{id}/status")
     public ApiResponse<AdminCurriculumService.CurriculumItem> updateStatus(
             @PathVariable UUID id, @Valid @RequestBody UpdateStatusRequest request) {
@@ -116,6 +151,9 @@ public class CurriculumController {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                 "success", false, "code", "CONFLICT", "message", exception.getMessage()));
     }
+
+    public record UpdateCurriculumCourseRequest(
+            @NotNull Integer semesterNumber, Boolean isMandatory, @Size(max = 100) String groupName) {}
 
     public record CreateCurriculumRequest(
             @NotNull UUID majorId,

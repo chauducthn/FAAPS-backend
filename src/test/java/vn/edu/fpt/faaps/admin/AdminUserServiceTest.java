@@ -1,5 +1,15 @@
 package vn.edu.fpt.faaps.admin;
 
+import vn.edu.fpt.faaps.user.service.AdminUserService;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.CreateAccount;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Page;
+import vn.edu.fpt.faaps.user.service.UserExceptions.Conflict;
+import vn.edu.fpt.faaps.user.service.UserExceptions.NotFound;
+import vn.edu.fpt.faaps.user.repository.AdminUserRepository;
+import vn.edu.fpt.faaps.user.service.UserRoleService;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -34,7 +44,8 @@ class AdminUserServiceTest {
         jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, code VARCHAR(50), name VARCHAR(255), status VARCHAR(20))");
         jdbc.execute("CREATE TABLE curriculum_versions (id VARCHAR(36) PRIMARY KEY, major_id VARCHAR(36), version VARCHAR(50), name VARCHAR(100), status VARCHAR(20))");
         jdbc.execute("CREATE TABLE semesters (id VARCHAR(36) PRIMARY KEY, code VARCHAR(50), name VARCHAR(100), start_date DATE, end_date DATE)");
-        jdbc.execute("CREATE TABLE student_advisor_assignments (student_id VARCHAR(36), status VARCHAR(20), end_date DATE)");
+        jdbc.execute("CREATE TABLE student_advisor_assignments (student_id VARCHAR(36), advisor_id VARCHAR(36), status VARCHAR(20), end_date DATE, updated_at TIMESTAMP)");
+        jdbc.execute("CREATE TABLE cohort_advisors (cohort_id VARCHAR(36), advisor_id VARCHAR(36))");
         String adminRole = UUID.randomUUID().toString();
         String studentRole = UUID.randomUUID().toString();
         String advisorRole = UUID.randomUUID().toString();
@@ -47,12 +58,13 @@ class AdminUserServiceTest {
                 adminId.toString(), adminRole);
         jdbc.update("INSERT INTO users (id, role_id, email, full_name, status) VALUES (?, ?, 'student@example.com', 'Student', 'ACTIVE')",
                 studentId.toString(), studentRole);
-        users = new AdminUserService(jdbc);
+        AdminUserRepository repository = new AdminUserRepository(jdbc);
+        users = new AdminUserService(jdbc, repository, new UserRoleService(jdbc, repository));
     }
 
     @Test
     void listsUsersWithoutProfilesAndFiltersByRole() {
-        AdminUserService.Page page = users.list("STUDENT", "ACTIVE", "student", null, 0, 20, "userId,asc");
+        Page page = users.list("STUDENT", "ACTIVE", "student", null, 0, 20, "userId,asc");
         assertEquals(1, page.totalElements());
         assertEquals(studentId, page.items().get(0).id());
         assertEquals("student@example.com", page.items().get(0).userId());
@@ -80,20 +92,45 @@ class AdminUserServiceTest {
         assertEquals(List.of("AI", "SE"), majors.stream().map(AdminOverviewController.Major::code).toList());
         assertEquals(softwareMajor, majors.get(1).id());
 
-        AdminUserService.Page filtered = users.list("STUDENT", null, null, softwareMajor,
+        Page filtered = users.list("STUDENT", null, null, softwareMajor,
                 0, 20, "userId,asc");
         assertEquals(1, filtered.totalElements());
         assertEquals(studentId, filtered.items().get(0).id());
-        assertEquals(3, users.list(null, null, null, null, 0, 20, "userId,asc").totalElements());
+        assertEquals(2, users.list(null, null, null, null, 0, 20, "userId,asc").totalElements());
+        assertThrows(IllegalArgumentException.class, () ->
+                users.list("ADMIN", null, null, null, 0, 20, "userId,asc"));
     }
 
     @Test
     void protectsOwnAdminAccountAndChangesStudentStatus() {
-        assertThrows(AdminUserService.Conflict.class, () ->
+        assertThrows(Conflict.class, () ->
                 users.changeStatus(List.of(adminId), "SUSPENDED", adminId));
+        assertThrows(NotFound.class, () -> users.detail(adminId));
+        assertThrows(NotFound.class, () ->
+                users.changeStatus(List.of(adminId), "SUSPENDED", UUID.randomUUID()));
         assertEquals(1, users.changeStatus(List.of(studentId), "SUSPENDED", adminId));
         assertEquals("SUSPENDED", users.detail(studentId).status());
         assertEquals(1, users.changeStatus(List.of(studentId), "ACTIVE", adminId));
+    }
+
+    @Test
+    void changesStudentRoleToAdvisorAndKeepsAcademicHistory() {
+        UUID majorId = UUID.randomUUID();
+        UUID curriculumId = UUID.randomUUID();
+        UUID semesterId = UUID.randomUUID();
+        jdbc.update("INSERT INTO majors (id, code, name, status) VALUES (?, 'SE', 'Software Engineering', 'ACTIVE')", majorId.toString());
+        jdbc.update("INSERT INTO semesters (id, code, name, start_date, end_date) VALUES (?, 'FA2022', 'Fall 2022', DATE '2022-09-05', DATE '2022-12-23')", semesterId.toString());
+        jdbc.update("INSERT INTO curriculum_versions (id, major_id, version, status) VALUES (?, ?, 'K17', 'ACTIVE')", curriculumId.toString(), majorId.toString());
+        jdbc.update("INSERT INTO students (user_id, student_code, major_id, curriculum_version_id, enrollment_semester_id) VALUES (?, 'SE173012', ?, ?, ?)",
+                studentId.toString(), majorId.toString(), curriculumId.toString(), semesterId.toString());
+
+        Detail changed = users.changeRole(studentId,
+                new ChangeRole("ADVISOR", null, null, null, 25));
+
+        assertEquals("ADVISOR", changed.role());
+        assertEquals("student@example.com", changed.userId());
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM advisors WHERE user_id=?", Integer.class, studentId.toString()));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE user_id=?", Integer.class, studentId.toString()));
     }
 
     @Test
@@ -119,7 +156,7 @@ class AdminUserServiceTest {
         jdbc.update("INSERT INTO semesters (id, code, name, start_date, end_date) VALUES (?, 'SP2030', 'Spring 2030', ?, ?)",
                 graduationSemesterId.toString(), LocalDate.of(2030, 1, 1), LocalDate.of(2030, 4, 30));
 
-        AdminUserService.Detail created = users.create(new AdminUserService.CreateAccount(
+        Detail created = users.create(new CreateAccount(
                 "STUDENT", "new.student@example.com", "New Student", "0900000000",
                 "SE20001", curriculumId, enrollmentSemesterId, graduationSemesterId, 1, null));
 
@@ -136,7 +173,7 @@ class AdminUserServiceTest {
 
     @Test
     void createsAdvisorAccountWithDefaultCapacity() {
-        AdminUserService.Detail created = users.create(new AdminUserService.CreateAccount(
+        Detail created = users.create(new CreateAccount(
                 "ADVISOR", "new.advisor@example.com", "New Advisor", null,
                 null, null, null, null, null, null));
 

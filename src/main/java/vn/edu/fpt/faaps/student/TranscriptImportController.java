@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import vn.edu.fpt.faaps.auth.AuthSession;
+import vn.edu.fpt.faaps.student.transcript.dto.TranscriptDtos.*;
 
 @RestController
 @RequestMapping("/api/student/transcript/imports")
@@ -24,24 +25,24 @@ public class TranscriptImportController {
     }
 
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public TranscriptImportService.ImportPreview preview(@AuthenticationPrincipal AuthSession student,
+    public ImportPreview preview(@AuthenticationPrincipal AuthSession student,
             @RequestPart("file") MultipartFile file) throws IOException {
         return imports.preview(student.id(), file);
     }
 
     @PostMapping("/{id}/confirm")
-    public TranscriptImportService.ImportResult confirm(@AuthenticationPrincipal AuthSession student,
+    public ImportResult confirm(@AuthenticationPrincipal AuthSession student,
             @PathVariable UUID id) {
         return imports.confirm(student.id(), id);
     }
 
     @GetMapping
-    public List<TranscriptImportService.ImportHistory> history(@AuthenticationPrincipal AuthSession student) {
+    public List<ImportHistory> history(@AuthenticationPrincipal AuthSession student) {
         return imports.history(student.id());
     }
 
     @GetMapping("/{id}")
-    public TranscriptImportService.ImportPreview detail(@AuthenticationPrincipal AuthSession student,
+    public ImportPreview detail(@AuthenticationPrincipal AuthSession student,
             @PathVariable UUID id) {
         return imports.detail(student.id(), id);
     }

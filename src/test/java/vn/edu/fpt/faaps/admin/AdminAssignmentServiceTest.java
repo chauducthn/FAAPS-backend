@@ -31,7 +31,7 @@ class AdminAssignmentServiceTest {
         jdbc = new JdbcTemplate(dataSource);
         transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         jdbc.execute("CREATE TABLE roles (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20))");
-        jdbc.execute("INSERT INTO roles VALUES ('student-role', 'STUDENT')");
+        jdbc.execute("INSERT INTO roles VALUES ('student-role', 'STUDENT'), ('advisor-role', 'ADVISOR')");
         jdbc.execute("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY, role_id VARCHAR(36), full_name VARCHAR(255), email VARCHAR(255), status VARCHAR(20))");
         jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY, max_advisees INT, status VARCHAR(20), updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20))");
@@ -222,10 +222,10 @@ class AdminAssignmentServiceTest {
                 UUID.randomUUID().toString(), firstStudent.toString(), firstAdvisor.toString());
         assertEquals(1, assignments.appointmentImpacts(List.of(firstStudent), null).size());
         assertThrows(AdminAssignmentService.AppointmentWarningRequired.class, () ->
-                transactions.execute(status -> assignments.unassign(List.of(firstStudent), false, null, "Demo reset")));
+                transactions.execute(status -> assignments.unassign(List.of(firstStudent), false, null, "Schedule changed")));
         assertEquals(firstAdvisor.toString(), assignments.activeAdvisor(firstStudent));
         assertEquals(1, transactions.execute(status ->
-                assignments.unassign(List.of(firstStudent), true, null, "Demo reset")).intValue());
+                assignments.unassign(List.of(firstStudent), true, null, "Schedule changed")).intValue());
         assertEquals(null, assignments.activeAdvisor(firstStudent));
         assertEquals("CANCELLED", jdbc.queryForObject("SELECT status FROM advising_requests WHERE student_id=?",
                 String.class, firstStudent.toString()));
@@ -250,7 +250,7 @@ class AdminAssignmentServiceTest {
 
     private UUID addAdvisor(String code, int capacity) {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, full_name, email, status) VALUES (?, ?, ?, 'ACTIVE')", id.toString(), code, code + "@test.local");
+        jdbc.update("INSERT INTO users (id, role_id, full_name, email, status) VALUES (?, 'advisor-role', ?, ?, 'ACTIVE')", id.toString(), code, code + "@test.local");
         jdbc.update("INSERT INTO advisors (user_id, max_advisees, status) VALUES (?, ?, 'ACTIVE')",
                 id.toString(), capacity);
         return id;

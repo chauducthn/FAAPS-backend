@@ -1,7 +1,5 @@
 package vn.edu.fpt.faaps.student;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -12,13 +10,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.student.plan.dto.StudentPlanDtos.*;
+import vn.edu.fpt.faaps.student.plan.service.CourseLearningPlanService;
 
 @Service
 public class StudentPlanService {
     private final JdbcTemplate jdbc;
+    private final CourseLearningPlanService courseLearningPlans;
 
-    public StudentPlanService(JdbcTemplate jdbc) {
+    public StudentPlanService(JdbcTemplate jdbc, CourseLearningPlanService courseLearningPlans) {
         this.jdbc = jdbc;
+        this.courseLearningPlans = courseLearningPlans;
     }
 
     public List<Semester> semesters() {
@@ -122,87 +124,20 @@ public class StudentPlanService {
     }
 
     public List<CoursePlan> coursePlans(UUID studentId) {
-        return jdbc.query("""
-                SELECT p.id FROM course_learning_plans p WHERE p.student_id=? AND p.version=(
-                  SELECT MAX(next.version) FROM course_learning_plans next
-                  WHERE next.student_id=p.student_id AND next.course_id=p.course_id)
-                ORDER BY p.created_at DESC
-                """, (rs, row) -> UUID.fromString(rs.getString(1)), studentId.toString())
-                .stream().map(id -> coursePlan(studentId, id)).toList();
+        return courseLearningPlans.list(studentId);
     }
 
     public CoursePlan coursePlan(UUID studentId, UUID planId) {
-        CourseHeader h = jdbc.query("""
-                SELECT p.id,p.course_id,c.code,c.name,p.learning_goal,p.version,p.previous_plan_id,p.created_at
-                FROM course_learning_plans p JOIN courses c ON c.id=p.course_id
-                WHERE p.id=? AND p.student_id=?
-                """, (rs, row) -> new CourseHeader(rs.getString("id"), rs.getString("course_id"),
-                rs.getString("code"), rs.getString("name"), rs.getString("learning_goal"),
-                rs.getInt("version"), rs.getString("previous_plan_id"),
-                rs.getTimestamp("created_at").toLocalDateTime()), planId.toString(), studentId.toString())
-                .stream().findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course plan not found"));
-        List<Task> tasks = jdbc.query("""
-                SELECT id,title,description,due_date,resource_url,sort_order FROM course_learning_tasks
-                WHERE plan_id=? ORDER BY sort_order
-                """, (rs, row) -> new Task(rs.getString("id"), rs.getString("title"), rs.getString("description"),
-                rs.getDate("due_date") == null ? null : rs.getDate("due_date").toLocalDate(),
-                rs.getString("resource_url"), rs.getInt("sort_order")), planId.toString());
-        return new CoursePlan(h, tasks);
+        return courseLearningPlans.get(studentId, planId);
     }
 
     public List<CoursePlan> courseVersions(UUID studentId, UUID planId) {
-        CoursePlan selected = coursePlan(studentId, planId);
-        return jdbc.query("""
-                SELECT id FROM course_learning_plans WHERE student_id=? AND course_id=? ORDER BY version DESC
-                """, (rs, row) -> UUID.fromString(rs.getString(1)),
-                studentId.toString(), selected.header().courseId())
-                .stream().map(id -> coursePlan(studentId, id)).toList();
+        return courseLearningPlans.versions(studentId, planId);
     }
 
     @Transactional
     public CoursePlan saveCourse(UUID studentId, UUID courseId, String goal, List<TaskInput> tasks) {
-        if (courseId == null || tasks == null || tasks.isEmpty() || tasks.size() > 100 || tasks.contains(null))
-            throw new IllegalArgumentException("Choose a course and 1 to 100 learning tasks");
-        if (goal != null && goal.length() > 10_000)
-            throw new IllegalArgumentException("Learning goal is too long");
-        lockStudent(studentId);
-        for (TaskInput task : tasks) {
-            if (task.title() == null || task.title().isBlank() || task.title().length() > 255)
-                throw new IllegalArgumentException("Each task needs a title up to 255 characters");
-            if (task.description() != null && task.description().length() > 10_000)
-                throw new IllegalArgumentException("Task description is too long");
-            if (task.resourceUrl() != null && task.resourceUrl().length() > 1000)
-                throw new IllegalArgumentException("Resource URL is too long");
-        }
-        Integer exists = jdbc.queryForObject("SELECT COUNT(*) FROM courses WHERE id=? AND status='ACTIVE'",
-                Integer.class, courseId.toString());
-        if (exists == null || exists == 0) throw new IllegalArgumentException("Course not found");
-        Integer inCurriculum = jdbc.queryForObject("SELECT COUNT(*) FROM curriculum_courses WHERE curriculum_version_id=? AND course_id=?",
-                Integer.class, curriculumId(studentId), courseId.toString());
-        if (inCurriculum == null || inCurriculum == 0)
-            throw new IllegalArgumentException("Course is outside your curriculum");
-        List<String> previous = jdbc.query("""
-                SELECT id FROM course_learning_plans WHERE student_id=? AND course_id=?
-                ORDER BY version DESC LIMIT 1 FOR UPDATE
-                """, (rs, row) -> rs.getString(1), studentId.toString(), courseId.toString());
-        Integer next = jdbc.queryForObject("""
-                SELECT COALESCE(MAX(version),0)+1 FROM course_learning_plans WHERE student_id=? AND course_id=?
-                """, Integer.class, studentId.toString(), courseId.toString());
-        String id = UUID.randomUUID().toString();
-        jdbc.update("""
-                INSERT INTO course_learning_plans(id,student_id,course_id,learning_goal,version,previous_plan_id)
-                VALUES (?,?,?,?,?,?)
-                """, id, studentId.toString(), courseId.toString(), goal, next,
-                previous.isEmpty() ? null : previous.get(0));
-        for (int index = 0; index < tasks.size(); index++) {
-            TaskInput task = tasks.get(index);
-            jdbc.update("""
-                    INSERT INTO course_learning_tasks(id,plan_id,title,description,due_date,resource_url,sort_order)
-                    VALUES (?,?,?,?,?,?,?)
-                    """, UUID.randomUUID().toString(), id, task.title().strip(), task.description(),
-                    task.dueDate(), task.resourceUrl(), index);
-        }
-        return coursePlan(studentId, UUID.fromString(id));
+        return courseLearningPlans.save(studentId, courseId, goal, tasks);
     }
 
     private String curriculumId(UUID studentId) {
@@ -238,14 +173,4 @@ public class StudentPlanService {
         return issues;
     }
 
-    public record Semester(String id, String code, String name, LocalDate startDate, LocalDate endDate) {}
-    public record PlanHeader(String id, String semesterId, String semesterCode, int version, String status,
-            String planType, int totalCredits, String previousPlanId, LocalDateTime createdAt) {}
-    public record PlanCourse(String id, String code, String name, int credits, String priority, String notes) {}
-    public record CurriculumPlan(PlanHeader header, List<PlanCourse> courses, List<String> issues) {}
-    public record CourseHeader(String id, String courseId, String courseCode, String courseName,
-            String learningGoal, int version, String previousPlanId, LocalDateTime createdAt) {}
-    public record Task(String id, String title, String description, LocalDate dueDate, String resourceUrl, int sortOrder) {}
-    public record TaskInput(String title, String description, LocalDate dueDate, String resourceUrl) {}
-    public record CoursePlan(CourseHeader header, List<Task> tasks) {}
 }

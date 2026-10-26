@@ -40,7 +40,7 @@ public class AssignmentRequestService {
                 """, (result, row) -> result.getString(1), studentId.toString());
         if (!pending.isEmpty()) return Map.of("id", pending.get(0), "status", "PENDING", "created", false);
         List<String> admins = jdbc.query("""
-                SELECT u.id FROM admin_control ac JOIN users u ON u.id = ac.current_admin_id
+                SELECT u.id FROM admin_account a JOIN users u ON u.id = a.user_id
                 JOIN roles r ON r.id = u.role_id
                 WHERE r.code = 'ADMIN' AND u.status = 'ACTIVE'
                 """, (result, row) -> result.getString(1));

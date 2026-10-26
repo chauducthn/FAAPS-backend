@@ -16,11 +16,13 @@ public class AdminCourseService {
     private final JdbcTemplate jdbc;
     private final CourseReadRepository reads;
     private final CourseImportService importService;
+    private final CourseRelationService relationService;
 
     public AdminCourseService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
         this.reads = new CourseReadRepository(jdbc);
         this.importService = new CourseImportService(jdbc);
+        this.relationService = new CourseRelationService(jdbc, reads);
     }
 
     public Page list(String search, String status, UUID categoryId, int page, int size, String sort) {
@@ -32,103 +34,24 @@ public class AdminCourseService {
     }
 
     public List<CourseRelation> relations(UUID courseId) {
-        return detail(courseId).prerequisites().stream()
-                .map(relation -> new CourseRelation(relation.id(), relation.type(), relation.groupNo(),
-                        relation.prerequisiteCourseId(), relation.prerequisiteCode(),
-                        relation.prerequisiteName(), relation.minimumScore()))
-                .toList();
+        return relationService.list(courseId);
     }
 
     @Transactional
     public CourseRelation addRelation(UUID courseId, String kind, Integer groupNo,
             UUID otherCourseId, BigDecimal minimumScore) {
-        detail(courseId);
-        validateRelation(courseId, kind, groupNo, otherCourseId, minimumScore);
-        detail(otherCourseId);
-
-        String relationType = kind.strip().toUpperCase();
-        Integer duplicateCount = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM course_prerequisites
-                WHERE course_id = ? AND prerequisite_course_id = ? AND type = ?
-                """, Integer.class, courseId.toString(), otherCourseId.toString(), relationType);
-        if (duplicateCount != null && duplicateCount > 0) {
-            throw new Conflict("This course relation already exists");
-        }
-        int relationGroup = relationType.equals("REPLACEMENT") ? 1 : groupNo;
-        BigDecimal score = relationType.equals("REPLACEMENT") ? null : minimumScore;
-        try {
-            jdbc.update("""
-                    INSERT INTO course_prerequisites
-                        (id, course_id, prerequisite_course_id, group_no, type, minimum_score, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    """,
-                    UUID.randomUUID().toString(), courseId.toString(), otherCourseId.toString(),
-                    relationGroup, relationType, score);
-        } catch (DuplicateKeyException exception) {
-            throw new Conflict("This course relation already exists");
-        }
-        return relations(courseId).stream()
-                .filter(relation -> relation.otherCourseId().equals(otherCourseId)
-                        && relation.kind().equals(relationType))
-                .findFirst().orElseThrow(() -> new IllegalStateException("Created relation could not be loaded"));
+        return relationService.add(courseId,kind,groupNo,otherCourseId,minimumScore);
     }
 
     @Transactional
     public CourseRelation updateRelation(UUID courseId, UUID relationId,
             Integer groupNo, BigDecimal minimumScore) {
-        CourseRelation current = relation(courseId, relationId);
-        int relationGroup = current.kind().equals("REPLACEMENT") ? 1
-                : groupNo == null ? current.groupNo() : groupNo;
-        if (relationGroup < 1 || relationGroup > 20) {
-            throw new IllegalArgumentException("groupNo must be between 1 and 20");
-        }
-        BigDecimal score = current.kind().equals("REPLACEMENT") ? null : minimumScore;
-        validateMinimumScore(score);
-        jdbc.update("""
-                UPDATE course_prerequisites
-                SET group_no = ?, minimum_score = ?
-                WHERE id = ? AND course_id = ?
-                """, relationGroup, score, relationId.toString(), courseId.toString());
-        return relation(courseId, relationId);
+        return relationService.update(courseId,relationId,groupNo,minimumScore);
     }
 
     @Transactional
     public CourseRelation deleteRelation(UUID courseId, UUID relationId) {
-        CourseRelation current = relation(courseId, relationId);
-        jdbc.update("DELETE FROM course_prerequisites WHERE id = ? AND course_id = ?",
-                relationId.toString(), courseId.toString());
-        return current;
-    }
-
-    private CourseRelation relation(UUID courseId, UUID relationId) {
-        CourseRelation relation = relations(courseId).stream()
-                .filter(item -> item.relationId().equals(relationId))
-                .findFirst().orElse(null);
-        if (relation == null) {
-            throw new NotFound("Course relation not found");
-        }
-        return relation;
-    }
-
-    private void validateRelation(UUID courseId, String kind, Integer groupNo,
-            UUID otherCourseId, BigDecimal minimumScore) {
-        if (kind == null || !List.of("PREREQUISITE", "REPLACEMENT").contains(kind.strip().toUpperCase())) {
-            throw new IllegalArgumentException("kind must be PREREQUISITE or REPLACEMENT");
-        }
-        if (otherCourseId == null || otherCourseId.equals(courseId)) {
-            throw new IllegalArgumentException("otherCourseId must identify a different course");
-        }
-        if (groupNo == null || groupNo < 1 || groupNo > 20) {
-            throw new IllegalArgumentException("groupNo must be between 1 and 20");
-        }
-        validateMinimumScore(minimumScore);
-    }
-
-    private void validateMinimumScore(BigDecimal minimumScore) {
-        if (minimumScore != null && (minimumScore.compareTo(BigDecimal.ZERO) < 0
-                || minimumScore.compareTo(BigDecimal.TEN) > 0)) {
-            throw new IllegalArgumentException("minimumScore must be between 0 and 10");
-        }
+        return relationService.delete(courseId,relationId);
     }
 
     @Transactional

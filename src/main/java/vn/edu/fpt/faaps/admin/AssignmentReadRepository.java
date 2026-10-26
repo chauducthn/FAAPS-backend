@@ -25,6 +25,7 @@ final class AssignmentReadRepository {
                 SELECT a.user_id, u.email, u.full_name, a.max_advisees,
                        COUNT(sa.id) AS active_students
                 FROM advisors a JOIN users u ON u.id = a.user_id
+                JOIN roles r ON r.id=u.role_id AND r.code='ADVISOR'
                 LEFT JOIN student_advisor_assignments sa ON sa.advisor_id = a.user_id
                     AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
                 WHERE a.status = 'ACTIVE' AND u.status = 'ACTIVE'
@@ -41,12 +42,13 @@ final class AssignmentReadRepository {
             throw new IllegalArgumentException("status must be ACTIVE, INACTIVE, or ON_LEAVE");
         }
         String where = " WHERE (? IS NULL OR a.status = ?) AND (? IS NULL OR LOWER(u.email) LIKE ? OR LOWER(u.full_name) LIKE ?)";
-        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM advisors a JOIN users u ON u.id = a.user_id" + where,
+        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM advisors a JOIN users u ON u.id = a.user_id JOIN roles r ON r.id=u.role_id AND r.code='ADVISOR'" + where,
                 Long.class, state, state, term, term, term);
         List<Advisor> items = jdbc.query("""
                 SELECT a.user_id, u.email, u.full_name, a.max_advisees,
                        COUNT(sa.id) AS active_students
                 FROM advisors a JOIN users u ON u.id = a.user_id
+                JOIN roles r ON r.id=u.role_id AND r.code='ADVISOR'
                 LEFT JOIN student_advisor_assignments sa ON sa.advisor_id = a.user_id
                     AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
                 """ + where + " GROUP BY a.user_id, u.email, u.full_name, a.max_advisees "
@@ -74,6 +76,7 @@ final class AssignmentReadRepository {
                        cv.version AS cohort, m.code AS major_code, sa.advisor_id,
                        advisor_user.full_name AS advisor_name, sa.assigned_date
                 FROM students s JOIN users u ON u.id = s.user_id
+                JOIN roles r ON r.id=u.role_id AND r.code='STUDENT'
                 JOIN curriculum_versions cv ON cv.id = s.curriculum_version_id
                 JOIN majors m ON m.id = cv.major_id
                 LEFT JOIN student_advisor_assignments sa ON sa.student_id = s.user_id
@@ -94,7 +97,7 @@ final class AssignmentReadRepository {
         Object cohortValue = cohortId == null ? cohort : cohortId.toString();
         StringBuilder where = new StringBuilder(" WHERE " + cohortFilter + " AND (? = FALSE OR sa.id IS NULL) AND (? IS NULL OR sa.advisor_id = ?) AND (? IS NULL OR u.status = ?) AND (? IS NULL OR LOWER(s.student_code) LIKE ? OR LOWER(u.full_name) LIKE ?)");
         Object[] params = {cohortValue, unassignedOnly, advisorId, advisorId, status, status, term, term, term};
-        String from = " FROM students s JOIN users u ON u.id=s.user_id JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id JOIN majors m ON m.id=cv.major_id LEFT JOIN student_advisor_assignments sa ON sa.student_id=s.user_id AND sa.status='ACTIVE' AND sa.end_date IS NULL LEFT JOIN users advisor_user ON advisor_user.id=sa.advisor_id";
+        String from = " FROM students s JOIN users u ON u.id=s.user_id JOIN roles r ON r.id=u.role_id AND r.code='STUDENT' JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id JOIN majors m ON m.id=cv.major_id LEFT JOIN student_advisor_assignments sa ON sa.student_id=s.user_id AND sa.status='ACTIVE' AND sa.end_date IS NULL LEFT JOIN users advisor_user ON advisor_user.id=sa.advisor_id";
         Long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, params);
         List<Student> items = jdbc.query("SELECT s.user_id,s.student_code,u.full_name,cv.id AS cohort_id,cv.version AS cohort,m.code AS major_code,sa.advisor_id,advisor_user.full_name AS advisor_name,sa.assigned_date" + from + where + " ORDER BY s.student_code LIMIT ? OFFSET ?",
                 this::mapStudent, append(params, size, page * size));

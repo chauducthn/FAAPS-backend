@@ -35,7 +35,7 @@ class JdbcAuthAccountStoreTest {
                     UNIQUE (auth_provider, external_id)
                 )
                 """);
-        jdbcTemplate.execute("CREATE TABLE admin_control (control_id TINYINT PRIMARY KEY, current_admin_id VARCHAR(36))");
+        jdbcTemplate.execute("CREATE TABLE admin_account (singleton_id TINYINT PRIMARY KEY, user_id VARCHAR(36) UNIQUE)");
         jdbcTemplate.execute("CREATE TABLE students (user_id VARCHAR(36) PRIMARY KEY)");
         jdbcTemplate.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY)");
         for (String role : new String[] { "ADMIN", "ADVISOR", "STUDENT" }) {
@@ -116,20 +116,16 @@ class JdbcAuthAccountStoreTest {
     }
 
     @Test
-    void onlyCurrentAdminCanLogInOrKeepSession() {
+    void onlyConfiguredAdminCanLogInOrKeepSession() {
         String passwordHash = new BCryptPasswordEncoder().encode("secret");
         String originalId = addUser("original@example.com", "ADMIN", "ACTIVE", null, passwordHash);
-        String successorId = addUser("successor@example.com", "ADMIN", "ACTIVE", null, passwordHash);
-        jdbcTemplate.update("INSERT INTO admin_control VALUES (1, ?)", originalId);
+        String unlinkedId = addUser("unlinked@example.com", "ADMIN", "ACTIVE", null, passwordHash);
+        jdbcTemplate.update("INSERT INTO admin_account VALUES (1, ?)", originalId);
         assertEquals(originalId, accountStore.findAdminByEmail("original@example.com").orElseThrow().id().toString());
         assertEquals(originalId, accountStore.findAdminByEmail("admin").orElseThrow().id().toString());
-        assertNull(accountStore.findAdminByEmail("successor@example.com").orElse(null));
-
-        jdbcTemplate.update("UPDATE admin_control SET current_admin_id = ? WHERE control_id = 1", successorId);
-        assertNull(accountStore.findById(UUID.fromString(originalId)).orElse(null));
-        assertNull(accountStore.findAdminByEmail("original@example.com").orElse(null));
-        assertEquals(successorId, accountStore.findAdminByEmail("successor@example.com").orElseThrow().id().toString());
-        assertEquals(successorId, accountStore.findAdminByEmail("admin").orElseThrow().id().toString());
+        assertEquals(originalId, accountStore.findById(UUID.fromString(originalId)).orElseThrow().id().toString());
+        assertNull(accountStore.findAdminByEmail("unlinked@example.com").orElse(null));
+        assertNull(accountStore.findById(UUID.fromString(unlinkedId)).orElse(null));
     }
 
     private String addUser(String email, String role, String status, String externalId, String passwordHash) {

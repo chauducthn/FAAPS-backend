@@ -33,10 +33,12 @@ import vn.edu.fpt.faaps.student.ai.StudentAiDtos.StudyRoadmapDto;
 public class StudentAiService {
 
     private final JdbcTemplate jdbc;
+    private final StudentRoadmapService roadmaps;
     private static final DateTimeFormatter ISO_DT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     public StudentAiService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.roadmaps = new StudentRoadmapService(jdbc);
     }
 
     public List<AiConversationDto> listConversations(UUID studentId) {
@@ -186,194 +188,12 @@ public class StudentAiService {
     }
 
     public StudyRoadmapDto getRoadmap(UUID studentId) {
-        List<StudyRoadmapDto> existing = jdbc.query("""
-                SELECT id, student_id, plan_type, status, total_credits_planned, created_at
-                FROM study_plans
-                WHERE student_id = ? AND is_current = TRUE
-                ORDER BY created_at DESC LIMIT 1
-                """, (rs, rowNum) -> {
-            String planId = rs.getString("id");
-            Timestamp created = rs.getTimestamp("created_at");
-            return buildRoadmapFromDb(planId, studentId, created != null ? created.toLocalDateTime().format(ISO_DT) : LocalDateTime.now().format(ISO_DT));
-        }, studentId.toString());
-
-        return existing.isEmpty() ? null : existing.get(0);
+        return roadmaps.get(studentId);
     }
 
     @Transactional
     public StudyRoadmapDto generateRoadmap(UUID studentId, GenerateRoadmapDto dto) {
-        Map<String, Object> student = jdbc.queryForList("SELECT major_id, curriculum_version_id FROM students WHERE user_id = ?", studentId.toString())
-                .stream().findFirst().orElse(null);
-
-        String curriculumVersionId = student != null && student.get("curriculum_version_id") != null
-                ? student.get("curriculum_version_id").toString()
-                : null;
-
-        List<Map<String, Object>> curCourses = new ArrayList<>();
-        if (curriculumVersionId != null) {
-            curCourses = jdbc.queryForList("""
-                    SELECT c.id, c.code, c.name, c.credits, cat.name AS category_name,
-                           cc.semester_number, cc.is_mandatory
-                    FROM curriculum_courses cc
-                    JOIN courses c ON c.id = cc.course_id
-                    LEFT JOIN course_categories cat ON cat.id = c.category_id
-                    WHERE cc.curriculum_version_id = ?
-                    ORDER BY cc.semester_number, c.code
-                    """, curriculumVersionId);
-        }
-
-        if (curCourses.isEmpty()) {
-            curCourses = jdbc.queryForList("""
-                    SELECT c.id, c.code, c.name, c.credits, cat.name AS category_name,
-                           1 AS semester_number, 1 AS is_mandatory
-                    FROM courses c
-                    LEFT JOIN course_categories cat ON cat.id = c.category_id
-                    LIMIT 20
-                    """);
-        }
-
-        Map<Integer, List<RoadmapCourseDto>> semesterMap = new HashMap<>();
-        int maxCredits = (dto != null && dto.maxCreditsPerSemester() != null && dto.maxCreditsPerSemester() > 0)
-                ? dto.maxCreditsPerSemester()
-                : 20;
-
-        int totalCredits = 0;
-        int currentSem = 1;
-        int semCredits = 0;
-
-        for (Map<String, Object> row : curCourses) {
-            String cId = (String) row.get("id");
-            String code = (String) row.get("code");
-            String name = (String) row.get("name");
-            int credits = ((Number) row.getOrDefault("credits", 3)).intValue();
-            String catName = (String) row.get("category_name");
-            Object mandObj = row.get("is_mandatory");
-            boolean isMandatory = mandObj instanceof Boolean b ? b : (mandObj instanceof Number n ? n.intValue() == 1 : true);
-
-            if (semCredits + credits > maxCredits) {
-                currentSem++;
-                semCredits = 0;
-            }
-
-            semCredits += credits;
-            totalCredits += credits;
-
-            List<String> prereqs = jdbc.query("""
-                    SELECT p.code FROM course_prerequisites cp
-                    JOIN courses p ON p.id = cp.prerequisite_course_id
-                    WHERE cp.course_id = ?
-                    """, (rs, rowNum) -> rs.getString(1), cId);
-
-            String status = currentSem == 1 ? "IN_PROGRESS" : "PLANNED";
-            String priority = isMandatory ? "HIGH" : "MEDIUM";
-            String reason = isMandatory
-                    ? "Mandatory core curriculum course required for degree completion."
-                    : "Recommended elective to satisfy degree specialization requirements.";
-
-            RoadmapCourseDto courseDto = new RoadmapCourseDto(
-                    cId, code, name, credits, catName, isMandatory, priority, status, reason, prereqs
-            );
-
-            semesterMap.computeIfAbsent(currentSem, k -> new ArrayList<>()).add(courseDto);
-        }
-
-        List<RoadmapSemesterDto> semesters = new ArrayList<>();
-        for (int s = 1; s <= currentSem; s++) {
-            List<RoadmapCourseDto> sCourses = semesterMap.getOrDefault(s, List.of());
-            int sumCredits = sCourses.stream().mapToInt(RoadmapCourseDto::credits).sum();
-            String sStatus = s == 1 ? "IN_PROGRESS" : "PLANNED";
-            semesters.add(new RoadmapSemesterDto(
-                    s, "SEM" + s, "Semester " + s, sumCredits, sStatus, sCourses,
-                    "Target maximum: " + maxCredits + " credits"
-            ));
-        }
-
-        String planId = UUID.randomUUID().toString();
-        String generatedAt = LocalDateTime.now().format(ISO_DT);
-
-        jdbc.update("UPDATE study_plans SET is_current = FALSE WHERE student_id = ?", studentId.toString());
-
-        jdbc.update("""
-                INSERT INTO study_plans (id, student_id, semester_id, version, is_current, plan_type,
-                                         total_credits_planned, status, created_at, updated_at)
-                VALUES (?, ?, (SELECT id FROM semesters LIMIT 1), 1, TRUE, 'REGULAR', ?, 'APPROVED',
-                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, planId, studentId.toString(), totalCredits);
-
-        for (RoadmapSemesterDto sem : semesters) {
-            for (RoadmapCourseDto c : sem.courses()) {
-                jdbc.update("""
-                        INSERT INTO study_plan_courses (id, study_plan_id, course_id, planned_credits, priority, notes)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        """, UUID.randomUUID().toString(), planId, c.courseId(), c.credits(), c.priority(), c.reason());
-
-                jdbc.update("""
-                        INSERT INTO course_recommendations (id, student_id, course_id, semester_id,
-                                                            recommendation_source, confidence_score, reasoning, priority, status)
-                        VALUES (?, ?, ?, (SELECT id FROM semesters LIMIT 1), 'AI', 0.95, ?, ?, 'ACCEPTED')
-                        """, UUID.randomUUID().toString(), studentId.toString(), c.courseId(), c.reason(), c.priority());
-            }
-        }
-
-        return new StudyRoadmapDto(
-                planId,
-                studentId.toString(),
-                "AI Personalized Study Roadmap",
-                dto != null && dto.goal() != null ? "Customized for goal: " + dto.goal() : "Optimal curriculum progression based on prerequisites and university guidelines.",
-                generatedAt,
-                "gemini-1.5-pro",
-                0.95,
-                semesters.size(),
-                totalCredits,
-                semesters
-        );
-    }
-
-    private StudyRoadmapDto buildRoadmapFromDb(String planId, UUID studentId, String generatedAt) {
-        List<Map<String, Object>> planCourses = jdbc.queryForList("""
-                SELECT c.id, c.code, c.name, spc.planned_credits, spc.priority, spc.notes, cat.name AS category_name
-                FROM study_plan_courses spc
-                JOIN courses c ON c.id = spc.course_id
-                LEFT JOIN course_categories cat ON cat.id = c.category_id
-                WHERE spc.study_plan_id = ?
-                """, planId);
-
-        List<RoadmapCourseDto> courses = new ArrayList<>();
-        int totalCredits = 0;
-        for (Map<String, Object> r : planCourses) {
-            String cId = (String) r.get("id");
-            int credits = ((Number) r.get("planned_credits")).intValue();
-            totalCredits += credits;
-            courses.add(new RoadmapCourseDto(
-                    cId,
-                    (String) r.get("code"),
-                    (String) r.get("name"),
-                    credits,
-                    (String) r.get("category_name"),
-                    true,
-                    (String) r.getOrDefault("priority", "HIGH"),
-                    "PLANNED",
-                    (String) r.get("notes"),
-                    List.of()
-            ));
-        }
-
-        RoadmapSemesterDto defaultSem = new RoadmapSemesterDto(
-                1, "FA2026", "Semester 1", totalCredits, "IN_PROGRESS", courses, "Generated plan"
-        );
-
-        return new StudyRoadmapDto(
-                planId,
-                studentId.toString(),
-                "Active Study Roadmap",
-                "Based on current academic plan and graduation guidelines.",
-                generatedAt,
-                "gemini-1.5-pro",
-                0.95,
-                1,
-                totalCredits,
-                List.of(defaultSem)
-        );
+        return roadmaps.generate(studentId, dto);
     }
 
     private void verifyConversationOwner(UUID conversationId, UUID studentId) {

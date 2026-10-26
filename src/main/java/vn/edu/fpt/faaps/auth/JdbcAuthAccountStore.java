@@ -25,7 +25,7 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
                        u.status, u.password_hash
                 FROM users u JOIN roles r ON r.id = u.role_id
                 WHERE u.id = ? AND (r.code <> 'ADMIN' OR EXISTS (
-                    SELECT 1 FROM admin_control ac WHERE ac.current_admin_id = u.id))
+                    SELECT 1 FROM admin_account a WHERE a.user_id = u.id))
                 """, this::mapAccount, id.toString()).stream().findFirst();
     }
 
@@ -36,7 +36,7 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
                        u.status, u.password_hash
                 FROM users u JOIN roles r ON r.id = u.role_id
                 WHERE (u.email = ? OR ? = 'admin') AND r.code = 'ADMIN'
-                  AND EXISTS (SELECT 1 FROM admin_control ac WHERE ac.current_admin_id = u.id)
+                  AND EXISTS (SELECT 1 FROM admin_account a WHERE a.user_id = u.id)
                 """, this::mapAccount, email, email).stream().findFirst();
     }
 

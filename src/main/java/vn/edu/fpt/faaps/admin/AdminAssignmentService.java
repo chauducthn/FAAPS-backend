@@ -1,5 +1,4 @@
 package vn.edu.fpt.faaps.admin;
-
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -11,19 +10,16 @@ import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 @Service
 public class AdminAssignmentService {
     private final JdbcTemplate jdbc;
     private final AssignmentReadRepository reads;
     private final CohortAdvisorService cohorts;
-
     public AdminAssignmentService(JdbcTemplate jdbc, CohortAdvisorService cohorts) {
         this.jdbc = jdbc;
         this.reads = new AssignmentReadRepository(jdbc);
         this.cohorts = cohorts;
     }
-
     public List<Advisor> advisors() { return reads.advisors(); }
     public Page<Advisor> advisors(int page, int size, String search, String status) {
         return reads.advisors(page, size, search, status);
@@ -38,17 +34,14 @@ public class AdminAssignmentService {
     }
     public AdvisorDetail advisor(UUID advisorId) { return reads.advisor(advisorId); }
     public List<History> history(UUID studentId) { return reads.history(studentId); }
-
     @Transactional
     public int assign(List<UUID> studentIds, UUID advisorId) {
         return assign(studentIds, advisorId, false);
     }
-
     @Transactional
     public int assign(List<UUID> studentIds, UUID advisorId, boolean acknowledgeAppointmentCancellation) {
         return assign(studentIds, advisorId, acknowledgeAppointmentCancellation, null, null);
     }
-
     @Transactional
     public int assign(List<UUID> studentIds, UUID advisorId, boolean acknowledgeAppointmentCancellation,
             UUID actorId, String notes) {
@@ -108,7 +101,6 @@ public class AdminAssignmentService {
         }
         return changed;
     }
-
     public List<AppointmentImpact> appointmentImpacts(List<UUID> studentIds, UUID newAdvisorId) {
         validateIds(studentIds);
         List<AppointmentImpact> impacts = new ArrayList<>();
@@ -127,7 +119,6 @@ public class AdminAssignmentService {
         }
         return impacts;
     }
-
     @Transactional
     public int unassign(List<UUID> studentIds, boolean acknowledgeAppointmentCancellation, UUID actorId, String notes) {
         validateIds(studentIds);
@@ -171,24 +162,20 @@ public class AdminAssignmentService {
         }
         return changed;
     }
-
     public Preview preview(String cohort, List<UUID> advisorIds) {
         List<Advisor> selected = selectedAdvisors(advisorIds);
         List<Student> unassigned = students(cohort, true);
         return new Preview(cohort, unassigned.size(), distribute(selected, unassigned.size()));
     }
-
     public Map<String, Object> previewCohort(UUID cohortId, List<UUID> advisorIds) {
         List<Advisor> selected = selectedAdvisorsForCohort(cohortId, advisorIds);
         int count = unassignedIds(cohortId).size();
         return allocationResponse(cohortId, count, selected, distribute(selected, count));
     }
-
     @Transactional
     public Map<String, Object> confirmCohort(UUID cohortId, List<UUID> advisorIds) {
         return confirmCohort(cohortId, advisorIds, null, null);
     }
-
     @Transactional
     public Map<String, Object> confirmCohort(UUID cohortId, List<UUID> advisorIds, UUID actorId, String notes) {
         cohorts.lockCohort(cohortId);
@@ -318,7 +305,6 @@ public class AdminAssignmentService {
             throw new IllegalArgumentException("ids must be unique and contain 1-100 values");
         }
     }
-
     private Advisor requireAdvisor(UUID id) {
         Integer active = jdbc.queryForObject("SELECT COUNT(*) FROM advisors a JOIN users u ON u.id=a.user_id WHERE a.user_id=? AND a.status='ACTIVE' AND u.status='ACTIVE'", Integer.class, id.toString());
         if (active == null || active == 0) throw new AssignmentError("ADVISOR_INACTIVE", "Advisor is not active");
@@ -380,25 +366,15 @@ public class AdminAssignmentService {
                 """, advisorId.toString(), studentId.toString());
     }
 
-    public record Advisor(UUID id, String email, String fullName,
-            Integer maxAdvisees, long activeStudents) {
-    }
-
-    public record Cohort(UUID cohortId, String cohort, String majorCode, long students) {
-    }
-
-    public record Student(UUID id, String studentCode, String fullName, UUID cohortId,
-            String cohort, String majorCode, String advisorId, String advisorName, LocalDate assignedDate) {
-    }
-
-    public record AdvisorDetail(Advisor advisor, String email, String status,
-            List<Student> students, List<Cohort> cohorts, List<Cohort> configuredCohorts) {
-    }
-
+    public record Advisor(UUID id, String email, String fullName, Integer maxAdvisees, long activeStudents) {}
+    public record Cohort(UUID cohortId, String cohort, String majorCode, long students) {}
+    public record Student(UUID id, String studentCode, String fullName, UUID cohortId, String cohort,
+            String majorCode, String advisorId, String advisorName, LocalDate assignedDate) {}
+    public record AdvisorDetail(Advisor advisor, String email, String status, List<Student> students,
+            List<Cohort> cohorts, List<Cohort> configuredCohorts) {}
     public record History(String id, String advisorId, String advisorEmail, String advisorName,
-            LocalDate assignedDate, LocalDateTime assignedAt, String assignedByUserId,
-            String assignedByName, String notes, LocalDate endDate, String status) {
-    }
+            LocalDate assignedDate, LocalDateTime assignedAt, String assignedByUserId, String assignedByName,
+            String notes, LocalDate endDate, String status) {}
 
     public record Page<T>(List<T> items, int page, int size, long totalElements) {
         public long totalPages() { return (totalElements + size - 1) / size; }
@@ -409,28 +385,16 @@ public class AdminAssignmentService {
         public AssignmentError(String code, String message) { super(message); this.code = code; }
         public String code() { return code; }
     }
-
-    public record Preview(String cohort, int unassignedStudents, Map<UUID, Integer> allocation) {
-    }
-
-    public record Result(int assigned, Map<UUID, Integer> allocation) {
-    }
-
-    public static class Conflict extends RuntimeException {
-    }
+    public record Preview(String cohort, int unassignedStudents, Map<UUID, Integer> allocation) {}
+    public record Result(int assigned, Map<UUID, Integer> allocation) {}
+    public static class Conflict extends RuntimeException {}
 
     public record AppointmentImpact(UUID appointmentId, UUID studentId, UUID currentAdvisorId,
             LocalDateTime scheduledAt) {}
-
     public static class AppointmentWarningRequired extends RuntimeException {
         private final List<AppointmentImpact> appointments;
 
-        public AppointmentWarningRequired(List<AppointmentImpact> appointments) {
-            this.appointments = appointments;
-        }
-
-        public List<AppointmentImpact> appointments() {
-            return appointments;
-        }
+        public AppointmentWarningRequired(List<AppointmentImpact> appointments) { this.appointments = appointments; }
+        public List<AppointmentImpact> appointments() { return appointments; }
     }
 }

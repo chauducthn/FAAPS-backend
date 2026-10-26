@@ -31,28 +31,17 @@ import vn.edu.fpt.faaps.appointment.AppointmentDtos.UpdateAppointmentStatusDto;
 public class AppointmentService {
 
     private final JdbcTemplate jdbc;
+    private final AppointmentReadRepository reads;
     private static final DateTimeFormatter ISO_DT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     public AppointmentService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.reads = new AppointmentReadRepository(jdbc);
     }
 
     public List<AvailabilitySlotDto> getAdvisorAvailability(UUID advisorId) {
-        return jdbc.query("""
-                SELECT day_of_week, start_time, end_time
-                FROM advisor_availability
-                WHERE advisor_id = ? AND is_active = TRUE
-                ORDER BY start_time
-                """, (rs, rowNum) -> {
-            String dowStr = rs.getString("day_of_week");
-            int dow = parseDayOfWeek(dowStr);
-            Time st = rs.getTime("start_time");
-            Time et = rs.getTime("end_time");
-            String stStr = st != null ? st.toLocalTime().format(TIME_FMT) : "08:00";
-            String etStr = et != null ? et.toLocalTime().format(TIME_FMT) : "17:00";
-            return new AvailabilitySlotDto(dow, stStr, etStr);
-        }, advisorId.toString());
+        return reads.availability(advisorId);
     }
 
     @Transactional
@@ -86,7 +75,7 @@ public class AppointmentService {
     }
 
     public List<AvailableSlotDto> getAvailableSlots(LocalDate date, UUID requestedAdvisorId, UUID studentId) {
-        UUID advisorId = requestedAdvisorId != null ? requestedAdvisorId : resolveAssignedAdvisor(studentId);
+        UUID advisorId = requestedAdvisorId != null ? requestedAdvisorId : reads.assignedAdvisor(studentId);
         if (advisorId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No advisor assigned. Please specify an advisor.");
         }
@@ -155,7 +144,7 @@ public class AppointmentService {
 
     @Transactional
     public BookedAppointmentDto bookAppointment(UUID studentId, BookAppointmentDto input) {
-        UUID advisorId = input.advisorId() != null ? input.advisorId() : resolveAssignedAdvisor(studentId);
+        UUID advisorId = input.advisorId() != null ? input.advisorId() : reads.assignedAdvisor(studentId);
         if (advisorId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No advisor assigned. Please specify an advisor.");
         }
@@ -233,50 +222,11 @@ public class AppointmentService {
     public List<AdvisorAppointmentDto> getAdvisorAppointments(UUID advisorId, String fromStr, String toStr) {
         LocalDateTime from = fromStr != null && !fromStr.isBlank() ? parseDateTime(fromStr) : LocalDateTime.now().minusDays(30);
         LocalDateTime to = toStr != null && !toStr.isBlank() ? parseDateTime(toStr) : LocalDateTime.now().plusDays(60);
-
-        return jdbc.query("""
-                SELECT s.id, s.student_id, u.full_name AS student_name, st.student_code,
-                       s.scheduled_at, s.ended_at, s.duration_minutes, s.agenda, s.status, s.summary, s.created_at
-                FROM advising_sessions s
-                JOIN users u ON u.id = s.student_id
-                LEFT JOIN students st ON st.user_id = s.student_id
-                WHERE s.advisor_id = ? AND s.scheduled_at >= ? AND s.scheduled_at <= ?
-                ORDER BY s.scheduled_at ASC
-                """, (rs, rowNum) -> {
-            LocalDateTime start = rs.getTimestamp("scheduled_at").toLocalDateTime();
-            int duration = rs.getInt("duration_minutes");
-            if (duration <= 0) duration = 30;
-            Timestamp endedTs = rs.getTimestamp("ended_at");
-            LocalDateTime end = endedTs != null ? endedTs.toLocalDateTime() : start.plusMinutes(duration);
-            Timestamp createdTs = rs.getTimestamp("created_at");
-
-            return new AdvisorAppointmentDto(
-                    rs.getString("id"),
-                    rs.getString("student_id"),
-                    rs.getString("student_name"),
-                    rs.getString("student_code"),
-                    start.format(ISO_DT),
-                    end.format(ISO_DT),
-                    rs.getString("agenda"),
-                    rs.getString("status"),
-                    rs.getString("summary"),
-                    createdTs != null ? createdTs.toLocalDateTime().format(ISO_DT) : null
-            );
-        }, advisorId.toString(), Timestamp.valueOf(from), Timestamp.valueOf(to));
+        return reads.advisorAppointments(advisorId, from, to);
     }
 
     public List<BookedAppointmentDto> getStudentAppointments(UUID studentId) {
-        return jdbc.query("""
-                SELECT s.id, s.student_id, u.full_name AS student_name, st.student_code,
-                       s.advisor_id, a.full_name AS advisor_name,
-                       s.scheduled_at, s.ended_at, s.duration_minutes, s.agenda, s.status, s.summary, s.created_at
-                FROM advising_sessions s
-                JOIN users u ON u.id = s.student_id
-                LEFT JOIN students st ON st.user_id = s.student_id
-                JOIN users a ON a.id = s.advisor_id
-                WHERE s.student_id = ?
-                ORDER BY s.scheduled_at DESC
-                """, (rs, rowNum) -> mapBookedAppointment(rs), studentId.toString());
+        return reads.studentAppointments(studentId);
     }
 
     @Transactional
@@ -352,75 +302,7 @@ public class AppointmentService {
     }
 
     public BookedAppointmentDto getBookedAppointment(UUID appointmentId) {
-        List<BookedAppointmentDto> list = jdbc.query("""
-                SELECT s.id, s.student_id, u.full_name AS student_name, st.student_code,
-                       s.advisor_id, a.full_name AS advisor_name,
-                       s.scheduled_at, s.ended_at, s.duration_minutes, s.agenda, s.status, s.summary, s.created_at
-                FROM advising_sessions s
-                JOIN users u ON u.id = s.student_id
-                LEFT JOIN students st ON st.user_id = s.student_id
-                JOIN users a ON a.id = s.advisor_id
-                WHERE s.id = ?
-                """, (rs, rowNum) -> mapBookedAppointment(rs), appointmentId.toString());
-
-        if (list.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Appointment not found");
-        }
-        return list.get(0);
-    }
-
-    private BookedAppointmentDto mapBookedAppointment(java.sql.ResultSet rs) throws java.sql.SQLException {
-        LocalDateTime start = rs.getTimestamp("scheduled_at").toLocalDateTime();
-        int duration = rs.getInt("duration_minutes");
-        if (duration <= 0) duration = 30;
-        Timestamp endedTs = rs.getTimestamp("ended_at");
-        LocalDateTime end = endedTs != null ? endedTs.toLocalDateTime() : start.plusMinutes(duration);
-        Timestamp createdTs = rs.getTimestamp("created_at");
-
-        return new BookedAppointmentDto(
-                rs.getString("id"),
-                rs.getString("student_id"),
-                rs.getString("student_name"),
-                rs.getString("student_code"),
-                rs.getString("advisor_id"),
-                rs.getString("advisor_name"),
-                start.format(ISO_DT),
-                end.format(ISO_DT),
-                rs.getString("agenda"),
-                rs.getString("status"),
-                rs.getString("summary"),
-                createdTs != null ? createdTs.toLocalDateTime().format(ISO_DT) : null
-        );
-    }
-
-    private UUID resolveAssignedAdvisor(UUID studentId) {
-        List<String> list = jdbc.query("""
-                SELECT advisor_id FROM student_advisor_assignments
-                WHERE student_id = ? AND status = 'ACTIVE' AND end_date IS NULL
-                LIMIT 1
-                """, (rs, rowNum) -> rs.getString(1), studentId.toString());
-        if (!list.isEmpty()) {
-            return UUID.fromString(list.get(0));
-        }
-
-        List<String> anyAdvisor = jdbc.query("""
-                SELECT user_id FROM advisors LIMIT 1
-                """, (rs, rowNum) -> rs.getString(1));
-        if (!anyAdvisor.isEmpty()) {
-            return UUID.fromString(anyAdvisor.get(0));
-        }
-        return null;
-    }
-
-    private int parseDayOfWeek(String dow) {
-        if (dow == null || dow.isBlank()) return 1;
-        try {
-            return Integer.parseInt(dow.trim());
-        } catch (NumberFormatException ignored) {}
-        try {
-            return DayOfWeek.valueOf(dow.trim().toUpperCase(Locale.ROOT)).getValue();
-        } catch (IllegalArgumentException ignored) {}
-        return 1;
+        return reads.appointment(appointmentId);
     }
 
     private LocalDateTime parseDateTime(String str) {

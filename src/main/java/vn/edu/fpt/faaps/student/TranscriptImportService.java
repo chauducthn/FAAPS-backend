@@ -1,99 +1,35 @@
 package vn.edu.fpt.faaps.student;
 
-import java.io.IOException;
-import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.apache.poi.ss.usermodel.DataFormatter;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.student.transcript.dto.TranscriptDtos.*;
+import vn.edu.fpt.faaps.student.transcript.service.TranscriptWorkbookParser;
 
 @Service
 public class TranscriptImportService {
-    private static final Set<String> STATUSES = Set.of("IN_PROGRESS", "PASSED", "FAILED", "WITHDRAWN", "EXEMPTED");
     private final JdbcTemplate jdbc;
+    private final TranscriptWorkbookParser parser;
 
-    public TranscriptImportService(JdbcTemplate jdbc) {
+    public TranscriptImportService(JdbcTemplate jdbc, TranscriptWorkbookParser parser) {
         this.jdbc = jdbc;
+        this.parser = parser;
     }
 
     @Transactional
     public ImportPreview preview(UUID studentId, MultipartFile file) {
-        if (file.isEmpty() || file.getSize() > 5_000_000 ||
-                file.getOriginalFilename() == null || file.getOriginalFilename().length() > 255 ||
-                !file.getOriginalFilename().toLowerCase().endsWith(".xlsx")) {
-            throw new IllegalArgumentException("Choose an .xlsx file up to 5 MB");
-        }
         String importId = UUID.randomUUID().toString();
         Integer studentExists = jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE user_id=?", Integer.class,
                 studentId.toString());
         if (studentExists == null || studentExists == 0)
             throw new IllegalArgumentException("Your academic profile has not been assigned");
-        List<ImportRow> rows = new ArrayList<>();
-        Set<String> rowKeys = new HashSet<>();
-        DataFormatter formatter = new DataFormatter();
-        try (XSSFWorkbook book = new XSSFWorkbook(file.getInputStream())) {
-            if (book.getNumberOfSheets() == 0) throw new IllegalArgumentException("Workbook has no sheet");
-            var sheet = book.getSheetAt(0);
-            Row header = sheet.getRow(0);
-            if (header == null || !"CourseCode".equalsIgnoreCase(value(formatter, header, 0))
-                    || !"SemesterCode".equalsIgnoreCase(value(formatter, header, 1))
-                    || !"FinalScore".equalsIgnoreCase(value(formatter, header, 2))
-                    || !"Status".equalsIgnoreCase(value(formatter, header, 3))) {
-                throw new IllegalArgumentException("Columns must start with CourseCode, SemesterCode, FinalScore, Status, AttemptNumber");
-            }
-            if (sheet.getLastRowNum() > 1000) throw new IllegalArgumentException("Maximum 1000 transcript rows per file");
-            for (int index = 1; index <= sheet.getLastRowNum(); index++) {
-                Row source = sheet.getRow(index);
-                if (source == null) continue;
-                String courseCode = value(formatter, source, 0);
-                String semesterCode = value(formatter, source, 1);
-                String scoreText = value(formatter, source, 2);
-                String status = value(formatter, source, 3).toUpperCase();
-                String attemptText = value(formatter, source, 4);
-                if (courseCode.isBlank() && semesterCode.isBlank() && scoreText.isBlank() && status.isBlank()) continue;
-                if (courseCode.length() > 50 || semesterCode.length() > 50 || status.length() > 20)
-                    throw new IllegalArgumentException("CourseCode, SemesterCode or Status is too long at row " + (index + 1));
-                String error = null;
-                BigDecimal score = null;
-                int attempt = 1;
-                try {
-                    if (!scoreText.isBlank()) score = new BigDecimal(scoreText);
-                    if (!attemptText.isBlank()) attempt = Integer.parseInt(attemptText);
-                    if (score != null && (score.compareTo(BigDecimal.ZERO) < 0 || score.compareTo(BigDecimal.TEN) > 0))
-                        error = "FinalScore must be between 0 and 10";
-                    if (attempt < 1) error = "AttemptNumber must be positive";
-                } catch (NumberFormatException exception) {
-                    error = "FinalScore or AttemptNumber is invalid";
-                }
-                if (Set.of("PASSED", "FAILED").contains(status) && score == null)
-                    error = "FinalScore is required for passed or failed courses";
-                if (!STATUSES.contains(status)) error = "Status is invalid";
-                String courseId = idFor("SELECT id FROM courses WHERE code=?", courseCode);
-                String semesterId = idFor("SELECT id FROM semesters WHERE code=?", semesterCode);
-                if (courseId == null) error = "CourseCode not found";
-                if (semesterId == null) error = "SemesterCode not found";
-                if (!rowKeys.add(courseCode.toUpperCase() + "|" + semesterCode.toUpperCase() + "|" + attempt))
-                    error = "Duplicate course, semester and attempt in this file";
-                rows.add(new ImportRow(index + 1, courseCode, semesterCode, score, status, attempt,
-                        courseId, semesterId, error));
-            }
-        } catch (IOException exception) {
-            throw new IllegalArgumentException("Unable to read the .xlsx file", exception);
-        } catch (RuntimeException exception) {
-            if (exception instanceof IllegalArgumentException) throw exception;
-            throw new IllegalArgumentException("File is not a valid .xlsx workbook");
-        }
-        if (rows.isEmpty()) throw new IllegalArgumentException("Workbook has no transcript rows");
+        List<ImportRow> rows = parser.parse(file);
         long errors = rows.stream().filter(row -> row.error() != null).count();
         jdbc.update("""
                 INSERT INTO student_transcript_imports(id,student_id,file_name,status,row_count,error_count)
@@ -227,18 +163,4 @@ public class TranscriptImportService {
                 rs.getString("validation_error")), importId.toString());
     }
 
-    private String idFor(String query, String code) {
-        return jdbc.query(query, (rs, row) -> rs.getString(1), code).stream().findFirst().orElse(null);
-    }
-
-    private String value(DataFormatter formatter, Row row, int column) {
-        return row.getCell(column) == null ? "" : formatter.formatCellValue(row.getCell(column)).strip();
-    }
-
-    public record ImportRow(int rowNumber, String courseCode, String semesterCode, BigDecimal finalScore,
-            String status, int attemptNumber, String courseId, String semesterId, String error) {}
-    public record ImportPreview(String importId, int rowCount, int errorCount, List<ImportRow> rows) {}
-    public record ImportResult(String importId, int importedCount, String status) {}
-    public record ImportHistory(String id, String fileName, String status, int rowCount, int errorCount,
-            java.time.LocalDateTime createdAt, java.time.LocalDateTime confirmedAt) {}
 }

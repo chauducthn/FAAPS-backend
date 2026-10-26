@@ -1,4 +1,4 @@
-package vn.edu.fpt.faaps.admin;
+package vn.edu.fpt.faaps.user.controller;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -24,6 +24,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vn.edu.fpt.faaps.auth.AuthSession;
 import vn.edu.fpt.faaps.ApiError;
+import vn.edu.fpt.faaps.user.service.AdminUserService;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.CreateAccount;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Page;
+import vn.edu.fpt.faaps.user.service.UserExceptions.Conflict;
+import vn.edu.fpt.faaps.user.service.UserExceptions.NotFound;
 
 @RestController
 @RequestMapping("/api/admin/users")
@@ -35,7 +42,7 @@ public class AdminUserController {
     }
 
     @GetMapping
-    public AdminUserService.Page list(@RequestParam(required = false) String role,
+    public Page list(@RequestParam(required = false) String role,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) UUID majorId,
@@ -46,13 +53,13 @@ public class AdminUserController {
     }
 
     @GetMapping("/{id}")
-    public AdminUserService.Detail detail(@PathVariable UUID id) {
+    public Detail detail(@PathVariable UUID id) {
         return users.detail(id);
     }
 
     @PostMapping
-    public ResponseEntity<AdminUserService.Detail> create(@Valid @RequestBody CreateUserRequest request) {
-        AdminUserService.Detail created = users.create(new AdminUserService.CreateAccount(
+    public ResponseEntity<Detail> create(@Valid @RequestBody CreateUserRequest request) {
+        Detail created = users.create(new CreateAccount(
                 request.role(), request.email(), request.fullName(), request.phone(),
                 request.studentCode(), request.curriculumVersionId(), request.enrollmentSemesterId(),
                 request.expectedGraduationSemesterId(), request.currentSemester(), request.maxAdvisees()));
@@ -60,10 +67,16 @@ public class AdminUserController {
     }
 
     @PatchMapping("/{id}/status")
-    public AdminUserService.Detail status(@PathVariable UUID id, @Valid @RequestBody ChangeStatus request,
+    public Detail status(@PathVariable UUID id, @Valid @RequestBody ChangeStatus request,
             @AuthenticationPrincipal AuthSession actor) {
         users.changeStatus(List.of(id), request.status(), actor.id());
         return users.detail(id);
+    }
+
+    @PatchMapping("/{id}/role")
+    public Detail role(@PathVariable UUID id, @Valid @RequestBody ChangeRoleRequest request) {
+        return users.changeRole(id, new ChangeRole(request.role(), request.studentCode(),
+                request.curriculumVersionId(), request.enrollmentSemesterId(), request.maxAdvisees()));
     }
 
     @PostMapping("/status")
@@ -77,15 +90,15 @@ public class AdminUserController {
         return ResponseEntity.badRequest().body(ApiError.of("INVALID_REQUEST", exception.getMessage()));
     }
 
-    @ExceptionHandler(AdminUserService.NotFound.class)
-    public ResponseEntity<ApiError> notFound(AdminUserService.NotFound exception) {
+    @ExceptionHandler(NotFound.class)
+    public ResponseEntity<ApiError> notFound(NotFound exception) {
         String message = exception.getMessage() == null ? "User not found" : exception.getMessage();
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiError.of("USER_NOT_FOUND", message));
     }
 
-    @ExceptionHandler({AdminUserService.Conflict.class, DataIntegrityViolationException.class})
+    @ExceptionHandler({Conflict.class, DataIntegrityViolationException.class})
     public ResponseEntity<ApiError> conflict(RuntimeException exception) {
-        String message = exception instanceof AdminUserService.Conflict && exception.getMessage() != null
+        String message = exception instanceof Conflict && exception.getMessage() != null
                 ? exception.getMessage() : "User data conflicts with an existing account or reference";
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiError.of("USER_CONFLICT", message));
     }
@@ -94,6 +107,10 @@ public class AdminUserController {
     }
 
     public record BulkStatus(@NotEmpty List<UUID> userIds, @NotBlank String status) {
+    }
+
+    public record ChangeRoleRequest(@NotBlank String role, @Size(max = 50) String studentCode,
+            UUID curriculumVersionId, UUID enrollmentSemesterId, @Positive Integer maxAdvisees) {
     }
 
     public record CreateUserRequest(

@@ -43,6 +43,7 @@ public class AssignmentWorkflowService {
                                 AND n.notification_type = 'ADVISOR_REQUEST'
                                 AND n.resolved_at IS NULL) AS has_pending_request
                 FROM students s JOIN users u ON u.id = s.user_id
+                JOIN roles r ON r.id=u.role_id AND r.code='STUDENT'
                 JOIN curriculum_versions cv ON cv.id = s.curriculum_version_id
                 JOIN majors m ON m.id = cv.major_id
                 WHERE NOT EXISTS(SELECT 1 FROM student_advisor_assignments sa
@@ -107,6 +108,7 @@ public class AssignmentWorkflowService {
                        ca.cohort_id IS NOT NULL AS in_pool,
                        COUNT(sa.id) AS student_count
                 FROM advisors a JOIN users u ON u.id = a.user_id
+                JOIN roles r ON r.id=u.role_id AND r.code='ADVISOR'
                 LEFT JOIN (
                     SELECT advisor_id, cohort_id FROM cohort_advisors WHERE is_active = TRUE
                     UNION

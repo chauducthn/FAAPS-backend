@@ -28,26 +28,11 @@ CREATE TABLE `users` (
   `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
 );
 
-CREATE TABLE `admin_control` (
-  `control_id` tinyint PRIMARY KEY,
-  `current_admin_id` char(36) NOT NULL,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT `chk_admin_control_singleton` CHECK (`control_id` = 1),
-  CONSTRAINT `fk_admin_control_current` FOREIGN KEY (`current_admin_id`) REFERENCES `users` (`id`)
-);
-
-CREATE TABLE `admin_handovers` (
-  `id` char(36) PRIMARY KEY DEFAULT (UUID()),
-  `from_admin_id` char(36) NOT NULL,
-  `to_admin_id` char(36) NOT NULL,
-  `handover_date` date NOT NULL,
-  `notes` text,
-  `recorded_by_user_id` char(36) NOT NULL,
-  `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
-  CONSTRAINT `admin_handovers_distinct_admins` CHECK (`from_admin_id` <> `to_admin_id`),
-  FOREIGN KEY (`from_admin_id`) REFERENCES `users` (`id`),
-  FOREIGN KEY (`to_admin_id`) REFERENCES `users` (`id`),
-  FOREIGN KEY (`recorded_by_user_id`) REFERENCES `users` (`id`)
+CREATE TABLE `admin_account` (
+  `singleton_id` tinyint PRIMARY KEY,
+  `user_id` char(36) NOT NULL UNIQUE,
+  CONSTRAINT `chk_admin_account_singleton` CHECK (`singleton_id` = 1),
+  CONSTRAINT `fk_admin_account_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
 );
 
 CREATE TABLE `refresh_tokens` (
@@ -173,13 +158,6 @@ CREATE TABLE `advisors` (
   `max_advisees` int DEFAULT 30,
   `status` varchar(20) DEFAULT 'ACTIVE' COMMENT 'ACTIVE, INACTIVE, ON_LEAVE',
   `assignment_start_date` date,
-  `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
-  `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
-);
-
-CREATE TABLE `advisor_work_schedules` (
-  `advisor_id` char(36) PRIMARY KEY,
-  `work_days` varchar(20) COMMENT 'Comma-separated ISO weekdays 1=Monday..7=Sunday',
   `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
   `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
 );
@@ -701,9 +679,6 @@ ALTER TABLE `students` ADD FOREIGN KEY (`enrollment_semester_id`) REFERENCES `se
 ALTER TABLE `students` ADD FOREIGN KEY (`expected_graduation_semester_id`) REFERENCES `semesters` (`id`);
 
 ALTER TABLE `advisors` ADD FOREIGN KEY (`user_id`) REFERENCES `users` (`id`);
-ALTER TABLE `advisor_work_schedules` ADD CONSTRAINT `fk_advisor_work_schedules_advisor`
-  FOREIGN KEY (`advisor_id`) REFERENCES `advisors` (`user_id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
 ALTER TABLE `student_advisor_assignments` ADD FOREIGN KEY (`student_id`) REFERENCES `students` (`user_id`);
 
 ALTER TABLE `student_advisor_assignments` ADD FOREIGN KEY (`advisor_id`) REFERENCES `advisors` (`user_id`);

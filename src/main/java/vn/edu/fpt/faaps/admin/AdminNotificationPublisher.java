@@ -23,7 +23,7 @@ public class AdminNotificationPublisher {
                 "cohortId", cohortId, "createdAt", java.time.Instant.now().toString());
         Runnable publish = () -> {
             String adminId = jdbc.queryForObject(
-                    "SELECT current_admin_id FROM admin_control WHERE control_id = 1", String.class);
+                    "SELECT user_id FROM admin_account WHERE singleton_id = 1", String.class);
             messaging.convertAndSendToUser(adminId, "/queue/admin/notifications", event);
         };
         if (TransactionSynchronizationManager.isSynchronizationActive()) {

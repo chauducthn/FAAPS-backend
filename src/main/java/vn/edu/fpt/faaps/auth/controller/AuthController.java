@@ -1,9 +1,8 @@
-package vn.edu.fpt.faaps.auth;
+package vn.edu.fpt.faaps.auth.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -24,6 +23,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import vn.edu.fpt.faaps.ApiError;
+import vn.edu.fpt.faaps.auth.AuthRefreshTokenService;
+import vn.edu.fpt.faaps.auth.AuthService;
+import vn.edu.fpt.faaps.auth.AuthSession;
+import vn.edu.fpt.faaps.auth.AuthUnavailableException;
+import vn.edu.fpt.faaps.auth.dto.AdminLoginRequest;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -119,6 +123,4 @@ public class AuthController {
                 .body(ApiError.of("ACCOUNT_STORAGE_UNAVAILABLE", "Account storage is not configured"));
     }
 
-    public record AdminLoginRequest(@NotBlank String email, @NotBlank String password) {
-    }
 }

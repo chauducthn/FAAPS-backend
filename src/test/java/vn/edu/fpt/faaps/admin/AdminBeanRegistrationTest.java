@@ -1,5 +1,7 @@
 package vn.edu.fpt.faaps.admin;
 
+import vn.edu.fpt.faaps.user.controller.AdminUserController;
+
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import org.junit.jupiter.api.Test;
