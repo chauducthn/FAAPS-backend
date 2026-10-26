@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,7 +18,7 @@ import vn.edu.fpt.faaps.admin.AdvisingConversationService;
 import vn.edu.fpt.faaps.auth.AuthSession;
 
 @RestController
-@RequestMapping("/api/advisor/advising-requests")
+@RequestMapping({"/api/advisor/advising-requests", "/advisor/advising-requests", "/api/advisor/requests", "/advisor/requests"})
 public class AdvisorAdvisingController {
     private final AdvisingConversationService conversations;
 
@@ -41,7 +42,13 @@ public class AdvisorAdvisingController {
     }
 
     @PatchMapping("/{id}/status")
-    public AdvisingConversationService.Detail changeStatus(@AuthenticationPrincipal AuthSession advisor,
+    public AdvisingConversationService.Detail patchStatus(@AuthenticationPrincipal AuthSession advisor,
+            @PathVariable UUID id, @Valid @RequestBody StatusInput input) {
+        return conversations.changeStatus(advisor.id(), true, id, input.status(), input.resolutionSummary());
+    }
+
+    @PutMapping("/{id}/status")
+    public AdvisingConversationService.Detail putStatus(@AuthenticationPrincipal AuthSession advisor,
             @PathVariable UUID id, @Valid @RequestBody StatusInput input) {
         return conversations.changeStatus(advisor.id(), true, id, input.status(), input.resolutionSummary());
     }

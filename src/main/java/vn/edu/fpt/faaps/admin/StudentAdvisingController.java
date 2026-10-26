@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import vn.edu.fpt.faaps.auth.AuthSession;
 
 @RestController
-@RequestMapping("/api/student")
+@RequestMapping({"/api/student", "/student"})
 public class StudentAdvisingController {
     private final AssignmentRequestService requests;
 

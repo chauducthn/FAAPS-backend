@@ -18,7 +18,7 @@ import vn.edu.fpt.faaps.auth.AuthSession;
 import vn.edu.fpt.faaps.ApiError;
 
 @RestController
-@RequestMapping("/api/admin/ai-reports")
+@RequestMapping({"/api/admin/ai-reports", "/admin/ai-reports"})
 public class AdminAiReportController {
     private final AdminAiReportService reports;
 

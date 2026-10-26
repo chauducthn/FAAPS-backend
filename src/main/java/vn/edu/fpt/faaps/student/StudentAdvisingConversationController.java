@@ -17,7 +17,7 @@ import vn.edu.fpt.faaps.admin.AdvisingConversationService;
 import vn.edu.fpt.faaps.auth.AuthSession;
 
 @RestController
-@RequestMapping("/api/student/advising-requests")
+@RequestMapping({"/api/student/advising-requests", "/student/advising-requests"})
 public class StudentAdvisingConversationController {
     private final AdvisingConversationService conversations;
 

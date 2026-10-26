@@ -21,14 +21,16 @@ public class AdminAiReportService {
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("page or size is invalid");
         }
-        if (status != null && !List.of("PENDING", "RESOLVED", "DISMISSED").contains(status)) {
-            throw new IllegalArgumentException("status is invalid");
+        if (status != null && !status.isBlank() && !status.equalsIgnoreCase("ALL")) {
+            if (!List.of("PENDING", "RESOLVED", "DISMISSED").contains(status.toUpperCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("status is invalid");
+            }
         }
         StringBuilder where = new StringBuilder(" WHERE 1 = 1");
         List<Object> values = new ArrayList<>();
-        if (status != null) {
+        if (status != null && !status.isBlank() && !status.equalsIgnoreCase("ALL")) {
             where.append(" AND report.status = ?");
-            values.add(status);
+            values.add(status.toUpperCase(Locale.ROOT));
         }
         if (search != null && !search.isBlank()) {
             String term = "%" + search.strip().toLowerCase(Locale.ROOT) + "%";
@@ -51,7 +53,7 @@ public class AdminAiReportService {
                         result.getString("student_id"), result.getString("student_name"),
                         result.getString("student_code"), result.getString("reason"),
                         result.getString("status"), result.getLong("flagged_count"),
-                        result.getTimestamp("created_at").toLocalDateTime()), values.toArray());
+                        result.getTimestamp("created_at") == null ? null : result.getTimestamp("created_at").toLocalDateTime()), values.toArray());
         return new Page(items, page, size, total, (total + size - 1) / size);
     }
 
@@ -72,7 +74,8 @@ public class AdminAiReportService {
                 result.getString("status"), result.getString("resolution_note"),
                 result.getTimestamp("resolved_at") == null ? null
                         : result.getTimestamp("resolved_at").toLocalDateTime(),
-                result.getTimestamp("created_at").toLocalDateTime()), id.toString())
+                result.getTimestamp("created_at") == null ? null
+                        : result.getTimestamp("created_at").toLocalDateTime()), id.toString())
                 .stream().findFirst().orElseThrow(NotFound::new);
         List<Message> messages = jdbc.query("""
                 SELECT message.id, message.sender, message.content, message.created_at,
@@ -83,7 +86,8 @@ public class AdminAiReportService {
                 WHERE message.conversation_id = ?
                 ORDER BY message.created_at, message.id
                 """, (result, row) -> new Message(result.getString("id"), result.getString("sender"),
-                result.getString("content"), result.getTimestamp("created_at").toLocalDateTime(),
+                result.getString("content"),
+                result.getTimestamp("created_at") == null ? null : result.getTimestamp("created_at").toLocalDateTime(),
                 result.getString("flagged_id") != null, result.getString("student_note")),
                 id.toString(), header.conversationId());
         List<Source> sources = jdbc.query("""
@@ -92,11 +96,11 @@ public class AdminAiReportService {
                 FROM ai_message_sources source
                 JOIN ai_reported_messages flagged ON flagged.message_id = source.message_id
                     AND flagged.report_id = ?
-                JOIN document_chunks chunk ON chunk.id = source.chunk_id
-                JOIN knowledge_documents doc ON doc.id = chunk.knowledge_document_id
+                LEFT JOIN document_chunks chunk ON chunk.id = source.chunk_id
+                LEFT JOIN knowledge_documents doc ON doc.id = chunk.knowledge_document_id
                 ORDER BY source.message_id, source.rank_position
                 """, (result, row) -> new Source(result.getString("message_id"),
-                (java.math.BigDecimal) result.getObject("relevance_score"),
+                result.getBigDecimal("relevance_score"),
                 result.getString("quoted_text"), (Integer) result.getObject("rank_position"),
                 result.getString("section_title"), result.getString("document_title")), id.toString());
         return new Detail(header, messages, sources);

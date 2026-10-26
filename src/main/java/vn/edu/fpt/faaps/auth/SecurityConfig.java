@@ -58,9 +58,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/health", "/api/auth/csrf", "/api/auth/admin/login", "/api/auth/refresh",
                         "/oauth2/**", "/login/oauth2/**",
                         "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .requestMatchers("/api/advisor/**").hasRole("ADVISOR")
-                .requestMatchers("/api/student/**").hasRole("STUDENT")
+                .requestMatchers("/api/admin/**", "/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/advisor/**", "/advisor/**").hasRole("ADVISOR")
+                .requestMatchers("/api/student/**", "/student/**").hasRole("STUDENT")
+                .requestMatchers("/api/appointments/**", "/appointments/**").authenticated()
                 .anyRequest().authenticated());
         http.exceptionHandling(errors -> errors
                 .authenticationEntryPoint((request, response, exception) ->
@@ -102,7 +103,7 @@ public class SecurityConfig {
         return dataSource == null ? new UnavailableAuthAccountStore() : new JdbcAuthAccountStore(dataSource);
     }
 
-    private void writeError(HttpServletResponse response, int status, String code, String message) throws IOException {
+    private static void writeError(HttpServletResponse response, int status, String code, String message) throws IOException {
         response.setStatus(status);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.getWriter().write("{\"success\":false,\"code\":\"" + code + "\",\"message\":\"" + message + "\"}");
