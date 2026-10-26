@@ -1,5 +1,7 @@
 package vn.edu.fpt.faaps.admin;
 
+import vn.edu.fpt.faaps.auth.repository.AuthAccountStore;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -28,9 +30,8 @@ import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import vn.edu.fpt.faaps.auth.AuthAccount;
-import vn.edu.fpt.faaps.auth.AuthAccountStore;
-import vn.edu.fpt.faaps.auth.GoogleIdentity;
+import vn.edu.fpt.faaps.auth.model.AuthAccount;
+import vn.edu.fpt.faaps.auth.model.GoogleIdentity;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.datasource.url=jdbc:h2:mem:admin-api-conv;MODE=MySQL;DB_CLOSE_DELAY=-1",

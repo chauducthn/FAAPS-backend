@@ -1,5 +1,8 @@
 package vn.edu.fpt.faaps.student.ai;
 
+import vn.edu.fpt.faaps.student.dto.StudentAiDtos;
+import vn.edu.fpt.faaps.student.service.StudentAiService;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -9,12 +12,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import vn.edu.fpt.faaps.student.ai.StudentAiDtos.AiConversationDto;
-import vn.edu.fpt.faaps.student.ai.StudentAiDtos.CreateAiConversationDto;
-import vn.edu.fpt.faaps.student.ai.StudentAiDtos.GenerateRoadmapDto;
-import vn.edu.fpt.faaps.student.ai.StudentAiDtos.SendAiMessageDto;
-import vn.edu.fpt.faaps.student.ai.StudentAiDtos.SendAiMessageResultDto;
-import vn.edu.fpt.faaps.student.ai.StudentAiDtos.StudyRoadmapDto;
+import vn.edu.fpt.faaps.student.dto.StudentAiDtos.AiConversationDto;
+import vn.edu.fpt.faaps.student.dto.StudentAiDtos.CreateAiConversationDto;
+import vn.edu.fpt.faaps.student.dto.StudentAiDtos.GenerateRoadmapDto;
+import vn.edu.fpt.faaps.student.dto.StudentAiDtos.SendAiMessageDto;
+import vn.edu.fpt.faaps.student.dto.StudentAiDtos.SendAiMessageResultDto;
+import vn.edu.fpt.faaps.student.dto.StudentAiDtos.StudyRoadmapDto;
 
 class StudentAiServiceTest {
 

@@ -1,5 +1,8 @@
 package vn.edu.fpt.faaps.user.repository;
 
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos;
+import vn.edu.fpt.faaps.user.exception.UserExceptions;
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -11,7 +14,7 @@ import org.springframework.stereotype.Repository;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Page;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Summary;
-import vn.edu.fpt.faaps.user.service.UserExceptions.NotFound;
+import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
 
 @Repository
 public class AdminUserRepository {

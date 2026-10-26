@@ -1,5 +1,7 @@
 package vn.edu.fpt.faaps.advisor;
 
+import vn.edu.fpt.faaps.advisor.service.AdvisorStudentService;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.UUID;
@@ -7,8 +9,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import vn.edu.fpt.faaps.notification.NotificationService;
-import vn.edu.fpt.faaps.student.StudentAdvisorService;
+import vn.edu.fpt.faaps.notification.service.NotificationService;
+import vn.edu.fpt.faaps.student.service.StudentAdvisorService;
 
 class PortalUserEndpointsTest {
     private JdbcTemplate jdbc;

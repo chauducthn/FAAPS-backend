@@ -1,5 +1,8 @@
 package vn.edu.fpt.faaps.admin;
 
+import vn.edu.fpt.faaps.admin.dto.AdminAiConfigDtos;
+import vn.edu.fpt.faaps.admin.service.AdminAiConfigService;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -10,9 +13,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.web.server.ResponseStatusException;
-import vn.edu.fpt.faaps.admin.AdminAiConfigDtos.AiConfigDto;
-import vn.edu.fpt.faaps.admin.AdminAiConfigDtos.CreateAiConfigDto;
-import vn.edu.fpt.faaps.admin.AdminAiConfigDtos.UpdateAiConfigDto;
+import vn.edu.fpt.faaps.admin.dto.AdminAiConfigDtos.AiConfigDto;
+import vn.edu.fpt.faaps.admin.dto.AdminAiConfigDtos.CreateAiConfigDto;
+import vn.edu.fpt.faaps.admin.dto.AdminAiConfigDtos.UpdateAiConfigDto;
 
 class AdminAiConfigServiceTest {
 

@@ -1,4 +1,8 @@
-package vn.edu.fpt.faaps.admin;
+package vn.edu.fpt.faaps.admin.service;
+
+import vn.edu.fpt.faaps.admin.service.AdminAssignmentService;
+import vn.edu.fpt.faaps.admin.service.AssignmentWorkflowService;
+import vn.edu.fpt.faaps.admin.service.CohortAdvisorService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;

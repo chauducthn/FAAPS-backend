@@ -1,5 +1,8 @@
 package vn.edu.fpt.faaps.appointment;
 
+import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos;
+import vn.edu.fpt.faaps.appointment.service.AppointmentService;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -16,12 +19,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.web.server.ResponseStatusException;
-import vn.edu.fpt.faaps.appointment.AppointmentDtos.AvailabilitySlotDto;
-import vn.edu.fpt.faaps.appointment.AppointmentDtos.AvailableSlotDto;
-import vn.edu.fpt.faaps.appointment.AppointmentDtos.BookAppointmentDto;
-import vn.edu.fpt.faaps.appointment.AppointmentDtos.BookedAppointmentDto;
-import vn.edu.fpt.faaps.appointment.AppointmentDtos.ConfigureAvailabilityDto;
-import vn.edu.fpt.faaps.appointment.AppointmentDtos.UpdateAppointmentStatusDto;
+import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.AvailabilitySlotDto;
+import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.AvailableSlotDto;
+import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.BookAppointmentDto;
+import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.BookedAppointmentDto;
+import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.ConfigureAvailabilityDto;
+import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.UpdateAppointmentStatusDto;
 
 class AppointmentServiceTest {
 

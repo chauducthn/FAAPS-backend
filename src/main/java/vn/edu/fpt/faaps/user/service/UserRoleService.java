@@ -1,5 +1,8 @@
 package vn.edu.fpt.faaps.user.service;
 
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos;
+import vn.edu.fpt.faaps.user.exception.UserExceptions;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
@@ -10,8 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
 import vn.edu.fpt.faaps.user.repository.AdminUserRepository;
-import vn.edu.fpt.faaps.user.service.UserExceptions.Conflict;
-import vn.edu.fpt.faaps.user.service.UserExceptions.NotFound;
+import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
+import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
 
 @Service
 public class UserRoleService {

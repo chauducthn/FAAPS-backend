@@ -1,5 +1,7 @@
 package vn.edu.fpt.faaps.auth;
 
+import vn.edu.fpt.faaps.auth.service.AuthRefreshTokenService;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;

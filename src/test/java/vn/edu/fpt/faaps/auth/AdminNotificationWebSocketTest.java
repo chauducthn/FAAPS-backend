@@ -1,5 +1,9 @@
 package vn.edu.fpt.faaps.auth;
 
+import vn.edu.fpt.faaps.auth.model.AuthAccount;
+import vn.edu.fpt.faaps.auth.model.GoogleIdentity;
+import vn.edu.fpt.faaps.auth.repository.AuthAccountStore;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,7 +37,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.messaging.simp.user.SimpUserRegistry;
-import vn.edu.fpt.faaps.admin.AdminNotificationPublisher;
+import vn.edu.fpt.faaps.admin.service.AdminNotificationPublisher;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"

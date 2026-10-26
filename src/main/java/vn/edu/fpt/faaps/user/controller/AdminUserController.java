@@ -1,5 +1,8 @@
 package vn.edu.fpt.faaps.user.controller;
 
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos;
+import vn.edu.fpt.faaps.user.exception.UserExceptions;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -22,15 +25,15 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import vn.edu.fpt.faaps.auth.AuthSession;
-import vn.edu.fpt.faaps.ApiError;
+import vn.edu.fpt.faaps.auth.model.AuthSession;
+import vn.edu.fpt.faaps.dto.ApiError;
 import vn.edu.fpt.faaps.user.service.AdminUserService;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.CreateAccount;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Page;
-import vn.edu.fpt.faaps.user.service.UserExceptions.Conflict;
-import vn.edu.fpt.faaps.user.service.UserExceptions.NotFound;
+import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
+import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
 
 @RestController
 @RequestMapping("/api/admin/users")

@@ -1,5 +1,13 @@
 package vn.edu.fpt.faaps.admin;
 
+import vn.edu.fpt.faaps.admin.controller.AdminAiReportController;
+import vn.edu.fpt.faaps.admin.controller.AdminAssignmentController;
+import vn.edu.fpt.faaps.admin.controller.AdminNotificationController;
+import vn.edu.fpt.faaps.admin.controller.AdminOverviewController;
+import vn.edu.fpt.faaps.admin.controller.AssignmentWorkflowController;
+import vn.edu.fpt.faaps.admin.controller.CohortAdvisorController;
+import vn.edu.fpt.faaps.admin.controller.StudentAdvisingController;
+
 import vn.edu.fpt.faaps.user.controller.AdminUserController;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;

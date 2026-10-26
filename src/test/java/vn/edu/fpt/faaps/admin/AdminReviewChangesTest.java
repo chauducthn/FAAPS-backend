@@ -1,5 +1,7 @@
 package vn.edu.fpt.faaps.admin;
 
+import vn.edu.fpt.faaps.admin.controller.AdvisorScheduleController;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.time.LocalDate;
@@ -8,7 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import vn.edu.fpt.faaps.auth.AuthSession;
+import vn.edu.fpt.faaps.auth.model.AuthSession;
 
 class AdminReviewChangesTest {
     private JdbcTemplate jdbc;
