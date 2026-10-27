@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vn.edu.fpt.faaps.auth.model.AuthSession;
-import vn.edu.fpt.faaps.dto.ApiError;
+import vn.edu.fpt.faaps.common.dto.ApiError;
 import vn.edu.fpt.faaps.user.service.AdminUserService;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.CreateAccount;
