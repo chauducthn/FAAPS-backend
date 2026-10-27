@@ -127,4 +127,28 @@ class AppointmentServiceTest {
         BookedAppointmentDto accepted = appointmentService.updateAppointmentStatus(UUID.fromString(booked.id()), advisorId, acceptInput);
         assertEquals("ACCEPTED", accepted.status());
     }
+
+    @Test
+    void advisorAppointmentsAcceptDateOnlyRangeUsedByTheWebClient() {
+        LocalDate day = LocalDate.now().plusDays(2);
+        jdbc.update("""
+                INSERT INTO advising_sessions
+                    (id, student_id, advisor_id, session_type, scheduled_at, ended_at,
+                     duration_minutes, status, agenda)
+                VALUES (?, ?, ?, 'ONLINE', ?, ?, 30, 'PENDING', 'Review study plan')
+                """, UUID.randomUUID().toString(), studentId.toString(), advisorId.toString(),
+                Timestamp.valueOf(day.atTime(9, 0)), Timestamp.valueOf(day.atTime(9, 30)));
+
+        var appointments = appointmentService.getAdvisorAppointments(
+                advisorId, day.toString(), day.toString());
+
+        assertEquals(1, appointments.size());
+        assertEquals("Review study plan", appointments.getFirst().reason());
+    }
+
+    @Test
+    void advisorAppointmentsRejectReversedDateRange() {
+        assertThrows(ResponseStatusException.class, () -> appointmentService.getAdvisorAppointments(
+                advisorId, LocalDate.now().plusDays(1).toString(), LocalDate.now().toString()));
+    }
 }

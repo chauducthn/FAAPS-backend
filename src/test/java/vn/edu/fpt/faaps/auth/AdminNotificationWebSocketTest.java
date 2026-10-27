@@ -37,7 +37,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.messaging.simp.user.SimpUserRegistry;
-import vn.edu.fpt.faaps.admin.service.AdminNotificationPublisher;
+import vn.edu.fpt.faaps.service.AdminNotificationPublisher;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
@@ -164,3 +164,4 @@ class AdminNotificationWebSocketTest {
         }
     }
 }
+

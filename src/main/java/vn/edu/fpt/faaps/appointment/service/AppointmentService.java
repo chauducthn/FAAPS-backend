@@ -223,8 +223,13 @@ public class AppointmentService {
     }
 
     public List<AdvisorAppointmentDto> getAdvisorAppointments(UUID advisorId, String fromStr, String toStr) {
-        LocalDateTime from = fromStr != null && !fromStr.isBlank() ? parseDateTime(fromStr) : LocalDateTime.now().minusDays(30);
-        LocalDateTime to = toStr != null && !toStr.isBlank() ? parseDateTime(toStr) : LocalDateTime.now().plusDays(60);
+        LocalDateTime from = fromStr != null && !fromStr.isBlank()
+                ? parseRangeBoundary(fromStr, false) : LocalDateTime.now().minusDays(30);
+        LocalDateTime to = toStr != null && !toStr.isBlank()
+                ? parseRangeBoundary(toStr, true) : LocalDateTime.now().plusDays(60);
+        if (to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The 'to' date must not be before 'from'");
+        }
         return reads.advisorAppointments(advisorId, from, to);
     }
 
@@ -316,6 +321,14 @@ public class AppointmentService {
             return java.time.OffsetDateTime.parse(str).toLocalDateTime();
         }
         return LocalDateTime.parse(str);
+    }
+
+    private LocalDateTime parseRangeBoundary(String value, boolean endOfDay) {
+        if (value.length() == 10) {
+            java.time.LocalDate date = java.time.LocalDate.parse(value);
+            return endOfDay ? date.plusDays(1).atStartOfDay().minusNanos(1) : date.atStartOfDay();
+        }
+        return parseDateTime(value);
     }
 
     private record BookedInterval(LocalDateTime start, LocalDateTime end) {}
