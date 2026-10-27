@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -48,6 +50,13 @@ public class TranscriptImportController {
     public ImportPreview detail(@AuthenticationPrincipal AuthSession student,
             @PathVariable UUID id) {
         return imports.detail(student.id(), id);
+    }
+
+    @GetMapping(value = "/{id}/errors.xlsx", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    public ResponseEntity<byte[]> errors(@AuthenticationPrincipal AuthSession student, @PathVariable UUID id) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=transcript-import-errors.xlsx")
+                .body(imports.errorWorkbook(student.id(), id));
     }
 }
 

@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS course_learning_tasks (
     due_date DATE NULL,
     resource_url VARCHAR(1000) NULL,
     sort_order INT NOT NULL,
+    completed BOOLEAN NOT NULL DEFAULT FALSE,
+    completed_at TIMESTAMP NULL,
     UNIQUE KEY uq_course_learning_task_order (plan_id, sort_order),
     CONSTRAINT fk_course_learning_task_plan FOREIGN KEY (plan_id) REFERENCES course_learning_plans(id)
 );

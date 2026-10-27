@@ -5,9 +5,11 @@ import vn.edu.fpt.faaps.appointment.service.AppointmentService;
 
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -36,5 +38,11 @@ public class StudentAppointmentController {
     public List<BookedAppointmentDto> getStudentAppointments(
             @AuthenticationPrincipal AuthSession student) {
         return appointmentService.getStudentAppointments(student.id());
+    }
+
+    @GetMapping("/{id}")
+    public BookedAppointmentDto getStudentAppointment(@PathVariable UUID id,
+            @AuthenticationPrincipal AuthSession student) {
+        return appointmentService.getStudentAppointment(id, student.id());
     }
 }

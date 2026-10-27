@@ -237,6 +237,22 @@ public class AppointmentService {
         return reads.studentAppointments(studentId);
     }
 
+    public BookedAppointmentDto getStudentAppointment(UUID appointmentId, UUID studentId) {
+        BookedAppointmentDto appointment = getBookedAppointment(appointmentId);
+        if (!appointment.studentId().equals(studentId.toString())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Appointment not found");
+        }
+        return appointment;
+    }
+
+    public BookedAppointmentDto getAdvisorAppointment(UUID appointmentId, UUID advisorId) {
+        BookedAppointmentDto appointment = getBookedAppointment(appointmentId);
+        if (!appointment.advisorId().equals(advisorId.toString())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Appointment not found");
+        }
+        return appointment;
+    }
+
     @Transactional
     public BookedAppointmentDto cancelAppointment(UUID appointmentId, UUID actorId, CancelAppointmentDto input) {
         BookedAppointmentDto current = getBookedAppointment(appointmentId);

@@ -15,14 +15,22 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import vn.edu.fpt.faaps.auth.model.AuthSession;
+import vn.edu.fpt.faaps.notification.service.NotificationService;
 
 @RestController
 @RequestMapping("/api/admin/notifications")
 public class AdminNotificationController {
     private final JdbcTemplate jdbc;
+    private final NotificationService notifications;
 
-    public AdminNotificationController(JdbcTemplate jdbc) {
+    public AdminNotificationController(JdbcTemplate jdbc, NotificationService notifications) {
         this.jdbc = jdbc;
+        this.notifications = notifications;
+    }
+
+    @GetMapping("/unread-count")
+    public Map<String, Long> unreadCount(@AuthenticationPrincipal AuthSession session) {
+        return Map.of("unreadCount", notifications.unreadCount(session.id()));
     }
 
     @GetMapping

@@ -1,6 +1,7 @@
 package vn.edu.fpt.faaps.academic.controller;
 
 import vn.edu.fpt.faaps.academic.service.AdminCourseService;
+import vn.edu.fpt.faaps.academic.service.ImportErrorWorkbook;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -124,6 +126,15 @@ public class AdminCourseController {
         return courses.previewXlsx(file.getInputStream());
     }
 
+    @PostMapping(value = "/import/errors.xlsx", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    public ResponseEntity<byte[]> importErrors(@RequestBody ImportErrorRequest request) {
+        if (request.items() == null || request.items().stream().noneMatch(item -> !item.errors().isEmpty()))
+            throw new IllegalArgumentException("Import has no validation errors");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=course-import-errors.xlsx")
+                .body(ImportErrorWorkbook.courses(request.items()));
+    }
+
     @PostMapping("/import/confirm")
     public ResponseEntity<Map<String, Object>> confirmImport(@Valid @RequestBody ConfirmImportRequest request) {
         int count = courses.confirmImport(request.items());
@@ -205,6 +216,8 @@ public class AdminCourseController {
 
     public record ConfirmImportRequest(@NotEmpty List<AdminCourseService.ImportConfirmItem> items) {
     }
+
+    public record ImportErrorRequest(List<AdminCourseService.ImportRowItem> items) {}
 
     public record AddRelationRequest(
             @NotBlank String kind,

@@ -37,6 +37,12 @@ public class AdvisorAppointmentController {
         return appointmentService.getAdvisorAppointments(advisor.id(), from, to);
     }
 
+    @GetMapping("/{id}")
+    public BookedAppointmentDto getAppointment(@PathVariable UUID id,
+            @AuthenticationPrincipal AuthSession advisor) {
+        return appointmentService.getAdvisorAppointment(id, advisor.id());
+    }
+
     @PutMapping("/{id}/status")
     public BookedAppointmentDto updateStatus(
             @PathVariable UUID id,

@@ -2,6 +2,7 @@ package vn.edu.fpt.faaps.academic.controller;
 
 import vn.edu.fpt.faaps.academic.dto.StudentPlanDtos;
 import vn.edu.fpt.faaps.academic.service.StudentPlanService;
+import vn.edu.fpt.faaps.academic.service.CourseLearningTaskService;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -12,6 +13,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,9 +24,10 @@ import vn.edu.fpt.faaps.academic.dto.StudentPlanDtos.*;
 @RequestMapping("/api/student")
 public class StudentPlanController {
     private final StudentPlanService plans;
+    private final CourseLearningTaskService tasks;
 
-    public StudentPlanController(StudentPlanService plans) {
-        this.plans = plans;
+    public StudentPlanController(StudentPlanService plans, CourseLearningTaskService tasks) {
+        this.plans = plans; this.tasks = tasks;
     }
 
     @GetMapping("/semesters")
@@ -77,9 +80,17 @@ public class StudentPlanController {
     public List<CoursePlan> courseVersions(@AuthenticationPrincipal AuthSession student,
             @PathVariable UUID id) { return plans.courseVersions(student.id(), id); }
 
+    @PatchMapping("/course-learning-plans/{planId}/tasks/{taskId}")
+    public CoursePlan updateTask(@AuthenticationPrincipal AuthSession student,
+            @PathVariable UUID planId, @PathVariable UUID taskId,
+            @Valid @RequestBody TaskProgress request) {
+        return tasks.update(student.id(), planId, taskId, request.completed());
+    }
+
     public record SaveStudyPlan(@NotNull UUID semesterId, String planType, @NotEmpty List<UUID> courseIds) {}
     public record SaveCoursePlan(@NotNull UUID courseId, String learningGoal,
             @NotEmpty List<TaskInput> tasks) {}
+    public record TaskProgress(boolean completed) {}
 }
 
 

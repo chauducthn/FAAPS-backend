@@ -60,6 +60,8 @@ class PortalUserEndpointsTest {
         UUID id=UUID.randomUUID();
         jdbc.update("INSERT INTO notifications VALUES (?,?,'INFO','Title','Message',NULL,NULL,NULL,FALSE,NULL,CURRENT_TIMESTAMP)",id,student);
         NotificationService service=new NotificationService(jdbc);
+        assertEquals(1, service.unreadCount(student));
+        assertEquals(0, service.unreadCount(advisor));
         assertEquals(1, service.list(student,true,0,20).totalElements());
         assertFalse(service.read(advisor,id));
         assertTrue(service.read(student,id));

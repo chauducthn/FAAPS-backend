@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import vn.edu.fpt.faaps.auth.model.AuthSession;
+import vn.edu.fpt.faaps.notification.service.NotificationService;
 
 class AdminNotificationControllerTest {
     private JdbcTemplate jdbc;
@@ -32,7 +33,7 @@ class AdminNotificationControllerTest {
         jdbc.update("INSERT INTO notifications VALUES (?, ?, 'ADVISOR_REQUEST', 'Request', 'Assign advisor', '/admin/assignments', FALSE, 'student-1', NULL, CURRENT_TIMESTAMP, NULL)", unreadId.toString(), admin.id().toString());
         jdbc.update("INSERT INTO notifications VALUES (?, ?, 'ADVISOR_REQUEST', 'Read', 'Done', '/admin/assignments', TRUE, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", UUID.randomUUID().toString(), admin.id().toString());
         jdbc.update("INSERT INTO notifications VALUES (?, ?, 'ADVISOR_REQUEST', 'Other', 'Private', '/admin/assignments', FALSE, NULL, NULL, CURRENT_TIMESTAMP, NULL)", UUID.randomUUID().toString(), otherAdmin.id().toString());
-        controller = new AdminNotificationController(jdbc);
+        controller = new AdminNotificationController(jdbc, new NotificationService(jdbc));
     }
 
     @Test
@@ -50,6 +51,7 @@ class AdminNotificationControllerTest {
 
     @Test
     void readOperationsCannotAffectAnotherAdminsNotifications() {
+        assertEquals(1L, controller.unreadCount(admin).get("unreadCount"));
         assertEquals(false, controller.markRead(otherAdmin, unreadId).get("updated"));
         assertEquals(true, controller.markRead(admin, unreadId).get("updated"));
         assertEquals(false, controller.markRead(admin, unreadId).get("updated"));

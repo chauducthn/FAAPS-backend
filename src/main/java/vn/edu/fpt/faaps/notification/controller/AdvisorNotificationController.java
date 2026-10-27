@@ -20,6 +20,10 @@ public class AdvisorNotificationController {
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         return notifications.list(user.id(), unreadOnly, page, size);
     }
+    @GetMapping("/unread-count")
+    public Map<String, Long> unreadCount(@AuthenticationPrincipal AuthSession user) {
+        return Map.of("unreadCount", notifications.unreadCount(user.id()));
+    }
     @PatchMapping("/{id}/read")
     public Map<String, Boolean> read(@AuthenticationPrincipal AuthSession user, @PathVariable UUID id) {
         return Map.of("updated", notifications.read(user.id(), id));

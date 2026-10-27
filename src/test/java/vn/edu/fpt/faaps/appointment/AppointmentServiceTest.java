@@ -151,4 +151,24 @@ class AppointmentServiceTest {
         assertThrows(ResponseStatusException.class, () -> appointmentService.getAdvisorAppointments(
                 advisorId, LocalDate.now().plusDays(1).toString(), LocalDate.now().toString()));
     }
+
+    @Test
+    void appointmentDetailIsScopedToItsStudentAndAdvisor() {
+        String id = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO advising_sessions
+                    (id, student_id, advisor_id, session_type, scheduled_at, ended_at,
+                     duration_minutes, status, agenda)
+                VALUES (?, ?, ?, 'ONLINE', ?, ?, 30, 'PENDING', 'Review progress')
+                """, id, studentId.toString(), advisorId.toString(),
+                Timestamp.valueOf(LocalDateTime.now().plusDays(1)),
+                Timestamp.valueOf(LocalDateTime.now().plusDays(1).plusMinutes(30)));
+
+        assertEquals(id, appointmentService.getStudentAppointment(UUID.fromString(id), studentId).id());
+        assertEquals(id, appointmentService.getAdvisorAppointment(UUID.fromString(id), advisorId).id());
+        assertThrows(ResponseStatusException.class, () -> appointmentService
+                .getStudentAppointment(UUID.fromString(id), UUID.randomUUID()));
+        assertThrows(ResponseStatusException.class, () -> appointmentService
+                .getAdvisorAppointment(UUID.fromString(id), UUID.randomUUID()));
+    }
 }

@@ -33,11 +33,12 @@ public class CourseLearningPlanService {
                 rs.getTimestamp("created_at").toLocalDateTime()),planId.toString(),studentId.toString()).stream()
                 .findFirst().orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Course plan not found"));
         List<Task> tasks=jdbc.query("""
-                SELECT id,title,description,due_date,resource_url,sort_order FROM course_learning_tasks
+                SELECT id,title,description,due_date,resource_url,sort_order,completed,completed_at FROM course_learning_tasks
                 WHERE plan_id=? ORDER BY sort_order
                 """,(rs,row)->new Task(rs.getString("id"),rs.getString("title"),rs.getString("description"),
                 rs.getDate("due_date")==null?null:rs.getDate("due_date").toLocalDate(),rs.getString("resource_url"),
-                rs.getInt("sort_order")),planId.toString());
+                rs.getInt("sort_order"),rs.getBoolean("completed"),
+                rs.getTimestamp("completed_at")==null?null:rs.getTimestamp("completed_at").toLocalDateTime()),planId.toString());
         return new CoursePlan(header,tasks);
     }
     public List<CoursePlan> versions(UUID studentId,UUID planId) {

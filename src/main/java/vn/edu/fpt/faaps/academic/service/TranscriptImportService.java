@@ -154,6 +154,12 @@ public class TranscriptImportService {
         return new ImportPreview(importId.toString(), rows.size(), (int) rows.stream().filter(row -> row.error() != null).count(), rows);
     }
 
+    public byte[] errorWorkbook(UUID studentId, UUID importId) {
+        ImportPreview preview = detail(studentId, importId);
+        if (preview.errorCount() == 0) throw new IllegalArgumentException("Import has no validation errors");
+        return ImportErrorWorkbook.transcript(preview.rows());
+    }
+
     private List<ImportRow> rows(UUID importId) {
         return jdbc.query("""
                 SELECT line_number,course_code,semester_code,final_score,status,attempt_number,

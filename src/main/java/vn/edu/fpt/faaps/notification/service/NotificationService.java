@@ -13,6 +13,14 @@ public class NotificationService {
 
     public NotificationService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
+    public long unreadCount(UUID recipientId) {
+        Long count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM notifications
+                WHERE recipient_user_id=? AND is_read=FALSE
+                """, Long.class, recipientId.toString());
+        return count == null ? 0 : count;
+    }
+
     public Page list(UUID recipientId, boolean unreadOnly, int page, int size) {
         if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("Invalid page or size");
         String unread = unreadOnly ? " AND is_read=FALSE" : "";

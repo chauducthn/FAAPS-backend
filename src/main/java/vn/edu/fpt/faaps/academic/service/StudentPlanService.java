@@ -42,12 +42,14 @@ public class StudentPlanService {
     public CurriculumPlan curriculumPlan(UUID studentId, UUID planId) {
         PlanHeader h = jdbc.query("""
                 SELECT p.id,p.semester_id,sem.code,p.version,p.status,p.plan_type,p.total_credits_planned,
-                       p.previous_plan_id,p.created_at
+                       p.previous_plan_id,p.submitted_at,p.reviewed_by_user_id,p.reviewed_at,p.review_notes,p.created_at
                 FROM study_plans p JOIN semesters sem ON sem.id=p.semester_id
                 WHERE p.id=? AND p.student_id=?
                 """, (rs, row) -> new PlanHeader(rs.getString("id"), rs.getString("semester_id"),
                 rs.getString("code"), rs.getInt("version"), rs.getString("status"), rs.getString("plan_type"),
                 rs.getInt("total_credits_planned"), rs.getString("previous_plan_id"),
+                time(rs, "submitted_at"), rs.getString("reviewed_by_user_id"),
+                time(rs, "reviewed_at"), rs.getString("review_notes"),
                 rs.getTimestamp("created_at").toLocalDateTime()), planId.toString(), studentId.toString())
                 .stream().findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Plan not found"));
         List<PlanCourse> courses = jdbc.query("""
@@ -152,6 +154,11 @@ public class StudentPlanService {
         if (jdbc.query("SELECT user_id FROM students WHERE user_id=? FOR UPDATE",
                 (rs, row) -> rs.getString(1), studentId.toString()).isEmpty())
             throw new IllegalArgumentException("Your academic profile has not been assigned");
+    }
+
+    private java.time.LocalDateTime time(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        var value = rs.getTimestamp(column);
+        return value == null ? null : value.toLocalDateTime();
     }
 
     private List<String> validateCourses(UUID studentId, List<String> courseIds) {
