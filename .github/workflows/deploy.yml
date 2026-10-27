@@ -29,6 +29,13 @@ jobs:
             sudo systemctl restart faaps-backend.service
 
             echo "=== Checking Service Status ==="
-            sleep 6
             sudo systemctl is-active --quiet faaps-backend.service && echo "Backend is ACTIVE!" || (sudo journalctl -u faaps-backend.service -n 30 --no-pager && exit 1)
-            curl -fsS http://localhost:8080/api/health && echo -e "\nHealth check PASSED!"
+            for attempt in $(seq 1 30); do
+              if curl -fs -o /dev/null --max-time 3 http://localhost:8080/api/health; then
+                echo "Health check PASSED!"
+                exit 0
+              fi
+              sleep 2
+            done
+            sudo journalctl -u faaps-backend.service -n 30 --no-pager
+            exit 1
