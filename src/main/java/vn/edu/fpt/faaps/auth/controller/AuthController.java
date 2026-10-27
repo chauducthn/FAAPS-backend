@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import vn.edu.fpt.faaps.dto.ApiError;
+import vn.edu.fpt.faaps.common.dto.ApiError;
 import vn.edu.fpt.faaps.auth.service.AuthRefreshTokenService;
 import vn.edu.fpt.faaps.auth.service.AuthService;
 import vn.edu.fpt.faaps.auth.model.AuthSession;
