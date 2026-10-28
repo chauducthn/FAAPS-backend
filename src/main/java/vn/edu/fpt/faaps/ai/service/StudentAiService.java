@@ -2,19 +2,17 @@ package vn.edu.fpt.faaps.ai.service;
 
 import vn.edu.fpt.faaps.ai.dto.StudentAiDtos;
 
-import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,11 +34,18 @@ public class StudentAiService {
 
     private final JdbcTemplate jdbc;
     private final StudentRoadmapService roadmaps;
+    private final GeminiGateway gemini;
     private static final DateTimeFormatter ISO_DT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
-    public StudentAiService(JdbcTemplate jdbc) {
+    @Autowired
+    public StudentAiService(JdbcTemplate jdbc, GeminiGateway gemini) {
         this.jdbc = jdbc;
         this.roadmaps = new StudentRoadmapService(jdbc);
+        this.gemini = gemini;
+    }
+
+    StudentAiService(JdbcTemplate jdbc) {
+        this(jdbc, new GeminiGateway("", new com.fasterxml.jackson.databind.ObjectMapper()));
     }
 
     public List<AiConversationDto> listConversations(UUID studentId) {
@@ -138,21 +143,27 @@ public class StudentAiService {
 
         AiConfigModel activeConfig = getActiveChatConfig();
         String assistantMsgId = UUID.randomUUID().toString();
-        String answerContent = generateAnswer(userContent, category, activeConfig);
+        long started = System.nanoTime();
+        GeminiGateway.Reply reply = gemini.generate(activeConfig == null ? null : activeConfig.modelName(),
+                activeConfig == null ? null : activeConfig.systemPrompt(), userContent);
+        String answerContent = reply.fallback()
+                ? activeConfig != null && activeConfig.fallbackMessage() != null && !activeConfig.fallbackMessage().isBlank()
+                    ? activeConfig.fallbackMessage() : "The academic assistant is unavailable. Please contact your advisor."
+                : reply.text();
+        int latencyMs = (int) Math.min(Integer.MAX_VALUE, (System.nanoTime() - started) / 1_000_000);
 
         String configId = activeConfig != null ? activeConfig.id : null;
-        double confidence = 0.92;
 
         jdbc.update("""
                 INSERT INTO ai_messages (id, conversation_id, sender, content, question_category, is_unsupported,
                                          is_fallback, confidence_score, ai_configuration_id, created_at)
-                VALUES (?, ?, 'ASSISTANT', ?, ?, FALSE, FALSE, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, 'ASSISTANT', ?, ?, FALSE, ?, NULL, ?, CURRENT_TIMESTAMP)
                 """, assistantMsgId, conversationId.toString(), answerContent, category,
-                BigDecimal.valueOf(confidence), configId);
+                reply.fallback(), configId);
 
-        List<AiChatSourceDto> sources = linkKnowledgeSources(assistantMsgId, userContent);
+        List<AiChatSourceDto> sources = List.of();
 
-        logAiUsage(studentId, assistantMsgId, configId, userContent, answerContent);
+        logAiUsage(studentId, assistantMsgId, configId, reply, latencyMs);
 
         AiChatMessageDto userMsg = new AiChatMessageDto(
                 userMsgId, conversationId.toString(), "USER", userContent, category,
@@ -161,7 +172,7 @@ public class StudentAiService {
 
         AiChatMessageDto assistantMsg = new AiChatMessageDto(
                 assistantMsgId, conversationId.toString(), "ASSISTANT", answerContent, category,
-                false, false, confidence, configId, sources, null, null,
+                false, reply.fallback(), null, configId, sources, null, null,
                 LocalDateTime.now().format(ISO_DT)
         );
 
@@ -248,45 +259,17 @@ public class StudentAiService {
         }, messageId.toString());
     }
 
-    private List<AiChatSourceDto> linkKnowledgeSources(String messageId, String query) {
-        List<Map<String, Object>> chunks = jdbc.queryForList("""
-                SELECT chunk.id, chunk.section_title, doc.title AS doc_title
-                FROM document_chunks chunk
-                JOIN knowledge_documents doc ON doc.id = chunk.knowledge_document_id
-                LIMIT 2
-                """);
-
-        List<AiChatSourceDto> sources = new ArrayList<>();
-        int rank = 1;
-        for (Map<String, Object> chunk : chunks) {
-            String chunkId = (String) chunk.get("id");
-            String docTitle = (String) chunk.get("doc_title");
-            String sectionTitle = (String) chunk.get("section_title");
-            String quote = "Excerpt regarding university academic policies and prerequisites for " + query;
-            double score = 0.88 - (rank * 0.05);
-
-            jdbc.update("""
-                    INSERT INTO ai_message_sources (id, message_id, chunk_id, relevance_score, quoted_text, rank_position)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """, UUID.randomUUID().toString(), messageId, chunkId, BigDecimal.valueOf(score), quote, rank);
-
-            sources.add(new AiChatSourceDto(chunkId, docTitle, sectionTitle, quote, score, rank));
-            rank++;
-        }
-        return sources;
-    }
-
-    private void logAiUsage(UUID studentId, String messageId, String configId, String query, String answer) {
-        int promptTokens = query.length() / 4 + 10;
-        int completionTokens = answer.length() / 4 + 10;
-        int totalTokens = promptTokens + completionTokens;
+    private void logAiUsage(UUID studentId, String messageId, String configId,
+            GeminiGateway.Reply reply, int latencyMs) {
+        int totalTokens = reply.promptTokens() + reply.completionTokens();
 
         jdbc.update("""
                 INSERT INTO ai_usage_logs (id, user_id, message_id, ai_configuration_id, feature,
                                            prompt_tokens, completion_tokens, total_tokens, latency_ms, status)
-                VALUES (?, ?, ?, ?, 'CHAT', ?, ?, ?, 320, 'SUCCESS')
+                VALUES (?, ?, ?, ?, 'CHAT', ?, ?, ?, ?, ?)
                 """, UUID.randomUUID().toString(), studentId.toString(), messageId, configId,
-                promptTokens, completionTokens, totalTokens);
+                reply.promptTokens(), reply.completionTokens(), totalTokens, latencyMs,
+                reply.fallback() ? "FALLBACK" : "SUCCESS");
     }
 
     private String classifyQuestion(String content) {
@@ -304,16 +287,6 @@ public class StudentAiService {
             return "GRADUATION";
         }
         return "OTHER";
-    }
-
-    private String generateAnswer(String query, String category, AiConfigModel config) {
-        return switch (category) {
-            case "POLICY" -> "According to university academic regulations, students must maintain a minimum cumulative GPA of 2.0. In order to pass a course, each component grade and the final examination score must satisfy the passing threshold (typically >= 4.0/10).";
-            case "COURSE_INFO" -> "Prerequisites must be passed prior to enrolling in subsequent specialized courses. You can check the course prerequisite chain on your curriculum page or study roadmap.";
-            case "STUDY_PLAN" -> "You can generate a personalized study roadmap directly from the AI Roadmap tab. It calculates the optimal semester course sequence adhering strictly to prerequisite chains and your preferred credit limits.";
-            case "GRADUATION" -> "To qualify for graduation, you must complete all 140 required credits specified in your curriculum, fulfill the On-the-Job Training (OJT) semester, and successfully defend your Capstone Project.";
-            default -> "I am your FAAPS Academic AI Advisor. I can help answer questions regarding university academic regulations, prerequisites, retakes, and study roadmap planning.";
-        };
     }
 
     private AiConfigModel getActiveChatConfig() {

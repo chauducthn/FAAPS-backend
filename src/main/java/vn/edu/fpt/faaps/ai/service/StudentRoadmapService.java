@@ -45,8 +45,8 @@ class StudentRoadmapService {
         String description = input != null && input.goal() != null
                 ? "Customized for goal: " + input.goal()
                 : "Optimal curriculum progression based on prerequisites and university guidelines.";
-        return new StudyRoadmapDto(planId, studentId.toString(), "AI Personalized Study Roadmap",
-                description, LocalDateTime.now().format(ISO_DT), "gemini-1.5-pro", 0.95,
+        return new StudyRoadmapDto(planId, studentId.toString(), "Curriculum Study Roadmap",
+                description, LocalDateTime.now().format(ISO_DT), "RULE_BASED", null,
                 semesters.size(), totalCredits, semesters);
     }
 
@@ -118,7 +118,7 @@ class StudentRoadmapService {
         jdbc.update("""
                 INSERT INTO study_plans (id, student_id, semester_id, version, is_current, plan_type,
                     total_credits_planned, status, created_at, updated_at)
-                VALUES (?, ?, (SELECT id FROM semesters LIMIT 1), 1, TRUE, 'REGULAR', ?, 'APPROVED',
+                VALUES (?, ?, (SELECT id FROM semesters LIMIT 1), 1, TRUE, 'REGULAR', ?, 'DRAFT',
                     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, planId, studentId.toString(), totalCredits);
         for (RoadmapSemesterDto semester : semesters) for (RoadmapCourseDto course : semester.courses()) {
@@ -130,7 +130,7 @@ class StudentRoadmapService {
             jdbc.update("""
                     INSERT INTO course_recommendations (id, student_id, course_id, semester_id,
                         recommendation_source, confidence_score, reasoning, priority, status)
-                    VALUES (?, ?, ?, (SELECT id FROM semesters LIMIT 1), 'AI', 0.95, ?, ?, 'ACCEPTED')
+                    VALUES (?, ?, ?, (SELECT id FROM semesters LIMIT 1), 'CURRICULUM', NULL, ?, ?, 'PENDING')
                     """, UUID.randomUUID().toString(), studentId.toString(), course.courseId(),
                     course.reason(), course.priority());
         }
@@ -150,7 +150,7 @@ class StudentRoadmapService {
                 "IN_PROGRESS", courses, "Generated plan");
         return new StudyRoadmapDto(planId, studentId.toString(), "Active Study Roadmap",
                 "Based on current academic plan and graduation guidelines.", generatedAt,
-                "gemini-1.5-pro", 0.95, 1, credits, List.of(semester));
+                "RULE_BASED", null, 1, credits, List.of(semester));
     }
 
     private boolean booleanValue(Object value) {

@@ -67,9 +67,9 @@ public class AdminAiConfigService {
         return List.of(
                 new AiPresetDto(
                         "gemini-flash-chat",
-                        "Gemini 1.5 Flash - Student Advisor Chat",
+                        "Gemini 2.5 Flash - Student Advisor Chat",
                         "GEMINI",
-                        "gemini-1.5-flash",
+                        "gemini-2.5-flash",
                         "CHAT",
                         "Fast, responsive conversational model for academic guidance and policy questions.",
                         Map.of(
@@ -85,9 +85,9 @@ public class AdminAiConfigService {
                 ),
                 new AiPresetDto(
                         "gemini-pro-roadmap",
-                        "Gemini 1.5 Pro - Academic Roadmap Generation",
+                        "Gemini 2.5 Pro - Academic Guidance",
                         "GEMINI",
-                        "gemini-1.5-pro",
+                        "gemini-2.5-pro",
                         "CHAT",
                         "High reasoning model for prerequisite DAG resolution and semester curriculum roadmaps.",
                         Map.of(
@@ -213,12 +213,8 @@ public class AdminAiConfigService {
     }
 
     public void setSecret(UUID id, AiConfigSecretDto secretDto, UUID actorId) {
-        get(id);
-        if (secretDto.apiKey() == null || secretDto.apiKey().isBlank()) {
-            throw new IllegalArgumentException("apiKey is required");
-        }
-        jdbc.update("UPDATE ai_configurations SET updated_by_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                actorId != null ? actorId.toString() : null, id.toString());
+        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Configure FAAPS_GEMINI_API_KEY in the backend environment; the server does not store API keys through this endpoint.");
     }
 
     public AiPerformanceResultDto getPerformance(UUID configId, String purpose, String startDate, String endDate) {

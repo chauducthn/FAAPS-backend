@@ -20,6 +20,8 @@ spring:
     open-in-view: false
 faaps:
   frontend-url: ${FAAPS_FRONTEND_URL:http://localhost:5173}
+  ai:
+    gemini-api-key: ${FAAPS_GEMINI_API_KEY:}
   auth:
     refresh-token-lifetime: ${FAAPS_REFRESH_TOKEN_LIFETIME:14d}
     cookie-secure: ${FAAPS_AUTH_COOKIE_SECURE:false}

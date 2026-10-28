@@ -178,7 +178,12 @@ class StudentAiServiceTest {
         assertNotNull(result.userMessage());
         assertNotNull(result.assistantMessage());
         assertEquals("POLICY", result.userMessage().questionCategory());
-        assertTrue(result.assistantMessage().content().contains("GPA"));
+        assertTrue(result.assistantMessage().isFallback());
+        assertTrue(result.assistantMessage().content().contains("unavailable"));
+        assertTrue(result.assistantMessage().sources().isEmpty());
+        assertEquals("FALLBACK", jdbc.queryForObject(
+                "SELECT status FROM ai_usage_logs WHERE message_id=?", String.class,
+                result.assistantMessage().id()));
         assertEquals(2, service.getMessages(UUID.fromString(conv.id()), studentId).size());
     }
 
@@ -189,6 +194,11 @@ class StudentAiServiceTest {
         assertEquals(studentId.toString(), roadmap.studentId());
         assertTrue(roadmap.semesters().size() >= 1);
         assertEquals(6, roadmap.totalCredits());
+        assertEquals("DRAFT", jdbc.queryForObject(
+                "SELECT status FROM study_plans WHERE id=?", String.class, roadmap.id()));
+        assertEquals("CURRICULUM", jdbc.queryForObject(
+                "SELECT recommendation_source FROM course_recommendations WHERE student_id=? LIMIT 1",
+                String.class, studentId.toString()));
     }
 }
 
