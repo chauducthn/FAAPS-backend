@@ -11,5 +11,10 @@ public interface AuthAccountStore {
 
     Optional<AuthAccount> findAdminByEmail(String email);
 
+    /** An account that signs in with an email and a password stored in this system (not Admin, not Google). */
+    default Optional<AuthAccount> findLocalByEmail(String email) {
+        return Optional.empty();
+    }
+
     AuthAccount resolveGoogleAccount(GoogleIdentity identity);
 }

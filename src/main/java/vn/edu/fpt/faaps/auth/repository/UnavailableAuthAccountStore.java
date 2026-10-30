@@ -19,6 +19,11 @@ public class UnavailableAuthAccountStore implements AuthAccountStore {
     }
 
     @Override
+    public Optional<AuthAccount> findLocalByEmail(String email) {
+        throw new AuthUnavailableException();
+    }
+
+    @Override
     public AuthAccount resolveGoogleAccount(GoogleIdentity identity) {
         throw new AuthUnavailableException();
     }

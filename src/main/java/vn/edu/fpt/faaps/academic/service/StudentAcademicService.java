@@ -20,7 +20,7 @@ public class StudentAcademicService {
 
     public Profile profile(UUID studentId) {
         return jdbc.query("""
-                SELECT u.id, u.full_name, u.email, u.phone, u.status AS account_status,
+                SELECT u.id, u.full_name, u.email, u.phone, u.date_of_birth, u.status AS account_status,
                        s.student_code, s.major_id, m.code AS major_code, m.name AS major_name,
                        s.curriculum_version_id, cv.version AS cohort, s.current_semester,
                        s.current_gpa, s.total_credits_earned, s.academic_status
@@ -34,7 +34,7 @@ public class StudentAcademicService {
                 rs.getString("major_name"), rs.getString("curriculum_version_id"),
                 rs.getString("cohort"), (Integer) rs.getObject("current_semester"),
                 rs.getBigDecimal("current_gpa"), (Integer) rs.getObject("total_credits_earned"),
-                rs.getString("academic_status")), studentId.toString()).stream().findFirst()
+                rs.getString("academic_status"), rs.getObject("date_of_birth", LocalDate.class)), studentId.toString()).stream().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Student account not found"));
     }
 
@@ -150,7 +150,7 @@ public class StudentAcademicService {
     public record Profile(String id, String fullName, String email, String phone, String accountStatus,
             String studentCode, String majorId, String majorCode, String majorName,
             String curriculumVersionId, String cohort, Integer currentSemester, BigDecimal currentGpa,
-            Integer totalCreditsEarned, String academicStatus) {}
+            Integer totalCreditsEarned, String academicStatus, LocalDate dateOfBirth) {}
     public record TranscriptRow(String id, String courseCode, String courseName, int credits,
             String semesterCode, String semesterName, BigDecimal finalScore, String status,
             int attemptNumber, int creditsEarned) {}

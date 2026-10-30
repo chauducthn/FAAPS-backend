@@ -63,7 +63,8 @@ public class SecurityConfig {
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                 .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()));
         http.authorizeHttpRequests(requests -> requests
-                .requestMatchers("/api/health", "/api/auth/csrf", "/api/auth/admin/login", "/api/auth/refresh",
+                .requestMatchers("/api/health", "/api/auth/csrf", "/api/auth/admin/login", "/api/auth/login",
+                        "/api/auth/register", "/api/auth/register/curriculums", "/api/auth/refresh",
                         "/oauth2/**", "/login/oauth2/**",
                         "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/api/admin/**", "/admin/**").hasRole("ADMIN")

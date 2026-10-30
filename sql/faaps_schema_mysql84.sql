@@ -19,6 +19,7 @@ CREATE TABLE `users` (
   `external_id` varchar(255) COMMENT 'Provider user id (Google "sub" claim)',
   `full_name` varchar(255) NOT NULL,
   `phone` varchar(20),
+  `date_of_birth` date,
   `status` varchar(20) DEFAULT 'ACTIVE' COMMENT 'ACTIVE, INACTIVE, SUSPENDED, LOCKED',
   `email_verified_at` timestamp,
   `last_login_at` timestamp,

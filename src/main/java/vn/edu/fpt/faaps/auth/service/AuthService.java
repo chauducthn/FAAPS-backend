@@ -16,10 +16,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 public class AuthService {
     private final AuthAccountStore accountStore;
     private final PasswordEncoder passwordEncoder;
+    private final String dummyHash;
 
     public AuthService(AuthAccountStore accountStore, PasswordEncoder passwordEncoder) {
         this.accountStore = accountStore;
         this.passwordEncoder = passwordEncoder;
+        this.dummyHash = passwordEncoder.encode(UUID.randomUUID().toString());
     }
 
     public AuthSession loginAdmin(String email, String password) {
@@ -28,6 +30,22 @@ public class AuthService {
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
         if (!"ADMIN".equals(account.role()) || account.passwordHash() == null
                 || !passwordEncoder.matches(password, account.passwordHash())) {
+            throw new BadCredentialsException("Invalid credentials");
+        }
+        return activeSession(account);
+    }
+
+    /** Email + password sign-in for every kind of account that has a password: Admin, or a registered Student. */
+    public AuthSession login(String email, String password) {
+        String loginEmail = email.strip();
+        if (loginEmail.equalsIgnoreCase("admin") || accountStore.findAdminByEmail(loginEmail).isPresent()) {
+            return loginAdmin(loginEmail, password);
+        }
+        AuthAccount account = accountStore.findLocalByEmail(loginEmail).orElse(null);
+        // Compare against a dummy hash when the account is unknown so the response time does not reveal it.
+        String hash = account == null ? dummyHash : account.passwordHash();
+        boolean matches = passwordEncoder.matches(password, hash);
+        if (account == null || !matches) {
             throw new BadCredentialsException("Invalid credentials");
         }
         return activeSession(account);

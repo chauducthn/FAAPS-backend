@@ -44,6 +44,17 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
     }
 
     @Override
+    public Optional<AuthAccount> findLocalByEmail(String email) {
+        return jdbcTemplate.query("""
+                SELECT u.id, u.email, u.full_name, r.code AS role,
+                       u.status, u.password_hash
+                FROM users u JOIN roles r ON r.id = u.role_id
+                WHERE LOWER(u.email) = LOWER(?) AND r.code IN ('STUDENT', 'ADVISOR')
+                  AND u.auth_provider = 'LOCAL' AND u.password_hash IS NOT NULL
+                """, this::mapAccount, email).stream().findFirst();
+    }
+
+    @Override
     public AuthAccount resolveGoogleAccount(GoogleIdentity identity) {
         if (identity.subject() == null || identity.subject().isBlank()
                 || identity.email() == null || identity.email().isBlank()) {

@@ -52,7 +52,17 @@ public class AuthController {
     @PostMapping("/admin/login")
     public AuthSession adminLogin(@Valid @RequestBody AdminLoginRequest credentials,
             HttpServletRequest request, HttpServletResponse response) {
-        AuthSession session = authService.loginAdmin(credentials.email(), credentials.password());
+        return startSession(authService.loginAdmin(credentials.email(), credentials.password()), request, response);
+    }
+
+    /** Email + password sign-in for Admin and for students who registered with a password. */
+    @PostMapping("/login")
+    public AuthSession login(@Valid @RequestBody AdminLoginRequest credentials,
+            HttpServletRequest request, HttpServletResponse response) {
+        return startSession(authService.login(credentials.email(), credentials.password()), request, response);
+    }
+
+    private AuthSession startSession(AuthSession session, HttpServletRequest request, HttpServletResponse response) {
         if (request.getSession(false) == null) {
             request.getSession(true);
         } else {
