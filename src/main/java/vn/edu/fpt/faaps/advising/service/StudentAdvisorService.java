@@ -12,19 +12,29 @@ public class StudentAdvisorService {
 
     public Advisor advisor(UUID studentId) {
         return jdbc.query("""
-                SELECT u.id,u.full_name,u.email,u.phone,a.max_advisees,a.status,a.assignment_start_date,
-                       saa.assigned_date,saa.group_name,saa.is_primary
+                SELECT u.id, a.advisor_code, u.full_name, u.email, u.phone, a.specialization,
+                       a.max_advisees, a.status, a.assignment_start_date,
+                       saa.assigned_date, saa.group_name, saa.is_primary
                 FROM student_advisor_assignments saa
                 JOIN advisors a ON a.user_id=saa.advisor_id JOIN users u ON u.id=a.user_id
                 JOIN roles r ON r.id=u.role_id
                 WHERE saa.student_id=? AND saa.status='ACTIVE' AND saa.end_date IS NULL
                   AND a.status='ACTIVE' AND u.status='ACTIVE' AND r.code='ADVISOR'
                 ORDER BY saa.is_primary DESC,saa.assigned_at DESC LIMIT 1
-                """, (rs, row) -> new Advisor(UUID.fromString(rs.getString("id")), rs.getString("email"),
-                rs.getString("full_name"), rs.getString("email"), rs.getString("phone"),
-                rs.getInt("max_advisees"), rs.getString("status"), date(rs, "assignment_start_date"),
-                date(rs, "assigned_date"), rs.getString("group_name"), rs.getBoolean("is_primary")),
-                studentId.toString()).stream().findFirst().orElse(null);
+                """, (rs, row) -> new Advisor(
+                    UUID.fromString(rs.getString("id")),
+                    rs.getString("advisor_code") != null ? rs.getString("advisor_code") : rs.getString("email"),
+                    rs.getString("full_name"),
+                    rs.getString("email"),
+                    rs.getString("phone"),
+                    rs.getString("specialization"),
+                    rs.getInt("max_advisees"),
+                    rs.getString("status"),
+                    date(rs, "assignment_start_date"),
+                    date(rs, "assigned_date"),
+                    rs.getString("group_name"),
+                    rs.getBoolean("is_primary")
+                ), studentId.toString()).stream().findFirst().orElse(null);
     }
 
     private LocalDate date(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
@@ -33,7 +43,6 @@ public class StudentAdvisorService {
     }
 
     public record Advisor(UUID id, String advisorCode, String fullName, String email, String phone,
-            int maxAdvisees, String status, LocalDate assignmentStartDate, LocalDate assignedDate,
-            String groupName, boolean isPrimary) {}
+            String specialization, int maxAdvisees, String status, LocalDate assignmentStartDate,
+            LocalDate assignedDate, String groupName, boolean isPrimary) {}
 }
-

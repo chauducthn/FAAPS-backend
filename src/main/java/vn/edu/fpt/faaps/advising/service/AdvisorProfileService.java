@@ -21,10 +21,27 @@ public class AdvisorProfileService {
 
     @Transactional
     public Profile update(UUID advisorId, String fullName) {
-        String normalized = fullName == null ? "" : fullName.strip().replaceAll("\\s+", " ");
-        if (normalized.isBlank()) throw new IllegalArgumentException("Full name is required");
-        if (repository.updateName(advisorId, normalized) != 1)
+        return update(advisorId, fullName, null, null);
+    }
+
+    @Transactional
+    public Profile update(UUID advisorId, String fullName, String phone, String specialization) {
+        String normalizedName = fullName == null ? "" : fullName.strip().replaceAll("\\s+", " ");
+        if (normalizedName.isBlank()) throw new IllegalArgumentException("Full name is required");
+
+        String normalizedPhone = phone == null ? null : phone.strip();
+        if (normalizedPhone != null && normalizedPhone.isBlank()) {
+            normalizedPhone = null;
+        }
+
+        String normalizedSpec = specialization == null ? null : specialization.strip();
+        if (normalizedSpec != null && normalizedSpec.isBlank()) {
+            normalizedSpec = null;
+        }
+
+        if (repository.update(advisorId, normalizedName, normalizedPhone, normalizedSpec) != 1) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Advisor profile not found");
+        }
         return get(advisorId);
     }
 }

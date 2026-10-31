@@ -155,6 +155,8 @@ CREATE TABLE `students` (
 
 CREATE TABLE `advisors` (
   `user_id` char(36) PRIMARY KEY,
+  `advisor_code` varchar(50) UNIQUE,
+  `specialization` text,
   `max_advisees` int DEFAULT 30,
   `status` varchar(20) DEFAULT 'ACTIVE' COMMENT 'ACTIVE, INACTIVE, ON_LEAVE',
   `assignment_start_date` date,
