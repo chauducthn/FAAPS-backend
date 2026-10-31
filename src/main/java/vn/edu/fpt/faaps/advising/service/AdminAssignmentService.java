@@ -164,40 +164,71 @@ public class AdminAssignmentService {
         return changed;
     }
     public Preview preview(String cohort, List<UUID> advisorIds) {
+        return preview(cohort, advisorIds, null);
+    }
+    public Preview preview(String cohort, List<UUID> advisorIds, List<UUID> studentIds) {
         List<Advisor> selected = selectedAdvisors(advisorIds);
-        List<Student> unassigned = students(cohort, true);
-        return new Preview(cohort, unassigned.size(), distribute(selected, unassigned.size()));
+        int count;
+        if (studentIds != null && !studentIds.isEmpty()) {
+            validateUnassignedStudents(studentIds);
+            count = studentIds.size();
+        } else {
+            count = students(cohort, true).size();
+        }
+        return new Preview(cohort, count, distribute(selected, count));
     }
     public Map<String, Object> previewCohort(UUID cohortId, List<UUID> advisorIds) {
+        return previewCohort(cohortId, advisorIds, null);
+    }
+    public Map<String, Object> previewCohort(UUID cohortId, List<UUID> advisorIds, List<UUID> studentIds) {
         List<Advisor> selected = selectedAdvisorsForCohort(cohortId, advisorIds);
-        int count = unassignedIds(cohortId).size();
+        int count;
+        if (studentIds != null && !studentIds.isEmpty()) {
+            validateUnassignedStudents(studentIds);
+            count = studentIds.size();
+        } else {
+            count = unassignedIds(cohortId).size();
+        }
         return allocationResponse(cohortId, count, selected, distribute(selected, count));
     }
     @Transactional
     public Map<String, Object> confirmCohort(UUID cohortId, List<UUID> advisorIds) {
-        return confirmCohort(cohortId, advisorIds, null, null);
+        return confirmCohort(cohortId, advisorIds, null, null, null);
     }
     @Transactional
     public Map<String, Object> confirmCohort(UUID cohortId, List<UUID> advisorIds, UUID actorId, String notes) {
+        return confirmCohort(cohortId, advisorIds, null, actorId, notes);
+    }
+    @Transactional
+    public Map<String, Object> confirmCohort(UUID cohortId, List<UUID> advisorIds, List<UUID> studentIds, UUID actorId, String notes) {
         cohorts.lockCohort(cohortId);
         List<Advisor> initial = selectedAdvisorsForCohort(cohortId, advisorIds);
         for (UUID advisorId : initial.stream().map(Advisor::id).sorted().toList()) lockAdvisor(advisorId);
         List<Advisor> selected = selectedAdvisorsForCohort(cohortId, advisorIds);
-        for (UUID studentId : unassignedIds(cohortId)) lockStudent(studentId);
-        List<UUID> students = unassignedIds(cohortId);
+
+        List<UUID> targetIds;
+        if (studentIds != null && !studentIds.isEmpty()) {
+            validateUnassignedStudents(studentIds);
+            targetIds = studentIds.stream().distinct().sorted().toList();
+        } else {
+            targetIds = unassignedIds(cohortId);
+        }
+
+        for (UUID studentId : targetIds) lockStudent(studentId);
+
         Map<UUID, Integer> allocation = new HashMap<>();
         Map<UUID, Long> loads = new HashMap<>();
         for (Advisor advisor : selected) {
             allocation.put(advisor.id(), 0);
             loads.put(advisor.id(), advisor.activeStudents());
         }
-        for (UUID studentId : students) {
+        for (UUID studentId : targetIds) {
             Advisor advisor = nextAdvisor(selected, loads);
             insertAssignment(studentId, advisor.id(), actorId, notes);
             loads.put(advisor.id(), loads.get(advisor.id()) + 1);
             allocation.put(advisor.id(), allocation.get(advisor.id()) + 1);
         }
-        return allocationResponse(cohortId, students.size(), selected, allocation);
+        return allocationResponse(cohortId, targetIds.size(), selected, allocation);
     }
     private List<UUID> unassignedIds(UUID cohortId) {
         if (jdbc.queryForObject("SELECT COUNT(*) FROM curriculum_versions WHERE id = ?",
@@ -226,21 +257,31 @@ public class AdminAssignmentService {
 
     @Transactional
     public Result confirm(String cohort, List<UUID> advisorIds) {
-        return confirm(cohort, advisorIds, null, null);
+        return confirm(cohort, advisorIds, null, null, null);
     }
 
     @Transactional
     public Result confirm(String cohort, List<UUID> advisorIds, UUID actorId, String notes) {
+        return confirm(cohort, advisorIds, null, actorId, notes);
+    }
+
+    @Transactional
+    public Result confirm(String cohort, List<UUID> advisorIds, List<UUID> studentIds, UUID actorId, String notes) {
         for (UUID advisorId : advisorIds.stream().sorted().toList()) {
             lockAdvisor(advisorId);
         }
         List<Advisor> selected = selectedAdvisors(advisorIds);
-        List<Student> candidates = students(cohort, true);
-        List<UUID> studentIds = candidates.stream().map(Student::id).sorted().toList();
-        for (UUID studentId : studentIds) {
+        List<UUID> targetIds;
+        if (studentIds != null && !studentIds.isEmpty()) {
+            validateUnassignedStudents(studentIds);
+            targetIds = studentIds.stream().distinct().sorted().toList();
+        } else {
+            List<Student> candidates = students(cohort, true);
+            targetIds = candidates.stream().map(Student::id).sorted().toList();
+        }
+        for (UUID studentId : targetIds) {
             lockStudent(studentId);
         }
-        List<Student> unassigned = students(cohort, true);
         Map<UUID, Integer> assignedCounts = new HashMap<>();
         for (Advisor advisor : selected) {
             assignedCounts.put(advisor.id(), 0);
@@ -249,13 +290,26 @@ public class AdminAssignmentService {
         for (Advisor advisor : selected) {
             loads.put(advisor.id(), advisor.activeStudents());
         }
-        for (Student student : unassigned) {
+        for (UUID studentId : targetIds) {
             Advisor next = nextAdvisor(selected, loads);
-            insertAssignment(student.id(), next.id(), actorId, notes);
+            insertAssignment(studentId, next.id(), actorId, notes);
             loads.put(next.id(), loads.get(next.id()) + 1);
             assignedCounts.put(next.id(), assignedCounts.get(next.id()) + 1);
         }
-        return new Result(unassigned.size(), assignedCounts);
+        return new Result(targetIds.size(), assignedCounts);
+    }
+
+    private void validateUnassignedStudents(List<UUID> studentIds) {
+        for (UUID studentId : studentIds) {
+            Integer activeCount = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM student_advisor_assignments
+                    WHERE student_id = ? AND status = 'ACTIVE' AND end_date IS NULL
+                    """, Integer.class, studentId.toString());
+            if (activeCount != null && activeCount > 0) {
+                throw new AssignmentError("STUDENT_ALREADY_ASSIGNED",
+                        "Student " + studentId + " is already assigned to an advisor");
+            }
+        }
     }
 
     private Map<UUID, Integer> distribute(List<Advisor> advisors, int count) {

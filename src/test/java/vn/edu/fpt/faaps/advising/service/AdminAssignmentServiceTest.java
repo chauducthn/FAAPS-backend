@@ -252,6 +252,35 @@ class AdminAssignmentServiceTest {
         assertEquals(2L, workflow.summary().get("unassigned"));
     }
 
+    @Test
+    void autoAssignSelectedStudentsBalancesOnlyThoseProvided() {
+        UUID thirdStudent = addStudent("SE003", cohortId.toString());
+        var preview = assignments.previewCohort(cohortId, List.of(firstAdvisor, secondAdvisor), List.of(firstStudent, thirdStudent));
+        assertEquals(2, preview.get("assigned"));
+
+        Map<String, Object> result = transactions.execute(status ->
+                assignments.confirmCohort(cohortId, List.of(firstAdvisor, secondAdvisor), List.of(firstStudent, thirdStudent), null, "Selected batch"));
+        assertEquals(2, result.get("assigned"));
+
+        assertEquals(null, assignments.activeAdvisor(secondStudent));
+        assertEquals(true, assignments.activeAdvisor(firstStudent) != null);
+        assertEquals(true, assignments.activeAdvisor(thirdStudent) != null);
+    }
+
+    @Test
+    void autoAssignRejectsAlreadyAssignedStudent() {
+        transactions.execute(status -> assignments.assign(List.of(firstStudent), firstAdvisor));
+
+        var ex = assertThrows(AdminAssignmentService.AssignmentError.class, () ->
+                assignments.previewCohort(cohortId, List.of(firstAdvisor, secondAdvisor), List.of(firstStudent, secondStudent)));
+        assertEquals("STUDENT_ALREADY_ASSIGNED", ex.code());
+
+        var exConfirm = assertThrows(AdminAssignmentService.AssignmentError.class, () ->
+                transactions.execute(status ->
+                        assignments.confirmCohort(cohortId, List.of(firstAdvisor, secondAdvisor), List.of(firstStudent, secondStudent), null, "test")));
+        assertEquals("STUDENT_ALREADY_ASSIGNED", exConfirm.code());
+    }
+
     private UUID addAdvisor(String code, int capacity) {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO users (id, role_id, full_name, email, status) VALUES (?, 'advisor-role', ?, ?, 'ACTIVE')", id.toString(), code, code + "@test.local");
