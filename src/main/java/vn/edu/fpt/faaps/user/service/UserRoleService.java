@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import vn.edu.fpt.faaps.common.validation.IdentityInput;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -80,9 +81,7 @@ public class UserRoleService {
     }
 
     private void createStudentProfile(UUID userId, ChangeRole input) {
-        String code = input.studentCode() == null ? "" : input.studentCode().strip().toUpperCase(Locale.ROOT);
-        if (!code.matches("^(SE|IA)1\\d{5}$"))
-            throw new IllegalArgumentException("studentCode must match SE1##### or IA1#####");
+        String code = IdentityInput.studentCode(input.studentCode());
         if (input.curriculumVersionId() == null || input.enrollmentSemesterId() == null)
             throw new IllegalArgumentException("curriculumVersionId and enrollmentSemesterId are required");
         String majorId = jdbc.query("SELECT major_id FROM curriculum_versions WHERE id=? AND status='ACTIVE'",

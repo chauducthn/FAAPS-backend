@@ -19,6 +19,7 @@ import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Page;
 import vn.edu.fpt.faaps.user.repository.AdminUserRepository;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
+import vn.edu.fpt.faaps.common.validation.IdentityInput;
 
 @Service
 public class AdminUserService {
@@ -58,13 +59,9 @@ public class AdminUserService {
         if (!List.of("STUDENT", "ADVISOR").contains(role)) {
             throw new IllegalArgumentException("role must be STUDENT or ADVISOR");
         }
-        requireText(input.email(), "email", 255);
         requireText(input.fullName(), "fullName", 255);
-        if (input.phone() != null && input.phone().length() > 20) {
-            throw new IllegalArgumentException("phone must be at most 20 characters");
-        }
-
-        String email = input.email().strip().toLowerCase(Locale.ROOT);
+        String email = IdentityInput.email(input.email());
+        IdentityInput.phone(input.phone());
         ExistingAccount existing = findByEmailForUpdate(email);
         boolean completeGoogleStudent = existing != null && "STUDENT".equals(role)
                 && "STUDENT".equals(existing.role()) && existing.externalId() != null
@@ -108,7 +105,7 @@ public class AdminUserService {
     private void saveUser(UUID userId, String email, String role, CreateAccount input, boolean existingGoogleStudent) {
         if (existingGoogleStudent) {
             jdbc.update("UPDATE users SET full_name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    input.fullName().strip(), input.phone(), userId.toString());
+                    input.fullName().strip(), IdentityInput.phone(input.phone()), userId.toString());
             return;
         }
         int inserted = jdbc.update("""
@@ -116,7 +113,7 @@ public class AdminUserService {
                                            created_at, updated_at)
                         SELECT ?, r.id, ?, 'GOOGLE', ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         FROM roles r WHERE r.code = ?
-                        """, userId.toString(), email, input.fullName().strip(), input.phone(), role);
+                        """, userId.toString(), email, input.fullName().strip(), IdentityInput.phone(input.phone()), role);
         if (inserted != 1) {
             throw new Conflict("Role " + role + " is not configured");
         }
@@ -137,9 +134,7 @@ public class AdminUserService {
     }
 
     private void validateStudentInput(CreateAccount input) {
-        if (input.studentCode() == null || input.studentCode().isBlank() || input.studentCode().length() > 50) {
-            throw new IllegalArgumentException("studentCode is required and must be at most 50 characters");
-        }
+        IdentityInput.studentCode(input.studentCode());
         if (input.curriculumVersionId() == null || input.enrollmentSemesterId() == null) {
             throw new IllegalArgumentException("curriculumVersionId and enrollmentSemesterId are required for a Student");
         }
@@ -183,7 +178,7 @@ public class AdminUserService {
                                       current_semester, current_gpa, total_credits_earned, academic_status,
                                       created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, userId.toString(), input.studentCode().strip(), majorId,
+                """, userId.toString(), IdentityInput.studentCode(input.studentCode()), majorId,
                 input.curriculumVersionId().toString(), input.enrollmentSemesterId().toString(),
                 input.expectedGraduationSemesterId() == null ? null : input.expectedGraduationSemesterId().toString(),
                 input.currentSemester() == null ? 1 : input.currentSemester());

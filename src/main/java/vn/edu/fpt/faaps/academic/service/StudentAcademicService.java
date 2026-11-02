@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import vn.edu.fpt.faaps.common.validation.IdentityInput;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -42,7 +43,7 @@ public class StudentAcademicService {
     public Profile updateProfile(UUID studentId, String fullName, String phone) {
         if (fullName.isBlank()) throw new IllegalArgumentException("fullName is required");
         jdbc.update("UPDATE users SET full_name=?, phone=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                fullName.strip(), phone == null || phone.isBlank() ? null : phone.strip(), studentId.toString());
+                fullName.strip(), IdentityInput.phone(phone), studentId.toString());
         return profile(studentId);
     }
 

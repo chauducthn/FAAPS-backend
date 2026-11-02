@@ -1,7 +1,6 @@
 package vn.edu.fpt.faaps.academic.service;
 
 import java.time.LocalDate;
-import java.util.Locale;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
@@ -10,6 +9,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.common.validation.IdentityInput;
 
 /**
  * Manual student registration: the student picks an email and a password instead of signing in with Google.
@@ -35,9 +35,11 @@ public class StudentRegistrationService {
         if (name.length() < 2 || name.length() > 255) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Full name must be 2 to 255 characters");
         }
-        String loginEmail = email == null ? "" : email.strip().toLowerCase(Locale.ROOT);
-        if (loginEmail.length() > 255 || !loginEmail.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid email address");
+        String loginEmail;
+        try {
+            loginEmail = IdentityInput.email(email);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
         requireStrongPassword(password);
         StudentOnboardingService.requireDateOfBirth(dateOfBirth);
@@ -69,8 +71,7 @@ public class StudentRegistrationService {
     }
 
     private static void requireStrongPassword(String password) {
-        boolean ok = password != null && password.length() >= 8 && password.length() <= 72
-                && password.chars().anyMatch(Character::isLetter) && password.chars().anyMatch(Character::isDigit);
+        boolean ok = IdentityInput.validRegistrationPassword(password);
         if (!ok) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Password must be 8 to 72 characters and contain a letter and a digit");

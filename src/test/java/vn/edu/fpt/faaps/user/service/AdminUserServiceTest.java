@@ -162,10 +162,10 @@ class AdminUserServiceTest {
 
         Detail created = users.create(new CreateAccount(
                 "STUDENT", "new.student@example.com", "New Student", "0900000000",
-                "SE20001", curriculumId, enrollmentSemesterId, graduationSemesterId, 1, null));
+                "SE200001", curriculumId, enrollmentSemesterId, graduationSemesterId, 1, null));
 
         assertEquals("STUDENT", created.role());
-        assertEquals("SE20001", created.userId());
+        assertEquals("SE200001", created.userId());
         assertEquals(majorId.toString(), created.majorId());
         assertEquals(curriculumId.toString(), created.curriculumVersionId());
         assertEquals(graduationSemesterId.toString(), created.expectedGraduationSemesterId());
@@ -188,6 +188,19 @@ class AdminUserServiceTest {
                 Integer.class, created.id().toString()));
         assertEquals("ACTIVE", jdbc.queryForObject("SELECT status FROM advisors WHERE user_id = ?",
                 String.class, created.id().toString()));
+    }
+
+    @Test
+    void rejectsInvalidIdentityFieldsBeforeCreatingAccount() {
+        assertThrows(IllegalArgumentException.class, () -> users.create(new CreateAccount(
+                "ADVISOR", "not-an-email", "New Advisor", null,
+                null, null, null, null, null, null)));
+        assertThrows(IllegalArgumentException.class, () -> users.create(new CreateAccount(
+                "ADVISOR", "valid@example.com", "New Advisor", "........",
+                null, null, null, null, null, null)));
+        assertThrows(IllegalArgumentException.class, () -> users.create(new CreateAccount(
+                "STUDENT", "student2@example.com", "New Student", null,
+                "SE12345", null, null, null, null, null)));
     }
 }
 

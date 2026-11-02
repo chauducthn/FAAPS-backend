@@ -2,15 +2,14 @@ package vn.edu.fpt.faaps.academic.service;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.common.validation.IdentityInput;
 
 /**
  * Lets a student who signed in with Google for the first time finish registration. The first Google sign-in
@@ -19,8 +18,6 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @Service
 public class StudentOnboardingService {
-    private static final Pattern STUDENT_CODE = Pattern.compile("^[A-Z]{2}\\d{6}$");
-
     private final JdbcTemplate jdbc;
 
     public StudentOnboardingService(JdbcTemplate jdbc) {
@@ -81,20 +78,19 @@ public class StudentOnboardingService {
     }
 
     static String normalizeStudentCode(String studentCode) {
-        String code = studentCode == null ? "" : studentCode.strip().toUpperCase(Locale.ROOT);
-        if (!STUDENT_CODE.matcher(code).matches()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Student ID must be two letters followed by six digits, for example SE173012");
+        try {
+            return IdentityInput.studentCode(studentCode);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return code;
     }
 
     static String normalizePhone(String phone) {
-        String clean = phone == null || phone.isBlank() ? null : phone.strip();
-        if (clean != null && clean.length() > 20) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phone must be at most 20 characters");
+        try {
+            return IdentityInput.phone(phone);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return clean;
     }
 
     static void requireDateOfBirth(LocalDate dateOfBirth) {
