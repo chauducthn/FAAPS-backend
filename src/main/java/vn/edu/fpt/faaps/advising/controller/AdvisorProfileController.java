@@ -24,7 +24,6 @@ public class AdvisorProfileController {
     @PutMapping
     public Profile update(@AuthenticationPrincipal AuthSession advisor,
             @Valid @RequestBody UpdateRequest request) {
-        return profiles.update(advisor.id(), request.fullName());
+        return profiles.update(advisor.id(), request.fullName(), request.phone(), request.specialization());
     }
 }
-

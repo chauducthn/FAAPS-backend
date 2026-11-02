@@ -23,7 +23,7 @@ class PortalUserEndpointsTest {
                 "jdbc:h2:mem:portal-" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         jdbc.execute("CREATE TABLE roles(id VARCHAR(36),code VARCHAR(20))");
         jdbc.execute("CREATE TABLE users(id VARCHAR(36),role_id VARCHAR(36),full_name VARCHAR(100),email VARCHAR(100),phone VARCHAR(20),status VARCHAR(20))");
-        jdbc.execute("CREATE TABLE advisors(user_id VARCHAR(36),max_advisees INT,status VARCHAR(20),assignment_start_date DATE)");
+        jdbc.execute("CREATE TABLE advisors(user_id VARCHAR(36),advisor_code VARCHAR(50),specialization CLOB,max_advisees INT,status VARCHAR(20),assignment_start_date DATE)");
         jdbc.execute("CREATE TABLE majors(id VARCHAR(36),code VARCHAR(20),name VARCHAR(100))");
         jdbc.execute("CREATE TABLE curriculum_versions(id VARCHAR(36),version VARCHAR(20))");
         jdbc.execute("CREATE TABLE semesters(id VARCHAR(36),code VARCHAR(20))");
@@ -35,8 +35,8 @@ class PortalUserEndpointsTest {
         String major=UUID.randomUUID().toString(), curriculum=UUID.randomUUID().toString(), semester=UUID.randomUUID().toString();
         jdbc.update("INSERT INTO roles VALUES (?,'STUDENT'),(?,'ADVISOR')",studentRole,advisorRole);
         jdbc.update("INSERT INTO users VALUES (?,?, 'Nguyễn Văn Lương','student@fpt.edu.vn',NULL,'ACTIVE')",student,studentRole);
-        jdbc.update("INSERT INTO users VALUES (?,?, 'Nguyễn Minh Anh','advisor@fpt.edu.vn',NULL,'ACTIVE')",advisor,advisorRole);
-        jdbc.update("INSERT INTO advisors VALUES (?,30,'ACTIVE',DATE '2026-10-01')",advisor);
+        jdbc.update("INSERT INTO users VALUES (?,?, 'Nguyễn Minh Anh','advisor@fpt.edu.vn','0901234567','ACTIVE')",advisor,advisorRole);
+        jdbc.update("INSERT INTO advisors VALUES (?,'ADV007','Software Engineering',30,'ACTIVE',DATE '2026-10-01')",advisor);
         jdbc.update("INSERT INTO majors VALUES (?,'SE','Software Engineering')",major);
         jdbc.update("INSERT INTO curriculum_versions VALUES (?,'K17')",curriculum);
         jdbc.update("INSERT INTO semesters VALUES (?,'FA2022')",semester);
@@ -49,7 +49,8 @@ class PortalUserEndpointsTest {
     void exposesRealAdvisorAndAssignedStudent() {
         var assigned = new StudentAdvisorService(jdbc).advisor(student);
         assertEquals(advisor, assigned.id());
-        assertEquals("advisor@fpt.edu.vn", assigned.advisorCode());
+        assertEquals("ADV007", assigned.advisorCode());
+        assertEquals("Software Engineering", assigned.specialization());
         var page = new AdvisorStudentService(jdbc).list(advisor, "SE173012", 0, 20);
         assertEquals(1, page.totalElements());
         assertTrue(new AdvisorStudentService(jdbc).owns(advisor, student));
@@ -68,4 +69,3 @@ class PortalUserEndpointsTest {
         assertEquals(0, service.list(student,true,0,20).totalElements());
     }
 }
-

@@ -96,24 +96,24 @@ public class AdminAssignmentController {
 
     @PostMapping("/auto-assign/preview")
     public AdminAssignmentService.Preview preview(@Valid @RequestBody AutoAssignRequest request) {
-        return assignments.preview(request.cohort(), request.advisorIds());
+        return assignments.preview(request.cohort(), request.advisorIds(), request.studentIds());
     }
 
     @PostMapping("/auto-assign/confirm")
     public AdminAssignmentService.Result confirm(@AuthenticationPrincipal AuthSession session,
             @Valid @RequestBody AutoAssignRequest request) {
-        return assignments.confirm(request.cohort(), request.advisorIds(), session.id(), request.notes());
+        return assignments.confirm(request.cohort(), request.advisorIds(), request.studentIds(), session.id(), request.notes());
     }
 
     @PostMapping("/auto-assign/cohort/preview")
     public Map<String, Object> previewCohort(@Valid @RequestBody CohortAutoAssignRequest request) {
-        return assignments.previewCohort(request.cohortId(), request.advisorIds());
+        return assignments.previewCohort(request.cohortId(), request.advisorIds(), request.studentIds());
     }
 
     @PostMapping("/auto-assign/cohort/confirm")
     public Map<String, Object> confirmCohort(@AuthenticationPrincipal AuthSession session,
             @Valid @RequestBody CohortAutoAssignRequest request) {
-        return assignments.confirmCohort(request.cohortId(), request.advisorIds(), session.id(), request.notes());
+        return assignments.confirmCohort(request.cohortId(), request.advisorIds(), request.studentIds(), session.id(), request.notes());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -163,10 +163,16 @@ public class AdminAssignmentController {
     public record UnassignRequest(@NotEmpty List<UUID> studentIds,
             Boolean acknowledgeAppointmentCancellation, String notes) {}
 
-    public record AutoAssignRequest(@NotNull String cohort, @NotEmpty List<UUID> advisorIds, String notes) {
+    public record AutoAssignRequest(@NotNull String cohort, @NotEmpty List<UUID> advisorIds, List<UUID> studentIds, String notes) {
+        public AutoAssignRequest(@NotNull String cohort, @NotEmpty List<UUID> advisorIds, String notes) {
+            this(cohort, advisorIds, null, notes);
+        }
     }
 
-    public record CohortAutoAssignRequest(@NotNull UUID cohortId, List<UUID> advisorIds, String notes) {
+    public record CohortAutoAssignRequest(@NotNull UUID cohortId, List<UUID> advisorIds, List<UUID> studentIds, String notes) {
+        public CohortAutoAssignRequest(@NotNull UUID cohortId, List<UUID> advisorIds, String notes) {
+            this(cohortId, advisorIds, null, notes);
+        }
     }
 }
 
