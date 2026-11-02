@@ -1,5 +1,13 @@
+# Build stage
+FROM maven:3.9.9-eclipse-temurin-21 AS build
+WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+# Run stage
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY target/faaps-api-0.1.0-SNAPSHOT.jar app.jar
+COPY --from=build /app/target/faaps-api-*.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
