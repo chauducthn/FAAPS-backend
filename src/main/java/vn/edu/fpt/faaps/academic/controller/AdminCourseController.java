@@ -99,7 +99,7 @@ public class AdminCourseController {
     }
 
     @PutMapping("/{id}")
-    public AdminCourseService.CourseDetail update(@PathVariable UUID id, @RequestBody UpdateCourseRequest request) {
+    public AdminCourseService.CourseDetail update(@PathVariable UUID id, @Valid @RequestBody UpdateCourseRequest request) {
         return courses.update(
                 id, request.code(), request.name(), request.credits(), request.categoryId(),
                 request.description(), request.objectives(), request.learningOutcomes(),
@@ -190,7 +190,7 @@ public class AdminCourseController {
     public record CreateCourseRequest(
             @NotBlank @Size(max = 50) String code,
             @NotBlank @Size(max = 255) String name,
-            @NotNull @Positive Integer credits,
+            @NotNull @Positive @Max(30) Integer credits,
             @NotNull UUID categoryId,
             String description,
             String objectives,
@@ -202,7 +202,7 @@ public class AdminCourseController {
     public record UpdateCourseRequest(
             String code,
             String name,
-            Integer credits,
+            @Positive @Max(30) Integer credits,
             UUID categoryId,
             String description,
             String objectives,
