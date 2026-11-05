@@ -87,6 +87,24 @@ class AdminCourseServiceTest {
     }
 
     @Test
+    void rejectsInvalidSortParameter() {
+        IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> courses.list(null, null, null, 0, 10, "foo,asc")
+        );
+        assertEquals("sort is invalid", ex.getMessage());
+    }
+
+    @Test
+    void allowsValidSortParameters() {
+        courses.create("PRF192", "Programming Fundamentals", 3, catGeneral, null, null, null, "ACTIVE", List.of());
+        assertNotNull(courses.list(null, null, null, 0, 10, "code,asc"));
+        assertNotNull(courses.list(null, null, null, 0, 10, "code,desc"));
+        assertNotNull(courses.list(null, null, null, 0, 10, "name,asc"));
+        assertNotNull(courses.list(null, null, null, 0, 10, "credits,desc"));
+    }
+
+    @Test
     void createsCourseWithPrerequisitesAndLists() {
         AdminCourseService.CourseDetail prf = courses.create("PRF192", "Programming Fundamentals", 3, catGeneral,
                 "Intro to programming", null, null, "ACTIVE", List.of());

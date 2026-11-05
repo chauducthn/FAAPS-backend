@@ -56,6 +56,7 @@ public final class CourseReadRepository {
         String orderBy = " ORDER BY c.code ASC, c.id ASC";
         if (sort != null && !sort.isBlank()) {
             orderBy = switch (sort) {
+                case "code,asc" -> " ORDER BY c.code ASC, c.id ASC";
                 case "code,desc" -> " ORDER BY c.code DESC, c.id DESC";
                 case "name,asc" -> " ORDER BY c.name ASC, c.id ASC";
                 case "name,desc" -> " ORDER BY c.name DESC, c.id DESC";
@@ -63,7 +64,7 @@ public final class CourseReadRepository {
                 case "credits,desc" -> " ORDER BY c.credits DESC, c.code ASC";
                 case "createdAt,desc" -> " ORDER BY c.created_at DESC, c.id DESC";
                 case "createdAt,asc" -> " ORDER BY c.created_at ASC, c.id ASC";
-                default -> " ORDER BY c.code ASC, c.id ASC";
+                default -> throw new IllegalArgumentException("sort is invalid");
             };
         }
 
