@@ -54,8 +54,26 @@ class AdminMajorServiceTest {
                     major_id VARCHAR(36)
                 )
                 """);
+        jdbc.execute("""
+                CREATE TABLE semesters (
+                    id VARCHAR(36) PRIMARY KEY,
+                    code VARCHAR(50) NOT NULL,
+                    start_date DATE,
+                    is_current BOOLEAN DEFAULT TRUE
+                )
+                """);
+        jdbc.update("INSERT INTO semesters VALUES (?, 'FA2026', CURRENT_DATE, TRUE)", UUID.randomUUID().toString());
 
         majors = new AdminMajorService(jdbc);
+    }
+
+    @Test
+    void createsMajorWithCohortAndHandlesEmptyCohort() {
+        AdminMajorService.MajorItem testQa = majors.create("TESTQA", "QA Test Major", "Desc", 120, new BigDecimal("4.0"), "ACTIVE", "K00");
+        assertEquals("K00", testQa.cohort());
+
+        AdminMajorService.MajorItem noCohort = majors.create("CS", "Computer Science", "Desc", 130, new BigDecimal("4.0"), "ACTIVE", null);
+        assertEquals("", noCohort.cohort());
     }
 
     @Test
@@ -63,6 +81,7 @@ class AdminMajorServiceTest {
         AdminMajorService.MajorItem se = majors.create("SE", "Software Engineering", "Core SE program", 140, new BigDecimal("4.0"), "ACTIVE", "K18");
         assertNotNull(se.id());
         assertEquals("SE", se.code());
+        assertEquals("K18", se.cohort());
 
         majors.create("AI", "Artificial Intelligence", "AI program", 140, new BigDecimal("4.0"), "DRAFT", "K19");
 

@@ -125,13 +125,35 @@ public class AdminMajorService {
         }
 
         if (cohort != null && !cohort.isBlank()) {
+            String semesterId = null;
             try {
+                List<String> sems = jdbc.query("SELECT id FROM semesters ORDER BY is_current DESC, start_date DESC LIMIT 1", (rs, r) -> rs.getString(1));
+                if (!sems.isEmpty()) {
+                    semesterId = sems.get(0);
+                }
+            } catch (Exception ignored) {
+            }
+
+            if (semesterId != null) {
+                try {
+                    jdbc.update("""
+                            INSERT INTO curriculum_versions (id, major_id, version, name, effective_from_semester_id, is_current, status, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, true, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            """,
+                            UUID.randomUUID().toString(), id.toString(), cohort.strip(), name.strip() + " - " + cohort.strip(), semesterId);
+                } catch (Exception e) {
+                    jdbc.update("""
+                            INSERT INTO curriculum_versions (id, major_id, version, name, is_current, status, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, true, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            """,
+                            UUID.randomUUID().toString(), id.toString(), cohort.strip(), name.strip() + " - " + cohort.strip());
+                }
+            } else {
                 jdbc.update("""
                         INSERT INTO curriculum_versions (id, major_id, version, name, is_current, status, created_at, updated_at)
                         VALUES (?, ?, ?, ?, true, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         """,
                         UUID.randomUUID().toString(), id.toString(), cohort.strip(), name.strip() + " - " + cohort.strip());
-            } catch (Exception ignored) {
             }
         }
 
@@ -214,7 +236,7 @@ public class AdminMajorService {
                 rs.getInt("total_credits"),
                 rs.getBigDecimal("duration_years"),
                 rs.getString("status"),
-                rs.getString("latest_cohort") != null ? rs.getString("latest_cohort") : "K18",
+                rs.getString("latest_cohort") != null ? rs.getString("latest_cohort") : "",
                 rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null,
                 rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null
         );
