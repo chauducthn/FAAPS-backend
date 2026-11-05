@@ -162,10 +162,10 @@ class AdminUserServiceTest {
 
         Detail created = users.create(new CreateAccount(
                 "STUDENT", "new.student@example.com", "New Student", "0900000000",
-                "SE20001", curriculumId, enrollmentSemesterId, graduationSemesterId, 1, null));
+                "SE200001", curriculumId, enrollmentSemesterId, graduationSemesterId, 1, null));
 
         assertEquals("STUDENT", created.role());
-        assertEquals("SE20001", created.userId());
+        assertEquals("SE200001", created.userId());
         assertEquals(majorId.toString(), created.majorId());
         assertEquals(curriculumId.toString(), created.curriculumVersionId());
         assertEquals(graduationSemesterId.toString(), created.expectedGraduationSemesterId());
@@ -173,6 +173,30 @@ class AdminUserServiceTest {
                 String.class, created.id().toString()));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE user_id = ?",
                 Integer.class, created.id().toString()));
+    }
+
+    @Test
+    void rejectsInvalidStudentCodeFormat() {
+        UUID curriculumId = UUID.randomUUID();
+        UUID enrollmentSemesterId = UUID.randomUUID();
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                users.create(new CreateAccount("STUDENT", "test.qa@example.com", "QA Student",
+                        "0900000000", "ABC123", curriculumId, enrollmentSemesterId, null, 1, null)));
+        assertEquals("studentCode must consist of 2 uppercase letters followed by 6 digits (e.g. SE123456)", ex.getMessage());
+    }
+
+    @Test
+    void filtersStudentsByCurriculumVersionId() {
+        UUID cur1 = UUID.randomUUID();
+        UUID cur2 = UUID.randomUUID();
+        jdbc.update("INSERT INTO students (user_id, student_code, curriculum_version_id) VALUES (?, 'SE999999', ?)",
+                studentId.toString(), cur1.toString());
+
+        Page page1 = users.list("STUDENT", null, null, null, cur1, 0, 10, "userId,asc");
+        assertEquals(1, page1.totalElements());
+
+        Page page2 = users.list("STUDENT", null, null, null, cur2, 0, 10, "userId,asc");
+        assertEquals(0, page2.totalElements());
     }
 
     @Test

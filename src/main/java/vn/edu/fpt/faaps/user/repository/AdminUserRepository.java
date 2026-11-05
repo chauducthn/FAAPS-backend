@@ -25,6 +25,10 @@ public class AdminUserRepository {
     }
 
     public Page list(String role, String status, String search, UUID majorId, int page, int size, String sort) {
+        return list(role, status, search, majorId, null, page, size, sort);
+    }
+
+    public Page list(String role, String status, String search, UUID majorId, UUID curriculumVersionId, int page, int size, String sort) {
         String order = switch (sort) {
             case "createdAt,asc" -> "u.created_at ASC, u.id ASC";
             case "createdAt,desc" -> "u.created_at DESC, u.id DESC";
@@ -39,6 +43,7 @@ public class AdminUserRepository {
         addFilter(where, parameters, " AND r.code = ?", role);
         addFilter(where, parameters, " AND u.status = ?", status);
         addFilter(where, parameters, " AND s.major_id = ?", majorId == null ? null : majorId.toString());
+        addFilter(where, parameters, " AND s.curriculum_version_id = ?", curriculumVersionId == null ? null : curriculumVersionId.toString());
         if (search != null && !search.isBlank()) {
             String term = "%" + search.strip().toLowerCase(Locale.ROOT) + "%";
             where.append(" AND (LOWER(u.full_name) LIKE ? OR LOWER(u.email) LIKE ? OR LOWER(s.student_code) LIKE ?)");

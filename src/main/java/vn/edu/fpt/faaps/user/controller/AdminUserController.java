@@ -49,10 +49,11 @@ public class AdminUserController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) UUID majorId,
+            @RequestParam(required = false) UUID curriculumVersionId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "createdAt,desc") String sort) {
-        return users.list(role, status, search, majorId, page, size, sort);
+        return users.list(role, status, search, majorId, curriculumVersionId, page, size, sort);
     }
 
     @GetMapping("/{id}")

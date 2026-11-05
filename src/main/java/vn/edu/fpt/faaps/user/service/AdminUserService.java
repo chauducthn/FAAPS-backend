@@ -33,6 +33,10 @@ public class AdminUserService {
     }
 
     public Page list(String role, String status, String search, UUID majorId, int page, int size, String sort) {
+        return list(role, status, search, majorId, null, page, size, sort);
+    }
+
+    public Page list(String role, String status, String search, UUID majorId, UUID curriculumVersionId, int page, int size, String sort) {
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("page or size is invalid");
         }
@@ -42,7 +46,7 @@ public class AdminUserService {
         if (status != null && !List.of("ACTIVE", "INACTIVE", "SUSPENDED", "LOCKED").contains(status)) {
             throw new IllegalArgumentException("status is invalid");
         }
-        return repository.list(role, status, search, majorId, page, size, sort);
+        return repository.list(role, status, search, majorId, curriculumVersionId, page, size, sort);
     }
 
     public Detail detail(UUID id) {
@@ -137,8 +141,12 @@ public class AdminUserService {
     }
 
     private void validateStudentInput(CreateAccount input) {
-        if (input.studentCode() == null || input.studentCode().isBlank() || input.studentCode().length() > 50) {
-            throw new IllegalArgumentException("studentCode is required and must be at most 50 characters");
+        if (input.studentCode() == null || input.studentCode().isBlank()) {
+            throw new IllegalArgumentException("studentCode is required");
+        }
+        String normalizedCode = input.studentCode().strip().toUpperCase(Locale.ROOT);
+        if (!normalizedCode.matches("^[A-Z]{2}\\d{6}$")) {
+            throw new IllegalArgumentException("studentCode must consist of 2 uppercase letters followed by 6 digits (e.g. SE123456)");
         }
         if (input.curriculumVersionId() == null || input.enrollmentSemesterId() == null) {
             throw new IllegalArgumentException("curriculumVersionId and enrollmentSemesterId are required for a Student");
