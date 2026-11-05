@@ -49,6 +49,11 @@ public class AdminAiReportController {
         return reports.detail(id);
     }
 
+    @ExceptionHandler(AdminAiReportService.NotImplementedException.class)
+    public ResponseEntity<ApiError> notImplemented(AdminAiReportService.NotImplementedException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(ApiError.of("NOT_IMPLEMENTED", exception.getMessage()));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> invalid(IllegalArgumentException exception) {
         return ResponseEntity.badRequest().body(ApiError.of("INVALID_REQUEST", exception.getMessage()));

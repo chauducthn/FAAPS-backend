@@ -57,5 +57,23 @@ class AdminAiReportServiceTest {
         assertThrows(AdminAiReportService.Conflict.class, () ->
                 reports.resolve(reportId, "DISMISSED", "No issue", adminId));
     }
-}
 
+    @Test
+    void throwsNotFoundWhenReportDoesNotExist() {
+        assertThrows(AdminAiReportService.NotFound.class, () ->
+                reports.detail(UUID.randomUUID()));
+    }
+
+    @Test
+    void throwsNotImplementedWhenAiTablesMissing() {
+        DriverManagerDataSource emptyDataSource = new DriverManagerDataSource(
+                "jdbc:h2:mem:empty-db-" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
+        AdminAiReportService brokenReports = new AdminAiReportService(new JdbcTemplate(emptyDataSource));
+        assertThrows(AdminAiReportService.NotImplementedException.class, () ->
+                brokenReports.list(null, null, 0, 10));
+        assertThrows(AdminAiReportService.NotImplementedException.class, () ->
+                brokenReports.detail(UUID.randomUUID()));
+        assertThrows(AdminAiReportService.NotImplementedException.class, () ->
+                brokenReports.resolve(UUID.randomUUID(), "RESOLVED", "note", adminId));
+    }
+}

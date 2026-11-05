@@ -26,84 +26,94 @@ public class AdminAiReportService {
                 throw new IllegalArgumentException("status is invalid");
             }
         }
-        StringBuilder where = new StringBuilder(" WHERE 1 = 1");
-        List<Object> values = new ArrayList<>();
-        if (status != null && !status.isBlank() && !status.equalsIgnoreCase("ALL")) {
-            where.append(" AND report.status = ?");
-            values.add(status.toUpperCase(Locale.ROOT));
+        try {
+            StringBuilder where = new StringBuilder(" WHERE 1 = 1");
+            List<Object> values = new ArrayList<>();
+            if (status != null && !status.isBlank() && !status.equalsIgnoreCase("ALL")) {
+                where.append(" AND report.status = ?");
+                values.add(status.toUpperCase(Locale.ROOT));
+            }
+            if (search != null && !search.isBlank()) {
+                String term = "%" + search.strip().toLowerCase(Locale.ROOT) + "%";
+                where.append(" AND (LOWER(report.id) LIKE ? OR LOWER(student.full_name) LIKE ? OR LOWER(s.student_code) LIKE ?)");
+                values.add(term);
+                values.add(term);
+                values.add(term);
+            }
+            String from = " FROM ai_response_reports report JOIN users student ON student.id = report.student_id LEFT JOIN students s ON s.user_id = report.student_id";
+            long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, values.toArray());
+            values.add(size);
+            values.add(page * size);
+            List<Summary> items = jdbc.query("""
+                    SELECT report.id, report.conversation_id, report.student_id,
+                           student.full_name AS student_name, s.student_code,
+                           report.reason, report.status, report.created_at,
+                           (SELECT COUNT(*) FROM ai_reported_messages item WHERE item.report_id = report.id) AS flagged_count
+                    """ + from + where + " ORDER BY report.created_at DESC, report.id DESC LIMIT ? OFFSET ?",
+                    (result, row) -> new Summary(result.getString("id"), result.getString("conversation_id"),
+                            result.getString("student_id"), result.getString("student_name"),
+                            result.getString("student_code"), result.getString("reason"),
+                            result.getString("status"), result.getLong("flagged_count"),
+                            result.getTimestamp("created_at") == null ? null : result.getTimestamp("created_at").toLocalDateTime()), values.toArray());
+            return new Page(items, page, size, total, (total + size - 1) / size);
+        } catch (org.springframework.dao.DataAccessException e) {
+            throw new NotImplementedException("AI Response Reporting is temporarily unavailable on this deployment");
         }
-        if (search != null && !search.isBlank()) {
-            String term = "%" + search.strip().toLowerCase(Locale.ROOT) + "%";
-            where.append(" AND (LOWER(report.id) LIKE ? OR LOWER(student.full_name) LIKE ? OR LOWER(s.student_code) LIKE ?)");
-            values.add(term);
-            values.add(term);
-            values.add(term);
-        }
-        String from = " FROM ai_response_reports report JOIN users student ON student.id = report.student_id LEFT JOIN students s ON s.user_id = report.student_id";
-        long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, values.toArray());
-        values.add(size);
-        values.add(page * size);
-        List<Summary> items = jdbc.query("""
-                SELECT report.id, report.conversation_id, report.student_id,
-                       student.full_name AS student_name, s.student_code,
-                       report.reason, report.status, report.created_at,
-                       (SELECT COUNT(*) FROM ai_reported_messages item WHERE item.report_id = report.id) AS flagged_count
-                """ + from + where + " ORDER BY report.created_at DESC, report.id DESC LIMIT ? OFFSET ?",
-                (result, row) -> new Summary(result.getString("id"), result.getString("conversation_id"),
-                        result.getString("student_id"), result.getString("student_name"),
-                        result.getString("student_code"), result.getString("reason"),
-                        result.getString("status"), result.getLong("flagged_count"),
-                        result.getTimestamp("created_at") == null ? null : result.getTimestamp("created_at").toLocalDateTime()), values.toArray());
-        return new Page(items, page, size, total, (total + size - 1) / size);
     }
 
     public Detail detail(UUID id) {
-        Header header = jdbc.query("""
-                SELECT report.id, report.conversation_id, report.student_id,
-                       student.full_name AS student_name, s.student_code,
-                       report.reason, report.student_note, report.status,
-                       report.resolution_note, report.resolved_at, report.created_at
-                FROM ai_response_reports report
-                JOIN users student ON student.id = report.student_id
-                LEFT JOIN students s ON s.user_id = report.student_id
-                WHERE report.id = ?
-                """, (result, row) -> new Header(result.getString("id"),
-                result.getString("conversation_id"), result.getString("student_id"),
-                result.getString("student_name"), result.getString("student_code"),
-                result.getString("reason"), result.getString("student_note"),
-                result.getString("status"), result.getString("resolution_note"),
-                result.getTimestamp("resolved_at") == null ? null
-                        : result.getTimestamp("resolved_at").toLocalDateTime(),
-                result.getTimestamp("created_at") == null ? null
-                        : result.getTimestamp("created_at").toLocalDateTime()), id.toString())
-                .stream().findFirst().orElseThrow(NotFound::new);
-        List<Message> messages = jdbc.query("""
-                SELECT message.id, message.sender, message.content, message.created_at,
-                       flagged.id AS flagged_id, flagged.student_note
-                FROM ai_messages message
-                LEFT JOIN ai_reported_messages flagged ON flagged.message_id = message.id
-                    AND flagged.report_id = ?
-                WHERE message.conversation_id = ?
-                ORDER BY message.created_at, message.id
-                """, (result, row) -> new Message(result.getString("id"), result.getString("sender"),
-                result.getString("content"),
-                result.getTimestamp("created_at") == null ? null : result.getTimestamp("created_at").toLocalDateTime(),
-                result.getString("flagged_id") != null, result.getString("student_note")),
-                id.toString(), header.conversationId());
-        List<Source> sources = jdbc.query("""
-                SELECT source.message_id, source.relevance_score, source.quoted_text,
-                       source.rank_position, chunk.section_title, doc.title AS document_title
-                FROM ai_message_sources source
-                JOIN ai_reported_messages flagged ON flagged.message_id = source.message_id
-                    AND flagged.report_id = ?
-                LEFT JOIN document_chunks chunk ON chunk.id = source.chunk_id
-                LEFT JOIN knowledge_documents doc ON doc.id = chunk.knowledge_document_id
-                ORDER BY source.message_id, source.rank_position
-                """, (result, row) -> new Source(result.getString("message_id"),
-                result.getBigDecimal("relevance_score"),
-                result.getString("quoted_text"), (Integer) result.getObject("rank_position"),
-                result.getString("section_title"), result.getString("document_title")), id.toString());
-        return new Detail(header, messages, sources);
+        try {
+            Header header = jdbc.query("""
+                    SELECT report.id, report.conversation_id, report.student_id,
+                           student.full_name AS student_name, s.student_code,
+                           report.reason, report.student_note, report.status,
+                           report.resolution_note, report.resolved_at, report.created_at
+                    FROM ai_response_reports report
+                    JOIN users student ON student.id = report.student_id
+                    LEFT JOIN students s ON s.user_id = report.student_id
+                    WHERE report.id = ?
+                    """, (result, row) -> new Header(result.getString("id"),
+                    result.getString("conversation_id"), result.getString("student_id"),
+                    result.getString("student_name"), result.getString("student_code"),
+                    result.getString("reason"), result.getString("student_note"),
+                    result.getString("status"), result.getString("resolution_note"),
+                    result.getTimestamp("resolved_at") == null ? null
+                            : result.getTimestamp("resolved_at").toLocalDateTime(),
+                    result.getTimestamp("created_at") == null ? null
+                            : result.getTimestamp("created_at").toLocalDateTime()), id.toString())
+                    .stream().findFirst().orElseThrow(NotFound::new);
+            List<Message> messages = jdbc.query("""
+                    SELECT message.id, message.sender, message.content, message.created_at,
+                           flagged.id AS flagged_id, flagged.student_note
+                    FROM ai_messages message
+                    LEFT JOIN ai_reported_messages flagged ON flagged.message_id = message.id
+                        AND flagged.report_id = ?
+                    WHERE message.conversation_id = ?
+                    ORDER BY message.created_at, message.id
+                    """, (result, row) -> new Message(result.getString("id"), result.getString("sender"),
+                    result.getString("content"),
+                    result.getTimestamp("created_at") == null ? null : result.getTimestamp("created_at").toLocalDateTime(),
+                    result.getString("flagged_id") != null, result.getString("student_note")),
+                    id.toString(), header.conversationId());
+            List<Source> sources = jdbc.query("""
+                    SELECT source.message_id, source.relevance_score, source.quoted_text,
+                           source.rank_position, chunk.section_title, doc.title AS document_title
+                    FROM ai_message_sources source
+                    JOIN ai_reported_messages flagged ON flagged.message_id = source.message_id
+                        AND flagged.report_id = ?
+                    LEFT JOIN document_chunks chunk ON chunk.id = source.chunk_id
+                    LEFT JOIN knowledge_documents doc ON doc.id = chunk.knowledge_document_id
+                    ORDER BY source.message_id, source.rank_position
+                    """, (result, row) -> new Source(result.getString("message_id"),
+                    result.getBigDecimal("relevance_score"),
+                    result.getString("quoted_text"), (Integer) result.getObject("rank_position"),
+                    result.getString("section_title"), result.getString("document_title")), id.toString());
+            return new Detail(header, messages, sources);
+        } catch (NotFound e) {
+            throw e;
+        } catch (org.springframework.dao.DataAccessException e) {
+            throw new NotImplementedException("AI Response Reporting is temporarily unavailable on this deployment");
+        }
     }
 
     @Transactional
@@ -114,19 +124,25 @@ public class AdminAiReportService {
         if (note == null || note.isBlank()) {
             throw new IllegalArgumentException("resolutionNote is required");
         }
-        int updated = jdbc.update("""
-                UPDATE ai_response_reports
-                SET status = ?, resolution_note = ?, resolved_by = ?,
-                    resolved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND status = 'PENDING'
-                """, status, note.strip(), actorId.toString(), id.toString());
-        if (updated == 0) {
-            boolean exists = jdbc.query("SELECT id FROM ai_response_reports WHERE id = ?",
-                    (result, row) -> result.getString(1), id.toString()).size() == 1;
-            if (!exists) {
-                throw new NotFound();
+        try {
+            int updated = jdbc.update("""
+                    UPDATE ai_response_reports
+                    SET status = ?, resolution_note = ?, resolved_by = ?,
+                        resolved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND status = 'PENDING'
+                    """, status, note.strip(), actorId.toString(), id.toString());
+            if (updated == 0) {
+                boolean exists = jdbc.query("SELECT id FROM ai_response_reports WHERE id = ?",
+                        (result, row) -> result.getString(1), id.toString()).size() == 1;
+                if (!exists) {
+                    throw new NotFound();
+                }
+                throw new Conflict();
             }
-            throw new Conflict();
+        } catch (NotFound | Conflict e) {
+            throw e;
+        } catch (org.springframework.dao.DataAccessException e) {
+            throw new NotImplementedException("AI Response Reporting is temporarily unavailable on this deployment");
         }
     }
 
@@ -153,6 +169,12 @@ public class AdminAiReportService {
     }
 
     public record Page(List<Summary> items, int page, int size, long totalElements, long totalPages) {
+    }
+
+    public static class NotImplementedException extends RuntimeException {
+        public NotImplementedException(String message) {
+            super(message);
+        }
     }
 
     public static class NotFound extends RuntimeException {
