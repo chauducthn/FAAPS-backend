@@ -11,6 +11,7 @@ import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.io.IOException;
@@ -188,7 +189,7 @@ public class AdminCourseController {
     }
 
     public record CreateCourseRequest(
-            @NotBlank @Size(max = 50) String code,
+            @NotBlank @Pattern(regexp = "^[A-Za-z]{3}[0-9]{3}[A-Za-z]?$", message = "Course code must consist of 3 letters, 3 digits, and optional 1 letter suffix") String code,
             @NotBlank @Size(max = 255) String name,
             @NotNull @Positive @Max(30) Integer credits,
             @NotNull UUID categoryId,
@@ -200,7 +201,7 @@ public class AdminCourseController {
     }
 
     public record UpdateCourseRequest(
-            String code,
+            @Pattern(regexp = "^[A-Za-z]{3}[0-9]{3}[A-Za-z]?$", message = "Course code must consist of 3 letters, 3 digits, and optional 1 letter suffix") String code,
             String name,
             @Positive @Max(30) Integer credits,
             UUID categoryId,
