@@ -168,8 +168,8 @@ public class AdminCurriculumService {
         if (uniqueCourseIds.size() != courseIds.size() || uniqueCourseIds.contains(null)) {
             throw new IllegalArgumentException("courseIds must contain unique, non-null IDs");
         }
-        if (semesterNumber == null || semesterNumber < 1) {
-            throw new IllegalArgumentException("semesterNumber must be at least 1");
+        if (semesterNumber == null || semesterNumber < 0 || semesterNumber > 12) {
+            throw new IllegalArgumentException("semesterNumber must be between 0 and 12");
         }
         for (UUID courseId : courseIds) {
             List<String> courseStatuses = jdbc.query("SELECT status FROM courses WHERE id = ?",
@@ -203,8 +203,8 @@ public class AdminCurriculumService {
     public CurriculumCourseItem updateCourse(UUID curriculumId, UUID courseId,
             Integer semesterNumber, Boolean mandatory, String groupName) {
         lockCurriculum(curriculumId);
-        if (semesterNumber == null || semesterNumber < 1 || semesterNumber > 20) {
-            throw new IllegalArgumentException("semesterNumber must be between 1 and 20");
+        if (semesterNumber == null || semesterNumber < 0 || semesterNumber > 12) {
+            throw new IllegalArgumentException("semesterNumber must be between 0 and 12");
         }
         int updated = jdbc.update("""
                 UPDATE curriculum_courses SET semester_number = ?, is_mandatory = ?, group_name = ?,

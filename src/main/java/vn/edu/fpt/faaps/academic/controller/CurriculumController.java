@@ -6,6 +6,8 @@ import vn.edu.fpt.faaps.academic.service.CurriculumImportService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
@@ -156,7 +158,7 @@ public class CurriculumController {
     }
 
     public record UpdateCurriculumCourseRequest(
-            @NotNull Integer semesterNumber, Boolean isMandatory, @Size(max = 100) String groupName) {}
+            @NotNull @Min(0) @Max(12) Integer semesterNumber, Boolean isMandatory, @Size(max = 100) String groupName) {}
 
     public record CreateCurriculumRequest(
             @NotNull UUID majorId,
@@ -192,7 +194,7 @@ public class CurriculumController {
             @JsonProperty("courseIds") @JsonAlias("course_ids")
             @NotEmpty @Size(max = 100) List<@NotNull UUID> courseIds,
             @JsonProperty("semesterNumber") @JsonAlias("semester_number")
-            @NotNull Integer semesterNumber,
+            @NotNull @Min(0) @Max(12) Integer semesterNumber,
             @JsonProperty("isMandatory") @JsonAlias("is_mandatory")
             Boolean isMandatory) {
     }
