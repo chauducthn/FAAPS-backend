@@ -90,7 +90,8 @@ public class StudentRegistrationController {
             @NotBlank @Size(max = 72) String password,
             @NotNull LocalDate dateOfBirth,
             @NotBlank @Size(max = 20) String studentCode,
-            @NotNull UUID curriculumVersionId,
-            @Size(max = 20) String phone) {
+            /** Optional: the major is normally chosen on the next step. */
+            UUID curriculumVersionId,
+            @NotBlank @Size(max = 20) String phone) {
     }
 }

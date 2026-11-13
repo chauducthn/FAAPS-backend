@@ -1,6 +1,7 @@
 package vn.edu.fpt.faaps.academic.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 class StudentRegistrationServiceTest {
     private static final UUID CURRICULUM = UUID.fromString("c0000000-0000-0000-0000-000000000001");
     private static final LocalDate DOB = LocalDate.of(2005, 3, 14);
+    private static final String PASSWORD = "Secret@123";
 
     private JdbcTemplate jdbc;
     private StudentRegistrationService service;
@@ -52,17 +54,27 @@ class StudentRegistrationServiceTest {
         return service.register("Nguyen Van A", email, password, DOB, code, CURRICULUM, "0901234567");
     }
 
+    private UUID registerWithoutMajor(String email, String password, String code) {
+        return service.register("Nguyen Van A", email, password, DOB, code, null, "0901234567");
+    }
+
+    private void assertBadRequest(org.junit.jupiter.api.function.Executable call, String message) {
+        var error = assertThrows(ResponseStatusException.class, call, message);
+        assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode(), message);
+    }
+
     @Test
     void createsAnActiveStudentWithAHashedPasswordAndTheProfile() {
-        UUID id = register(" Student@FPT.edu.vn ", "Secret123", "se173012");
+        UUID id = register(" Student@FPT.edu.vn ", PASSWORD, "se173012");
 
         var user = jdbc.queryForMap("SELECT * FROM users WHERE id = ?", id.toString());
         assertEquals("student@fpt.edu.vn", user.get("EMAIL"));
         assertEquals("LOCAL", user.get("AUTH_PROVIDER"));
         assertEquals("ACTIVE", user.get("STATUS"));
         assertEquals("r-student", user.get("ROLE_ID"));
-        assertNotEquals("Secret123", user.get("PASSWORD_HASH"));
-        assertTrue(encoder.matches("Secret123", (String) user.get("PASSWORD_HASH")));
+        assertEquals("0901234567", user.get("PHONE"));
+        assertNotEquals(PASSWORD, user.get("PASSWORD_HASH"));
+        assertTrue(encoder.matches(PASSWORD, (String) user.get("PASSWORD_HASH")));
         assertEquals(java.sql.Date.valueOf(DOB), user.get("DATE_OF_BIRTH"));
         var student = jdbc.queryForMap("SELECT * FROM students WHERE user_id = ?", id.toString());
         assertEquals("SE173012", student.get("STUDENT_CODE"));
@@ -70,31 +82,67 @@ class StudentRegistrationServiceTest {
     }
 
     @Test
+    void withoutACurriculumOnlyTheAccountIsCreatedAndTheMajorIsChosenLater() {
+        UUID id = registerWithoutMajor("a@fpt.edu.vn", PASSWORD, "SE190001");
+
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE id = ?", Integer.class, id.toString()));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM students", Integer.class));
+    }
+
+    @Test
+    void withoutACurriculumAStudentIdThatIsTakenIsStillRefused() {
+        register("a@fpt.edu.vn", PASSWORD, "SE190001");
+        var error = assertThrows(ResponseStatusException.class,
+                () -> registerWithoutMajor("b@fpt.edu.vn", PASSWORD, "SE190001"));
+        assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM users", Integer.class));
+    }
+
+    @Test
     void rejectsADuplicateEmailEvenWithDifferentCase() {
-        register("a@fpt.edu.vn", "Secret123", "SE173012");
-        var error = assertThrows(ResponseStatusException.class, () -> register("A@FPT.EDU.VN", "Secret123", "SE173013"));
+        register("a@fpt.edu.vn", PASSWORD, "SE173012");
+        var error = assertThrows(ResponseStatusException.class, () -> register("A@FPT.EDU.VN", PASSWORD, "SE173013"));
         assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
     }
 
     @Test
     void rejectsAStudentIdThatIsAlreadyRegistered() {
-        register("a@fpt.edu.vn", "Secret123", "SE173012");
-        var error = assertThrows(ResponseStatusException.class, () -> register("b@fpt.edu.vn", "Secret123", "SE173012"));
+        register("a@fpt.edu.vn", PASSWORD, "SE173012");
+        var error = assertThrows(ResponseStatusException.class, () -> register("b@fpt.edu.vn", PASSWORD, "SE173012"));
         assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
     }
 
     @Test
-    void rejectsWeakPasswordsBadEmailsAndBadDates() {
-        for (String weak : new String[] {"short1", "onlyletters", "12345678", null}) {
-            var error = assertThrows(ResponseStatusException.class, () -> register("c@fpt.edu.vn", weak, "SE173012"));
-            assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode(), "password " + weak);
+    void rejectsPasswordsThatAreMissingACharacterClass() {
+        for (String weak : new String[] {"short1", "onlyletters", "12345678", "Secret123", "secret@123", "SECRET@123",
+                "Secret@abc", "Sec@1", null}) {
+            assertBadRequest(() -> register("c@fpt.edu.vn", weak, "SE173012"), "password " + weak);
         }
-        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
-                () -> register("not-an-email", "Secret123", "SE173012")).getStatusCode());
-        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
-                () -> service.register("A B", "d@fpt.edu.vn", "Secret123", LocalDate.now().plusDays(1), "SE173012",
-                        CURRICULUM, null)).getStatusCode());
-        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
-                () -> service.register("A B", "d@fpt.edu.vn", "Secret123", DOB, "bad", CURRICULUM, null)).getStatusCode());
+    }
+
+    @Test
+    void rejectsPasswordsContainingTheStudentIdNameOrEmail() {
+        for (String personal : new String[] {"Xx@se173012", "Xx@173012!", "Nguyen@2024", "Hello@NGUYEN1",
+                "Student@2024", "Zz@1234van"}) {
+            assertBadRequest(() -> register("student@fpt.edu.vn", personal, "SE173012"), "password " + personal);
+        }
+        assertTrue(StudentRegistrationService.containsPersonalInfo("Nguyễn@2024", "Nguyễn Văn An", "x@y.vn", "SE190001"));
+        assertFalse(StudentRegistrationService.containsPersonalInfo("Tr0ub@dor&3", "Nguyen Van An", "x@y.vn", "SE190001"));
+    }
+
+    @Test
+    void rejectsABadEmailDateStudentIdOrPhone() {
+        assertBadRequest(() -> register("not-an-email", PASSWORD, "SE173012"), "email");
+        assertBadRequest(() -> service.register("A B", "d@fpt.edu.vn", PASSWORD, LocalDate.now().plusDays(1),
+                "SE173012", CURRICULUM, "0901234567"), "future birth date");
+        assertBadRequest(() -> service.register("A B", "d@fpt.edu.vn", PASSWORD, LocalDate.now().minusYears(12),
+                "SE173012", CURRICULUM, "0901234567"), "too young");
+        for (String code : new String[] {"bad", "SE000001", "SE230001", "SE99001", "S1190001"}) {
+            assertBadRequest(() -> register("d@fpt.edu.vn", PASSWORD, code), "student id " + code);
+        }
+        for (String phone : new String[] {null, "", "  ", "+84901234567", "0123456789", "090123456", "0901 234 567"}) {
+            assertBadRequest(() -> service.register("A B", "d@fpt.edu.vn", PASSWORD, DOB, "SE173012", CURRICULUM, phone),
+                    "phone " + phone);
+        }
     }
 }

@@ -19,7 +19,12 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @Service
 public class StudentOnboardingService {
-    private static final Pattern STUDENT_CODE = Pattern.compile("^[A-Z]{2}\\d{6}$");
+    /** Two letters (major), cohort 01-22, then four digits: SE190001. Keep in sync with the frontend. */
+    private static final Pattern STUDENT_CODE = Pattern.compile("^[A-Z]{2}(0[1-9]|1\\d|2[0-2])\\d{4}$");
+    /** Vietnamese mobile number: a leading 0, then 3/5/7/8/9, then 8 digits. No country code or spaces. */
+    private static final Pattern PHONE = Pattern.compile("^0[35789]\\d{8}$");
+    /** Youngest age at which someone can be a university student here. Keep in sync with the frontend. */
+    static final int MIN_STUDENT_AGE = 17;
 
     private final JdbcTemplate jdbc;
 
@@ -43,6 +48,14 @@ public class StudentOnboardingService {
         String code = normalizeStudentCode(studentCode);
         String cleanPhone = normalizePhone(phone);
         requireDateOfBirth(dateOfBirth);
+        if (cleanPhone == null) {
+            // A student who signed up by email already gave a phone number; a Google student has not.
+            List<String> onFile = jdbc.queryForList("SELECT phone FROM users WHERE id = ?", String.class,
+                    userId.toString());
+            if (onFile.isEmpty() || onFile.get(0) == null || onFile.get(0).isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phone number is required");
+            }
+        }
 
         Integer existing = jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE user_id = ?", Integer.class,
                 userId.toString());
@@ -80,19 +93,30 @@ public class StudentOnboardingService {
         }
     }
 
+    /** Fails with 409 when another student already uses this (normalized) Student ID. */
+    void requireStudentCodeAvailable(String code) {
+        Integer taken = jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE student_code = ?", Integer.class,
+                code);
+        if (taken != null && taken > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This Student ID is already registered");
+        }
+    }
+
     static String normalizeStudentCode(String studentCode) {
         String code = studentCode == null ? "" : studentCode.strip().toUpperCase(Locale.ROOT);
         if (!STUDENT_CODE.matcher(code).matches()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Student ID must be two letters followed by six digits, for example SE173012");
+                    "Student ID must be 2 letters, a cohort from 01 to 22 and 4 digits, for example SE190001");
         }
         return code;
     }
 
+    /** Returns null for a blank phone; a given phone must be a Vietnamese mobile number. */
     static String normalizePhone(String phone) {
         String clean = phone == null || phone.isBlank() ? null : phone.strip();
-        if (clean != null && clean.length() > 20) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phone must be at most 20 characters");
+        if (clean != null && !PHONE.matcher(clean).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Phone must be a 10-digit Vietnamese number starting with 0, for example 0901234567");
         }
         return clean;
     }
@@ -103,6 +127,10 @@ public class StudentOnboardingService {
         }
         if (!dateOfBirth.isBefore(LocalDate.now()) || dateOfBirth.isBefore(LocalDate.now().minusYears(100))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid date of birth");
+        }
+        if (dateOfBirth.isAfter(LocalDate.now().minusYears(MIN_STUDENT_AGE))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "You must be at least " + MIN_STUDENT_AGE + " years old");
         }
     }
 

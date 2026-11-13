@@ -41,8 +41,9 @@ public class StudentAcademicService {
     @Transactional
     public Profile updateProfile(UUID studentId, String fullName, String phone) {
         if (fullName.isBlank()) throw new IllegalArgumentException("fullName is required");
+        // A blank phone is allowed here (it clears the number); a given one must be a Vietnamese mobile number.
         jdbc.update("UPDATE users SET full_name=?, phone=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                fullName.strip(), phone == null || phone.isBlank() ? null : phone.strip(), studentId.toString());
+                fullName.strip(), StudentOnboardingService.normalizePhone(phone), studentId.toString());
         return profile(studentId);
     }
 
