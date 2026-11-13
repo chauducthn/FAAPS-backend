@@ -1,5 +1,6 @@
 package vn.edu.fpt.faaps.user.service;
 
+import vn.edu.fpt.faaps.academic.service.StudentOnboardingService;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos;
 import vn.edu.fpt.faaps.user.exception.UserExceptions;
 
@@ -64,9 +65,7 @@ public class AdminUserService {
         }
         requireText(input.email(), "email", 255);
         requireText(input.fullName(), "fullName", 255);
-        if (input.phone() != null && input.phone().length() > 20) {
-            throw new IllegalArgumentException("phone must be at most 20 characters");
-        }
+        String phone = normalizePhone(input.phone());
 
         String email = input.email().strip().toLowerCase(Locale.ROOT);
         ExistingAccount existing = findByEmailForUpdate(email);
@@ -83,7 +82,7 @@ public class AdminUserService {
         }
         UUID userId = completeGoogleStudent ? existing.id() : UUID.randomUUID();
         try {
-            saveUser(userId, email, role, input, completeGoogleStudent);
+            saveUser(userId, email, role, input, phone, completeGoogleStudent);
             if ("STUDENT".equals(role)) {
                 addStudentProfile(userId, input);
             } else {
@@ -109,10 +108,20 @@ public class AdminUserService {
                 rs.getBoolean("has_student_profile")), email).stream().findFirst().orElse(null);
     }
 
-    private void saveUser(UUID userId, String email, String role, CreateAccount input, boolean existingGoogleStudent) {
+    /** A blank phone is allowed (it stays empty); a given one must be a Vietnamese mobile number. */
+    private static String normalizePhone(String phone) {
+        String clean = phone == null || phone.isBlank() ? null : phone.strip();
+        if (clean != null && !StudentOnboardingService.PHONE.matcher(clean).matches()) {
+            throw new IllegalArgumentException("phone must be a 10-digit Vietnamese number starting with 0 (e.g. 0901234567)");
+        }
+        return clean;
+    }
+
+    private void saveUser(UUID userId, String email, String role, CreateAccount input, String phone,
+            boolean existingGoogleStudent) {
         if (existingGoogleStudent) {
             jdbc.update("UPDATE users SET full_name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    input.fullName().strip(), input.phone(), userId.toString());
+                    input.fullName().strip(), phone, userId.toString());
             return;
         }
         int inserted = jdbc.update("""
@@ -120,7 +129,7 @@ public class AdminUserService {
                                            created_at, updated_at)
                         SELECT ?, r.id, ?, 'GOOGLE', ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         FROM roles r WHERE r.code = ?
-                        """, userId.toString(), email, input.fullName().strip(), input.phone(), role);
+                        """, userId.toString(), email, input.fullName().strip(), phone, role);
         if (inserted != 1) {
             throw new Conflict("Role " + role + " is not configured");
         }
@@ -145,8 +154,9 @@ public class AdminUserService {
             throw new IllegalArgumentException("studentCode is required");
         }
         String normalizedCode = input.studentCode().strip().toUpperCase(Locale.ROOT);
-        if (!normalizedCode.matches("^[A-Z]{2}\\d{6}$")) {
-            throw new IllegalArgumentException("studentCode must consist of 2 uppercase letters followed by 6 digits (e.g. SE123456)");
+        if (!StudentOnboardingService.STUDENT_CODE.matcher(normalizedCode).matches()) {
+            throw new IllegalArgumentException(
+                    "studentCode must be 2 letters, a cohort from 01 to 22 and 4 digits (e.g. SE190001)");
         }
         if (input.curriculumVersionId() == null || input.enrollmentSemesterId() == null) {
             throw new IllegalArgumentException("curriculumVersionId and enrollmentSemesterId are required for a Student");
@@ -166,13 +176,9 @@ public class AdminUserService {
             throw new Conflict("Student must be enrolled in an active curriculum");
         }
 
-        LocalDate enrollmentDate = semesterStart(input.enrollmentSemesterId(), "Enrollment semester");
-        if (input.expectedGraduationSemesterId() != null) {
-            LocalDate expectedDate = semesterStart(input.expectedGraduationSemesterId(), "Expected graduation semester");
-            if (expectedDate.isBefore(enrollmentDate)) {
-                throw new IllegalArgumentException("expectedGraduationSemesterId cannot be before enrollmentSemesterId");
-            }
-        }
+        // The enrollment semester must exist. The expected graduation semester is calculated (see
+        // ExpectedGraduation), so a value sent by the client is ignored.
+        semesterStart(input.enrollmentSemesterId(), "Enrollment semester");
     }
 
     private void validateAdvisorInput(CreateAccount input) {
@@ -185,16 +191,18 @@ public class AdminUserService {
         String majorId = jdbc.query("SELECT major_id FROM curriculum_versions WHERE id = ?",
                 (rs, rowNum) -> rs.getString("major_id"), input.curriculumVersionId().toString())
                 .stream().findFirst().orElseThrow(() -> new NotFound("Curriculum not found"));
+        int currentSemester = input.currentSemester() == null ? 1 : input.currentSemester();
+        String expectedGraduationId = ExpectedGraduation.semesterId(jdbc, input.curriculumVersionId(),
+                input.enrollmentSemesterId(), currentSemester);
         jdbc.update("""
                 INSERT INTO students (user_id, student_code, major_id, curriculum_version_id,
                                       enrollment_semester_id, expected_graduation_semester_id,
                                       current_semester, current_gpa, total_credits_earned, academic_status,
                                       created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, userId.toString(), input.studentCode().strip(), majorId,
+                """, userId.toString(), input.studentCode().strip().toUpperCase(Locale.ROOT), majorId,
                 input.curriculumVersionId().toString(), input.enrollmentSemesterId().toString(),
-                input.expectedGraduationSemesterId() == null ? null : input.expectedGraduationSemesterId().toString(),
-                input.currentSemester() == null ? 1 : input.currentSemester());
+                expectedGraduationId, currentSemester);
     }
 
     private LocalDate semesterStart(UUID semesterId, String label) {

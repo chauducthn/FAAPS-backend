@@ -48,6 +48,7 @@ class AdminUserServiceTest {
         jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, code VARCHAR(50), name VARCHAR(255), status VARCHAR(20))");
         jdbc.execute("CREATE TABLE curriculum_versions (id VARCHAR(36) PRIMARY KEY, major_id VARCHAR(36), version VARCHAR(50), name VARCHAR(100), status VARCHAR(20))");
         jdbc.execute("CREATE TABLE semesters (id VARCHAR(36) PRIMARY KEY, code VARCHAR(50), name VARCHAR(100), start_date DATE, end_date DATE)");
+        jdbc.execute("CREATE TABLE curriculum_courses (id VARCHAR(36) PRIMARY KEY, curriculum_version_id VARCHAR(36), semester_number INT)");
         jdbc.execute("CREATE TABLE student_advisor_assignments (student_id VARCHAR(36), advisor_id VARCHAR(36), status VARCHAR(20), end_date DATE, updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE cohort_advisors (cohort_id VARCHAR(36), advisor_id VARCHAR(36))");
         String adminRole = UUID.randomUUID().toString();
@@ -151,18 +152,25 @@ class AdminUserServiceTest {
         UUID curriculumId = UUID.randomUUID();
         UUID enrollmentSemesterId = UUID.randomUUID();
         UUID graduationSemesterId = UUID.randomUUID();
+        UUID wrongSemesterId = UUID.randomUUID();
         jdbc.update("INSERT INTO majors (id, code, name, status) VALUES (?, 'SE', 'Software Engineering', 'ACTIVE')",
                 majorId.toString());
         jdbc.update("INSERT INTO curriculum_versions (id, major_id, version, name, status) VALUES (?, ?, 'K20', 'SE K20', 'ACTIVE')",
                 curriculumId.toString(), majorId.toString());
         jdbc.update("INSERT INTO semesters (id, code, name, start_date, end_date) VALUES (?, 'SP2026', 'Spring 2026', ?, ?)",
                 enrollmentSemesterId.toString(), LocalDate.of(2026, 1, 1), LocalDate.of(2026, 4, 30));
-        jdbc.update("INSERT INTO semesters (id, code, name, start_date, end_date) VALUES (?, 'SP2030', 'Spring 2030', ?, ?)",
-                graduationSemesterId.toString(), LocalDate.of(2030, 1, 1), LocalDate.of(2030, 4, 30));
+        // A 7-term curriculum that starts in SP2026 ends 6 terms later: SP2026 -> SU, FA, SP27, SU27, FA27, SP2028.
+        jdbc.update("INSERT INTO semesters (id, code, name, start_date, end_date) VALUES (?, 'SP2028', 'Spring 2028', ?, ?)",
+                graduationSemesterId.toString(), LocalDate.of(2028, 1, 1), LocalDate.of(2028, 4, 30));
+        for (int term = 1; term <= 7; term++) {
+            jdbc.update("INSERT INTO curriculum_courses (id, curriculum_version_id, semester_number) VALUES (?, ?, ?)",
+                    UUID.randomUUID().toString(), curriculumId.toString(), term);
+        }
 
+        // The client sends some other semester id (an impossible choice for a first-semester student): it is ignored.
         Detail created = users.create(new CreateAccount(
                 "STUDENT", "new.student@example.com", "New Student", "0900000000",
-                "SE200001", curriculumId, enrollmentSemesterId, graduationSemesterId, 1, null));
+                "se200001", curriculumId, enrollmentSemesterId, wrongSemesterId, 1, null));
 
         assertEquals("STUDENT", created.role());
         assertEquals("SE200001", created.userId());
@@ -182,7 +190,53 @@ class AdminUserServiceTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
                 users.create(new CreateAccount("STUDENT", "test.qa@example.com", "QA Student",
                         "0900000000", "ABC123", curriculumId, enrollmentSemesterId, null, 1, null)));
-        assertEquals("studentCode must consist of 2 uppercase letters followed by 6 digits (e.g. SE123456)", ex.getMessage());
+        assertEquals("studentCode must be 2 letters, a cohort from 01 to 22 and 4 digits (e.g. SE190001)", ex.getMessage());
+        for (String code : new String[] {"SE000001", "SE230001", "SE99001", "S1190001"}) {
+            assertThrows(IllegalArgumentException.class, () ->
+                    users.create(new CreateAccount("STUDENT", "test.qa@example.com", "QA Student",
+                            "0900000000", code, curriculumId, enrollmentSemesterId, null, 1, null)), code);
+        }
+    }
+
+    @Test
+    void rejectsAPhoneThatIsNotAVietnameseMobileNumberForEveryRole() {
+        for (String phone : new String[] {"+84901234567", "0123456789", "090123456", "0901 234 567"}) {
+            assertThrows(IllegalArgumentException.class, () ->
+                    users.create(new CreateAccount("ADVISOR", "adv.phone@example.com", "Phone Advisor",
+                            phone, null, null, null, null, null, null)), phone);
+        }
+        Detail created = users.create(new CreateAccount("ADVISOR", "adv.nophone@example.com", "No Phone",
+                "  ", null, null, null, null, null, null));
+        assertEquals(null, jdbc.queryForObject("SELECT phone FROM users WHERE id = ?", String.class,
+                created.id().toString()));
+    }
+
+    @Test
+    void listsTheMajorAndCohortOfEachStudent() {
+        UUID majorId = UUID.randomUUID();
+        UUID curriculumId = UUID.randomUUID();
+        jdbc.update("INSERT INTO majors (id, code, name, status) VALUES (?, 'SE', 'Software Engineering', 'ACTIVE')", majorId.toString());
+        jdbc.update("INSERT INTO curriculum_versions (id, major_id, version, name, status) VALUES (?, ?, 'K19', 'SE K19', 'ACTIVE')",
+                curriculumId.toString(), majorId.toString());
+        jdbc.update("INSERT INTO students (user_id, student_code, major_id, curriculum_version_id) VALUES (?, 'SE190001', ?, ?)",
+                studentId.toString(), majorId.toString(), curriculumId.toString());
+
+        var student = users.list("STUDENT", null, null, null, 0, 20, "userId,asc").items().get(0);
+        assertEquals("SE", student.majorCode());
+        assertEquals("K19", student.cohort());
+    }
+
+    @Test
+    void expectedGraduationFollowsTheCurriculumLengthAndHowFarTheStudentIsBehind() {
+        // A 9-term curriculum starting in FA2026 ends in SU2029, never next summer.
+        assertEquals("SU2029", ExpectedGraduation.code("FA2026", "FA2026", 1, 9));
+        // Enrolled in SP2026, now FA2026 (3rd term since enrollment) but still in semester 1: two terms late.
+        assertEquals(ExpectedGraduation.addSemesters("SP2026", 8 + 2), ExpectedGraduation.code("SP2026", "FA2026", 1, 9));
+        // A student who is ahead of the pace does not graduate early.
+        assertEquals(ExpectedGraduation.addSemesters("SP2026", 8), ExpectedGraduation.code("SP2026", "SU2026", 5, 9));
+        assertEquals("SP2027", ExpectedGraduation.addSemesters("FA2026", 1));
+        assertEquals(null, ExpectedGraduation.code("K19", "FA2026", 1, 9));
+        assertEquals(null, ExpectedGraduation.code("FA2026", "FA2026", 1, 0));
     }
 
     @Test

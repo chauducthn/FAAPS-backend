@@ -7,8 +7,9 @@ import java.util.UUID;
 public final class AdminUserDtos {
     private AdminUserDtos() {}
 
+    /** {@code majorCode} and {@code cohort} (the curriculum version, e.g. K19) are set for students only. */
     public record Summary(UUID id, String userId, String fullName, String email,
-            String role, String status, LocalDateTime createdAt) {}
+            String role, String status, LocalDateTime createdAt, String majorCode, String cohort) {}
 
     public record Detail(UUID id, String userId, String fullName, String email,
             String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt,

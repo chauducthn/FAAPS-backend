@@ -81,20 +81,24 @@ public class UserRoleService {
 
     private void createStudentProfile(UUID userId, ChangeRole input) {
         String code = input.studentCode() == null ? "" : input.studentCode().strip().toUpperCase(Locale.ROOT);
-        if (!code.matches("^(SE|IA)1\\d{5}$"))
-            throw new IllegalArgumentException("studentCode must match SE1##### or IA1#####");
+        if (!vn.edu.fpt.faaps.academic.service.StudentOnboardingService.STUDENT_CODE.matcher(code).matches())
+            throw new IllegalArgumentException(
+                    "studentCode must be 2 letters, a cohort from 01 to 22 and 4 digits (e.g. SE190001)");
         if (input.curriculumVersionId() == null || input.enrollmentSemesterId() == null)
             throw new IllegalArgumentException("curriculumVersionId and enrollmentSemesterId are required");
         String majorId = jdbc.query("SELECT major_id FROM curriculum_versions WHERE id=? AND status='ACTIVE'",
                 (rs, row) -> rs.getString(1), input.curriculumVersionId().toString()).stream()
                 .findFirst().orElseThrow(() -> new NotFound("Active curriculum not found"));
         semesterStart(input.enrollmentSemesterId());
+        String expectedGraduationId = ExpectedGraduation.semesterId(jdbc, input.curriculumVersionId(),
+                input.enrollmentSemesterId(), 1);
         jdbc.update("""
                 INSERT INTO students (user_id,student_code,major_id,curriculum_version_id,enrollment_semester_id,
-                                      current_semester,academic_status,created_at,updated_at)
-                VALUES (?,?,?,?,?,1,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                                      expected_graduation_semester_id,current_semester,academic_status,created_at,
+                                      updated_at)
+                VALUES (?,?,?,?,?,?,1,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
                 """, userId.toString(), code, majorId, input.curriculumVersionId().toString(),
-                input.enrollmentSemesterId().toString());
+                input.enrollmentSemesterId().toString(), expectedGraduationId);
     }
 
     private LocalDate semesterStart(UUID id) {

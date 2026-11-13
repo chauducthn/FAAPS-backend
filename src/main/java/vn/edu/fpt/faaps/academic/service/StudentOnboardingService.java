@@ -20,9 +20,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class StudentOnboardingService {
     /** Two letters (major), cohort 01-22, then four digits: SE190001. Keep in sync with the frontend. */
-    private static final Pattern STUDENT_CODE = Pattern.compile("^[A-Z]{2}(0[1-9]|1\\d|2[0-2])\\d{4}$");
+    public static final Pattern STUDENT_CODE = Pattern.compile("^[A-Z]{2}(0[1-9]|1\\d|2[0-2])\\d{4}$");
     /** Vietnamese mobile number: a leading 0, then 3/5/7/8/9, then 8 digits. No country code or spaces. */
-    private static final Pattern PHONE = Pattern.compile("^0[35789]\\d{8}$");
+    public static final Pattern PHONE = Pattern.compile("^0[35789]\\d{8}$");
     /** Youngest age at which someone can be a university student here. Keep in sync with the frontend. */
     static final int MIN_STUDENT_AGE = 17;
 

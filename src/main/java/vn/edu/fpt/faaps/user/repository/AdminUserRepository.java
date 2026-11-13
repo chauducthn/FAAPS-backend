@@ -49,12 +49,13 @@ public class AdminUserRepository {
             where.append(" AND (LOWER(u.full_name) LIKE ? OR LOWER(u.email) LIKE ? OR LOWER(s.student_code) LIKE ?)");
             parameters.addAll(List.of(term, term, term));
         }
-        String from = " FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN students s ON s.user_id=u.id";
+        String from = " FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN students s ON s.user_id=u.id"
+                + " LEFT JOIN majors m ON m.id=s.major_id LEFT JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id";
         long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, parameters.toArray());
         List<Object> paging = new ArrayList<>(parameters);
         paging.add(size);
         paging.add(page * size);
-        List<Summary> items = jdbc.query("SELECT u.id, CASE WHEN r.code='STUDENT' THEN COALESCE(s.student_code,u.email) ELSE u.email END user_code, u.full_name,u.email,r.code role,u.status,u.created_at" + from + where + " ORDER BY " + order + " LIMIT ? OFFSET ?", this::summary, paging.toArray());
+        List<Summary> items = jdbc.query("SELECT u.id, CASE WHEN r.code='STUDENT' THEN COALESCE(s.student_code,u.email) ELSE u.email END user_code, u.full_name,u.email,r.code role,u.status,u.created_at,m.code major_code,cv.version cohort" + from + where + " ORDER BY " + order + " LIMIT ? OFFSET ?", this::summary, paging.toArray());
         return new Page(items, page, size, total, (total + size - 1) / size);
     }
 
@@ -83,6 +84,7 @@ public class AdminUserRepository {
     private Summary summary(ResultSet rs, int row) throws SQLException {
         return new Summary(UUID.fromString(rs.getString("id")), rs.getString("user_code"),
                 rs.getString("full_name"), rs.getString("email"), rs.getString("role"),
-                rs.getString("status"), rs.getTimestamp("created_at").toLocalDateTime());
+                rs.getString("status"), rs.getTimestamp("created_at").toLocalDateTime(),
+                rs.getString("major_code"), rs.getString("cohort"));
     }
 }
