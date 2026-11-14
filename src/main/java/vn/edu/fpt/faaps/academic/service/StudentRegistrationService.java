@@ -79,9 +79,7 @@ public class StudentRegistrationService {
         } catch (DuplicateKeyException exception) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "An account with this email already exists");
         }
-        if (curriculumVersionId != null) {
-            profiles.addStudentProfile(userId, code, curriculumVersionId);
-        }
+        profiles.addStudentProfile(userId, code, curriculumVersionId);
         return userId;
     }
 

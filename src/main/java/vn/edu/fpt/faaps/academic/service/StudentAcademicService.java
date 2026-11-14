@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.user.service.ExpectedGraduation;
 
 @Service
 public class StudentAcademicService {
@@ -73,13 +74,44 @@ public class StudentAcademicService {
             }
         }
 
+        // Determine the enrollment semester (keep existing if already set, or fall back to curriculum default)
+        List<String> enrollmentList = jdbc.query(
+                "SELECT enrollment_semester_id FROM students WHERE user_id = ?",
+                (rs, rowNum) -> rs.getString("enrollment_semester_id"),
+                studentId.toString());
+        String enrollmentSemesterIdStr = enrollmentList.isEmpty() ? null : enrollmentList.get(0);
+        if (enrollmentSemesterIdStr == null || enrollmentSemesterIdStr.isBlank()) {
+            enrollmentSemesterIdStr = curriculum[1];
+        }
+
+        List<Integer> currentSemesterList = jdbc.query(
+                "SELECT current_semester FROM students WHERE user_id = ?",
+                (rs, rowNum) -> (Integer) rs.getObject("current_semester"),
+                studentId.toString());
+        Integer currentSemesterObj = currentSemesterList.isEmpty() ? null : currentSemesterList.get(0);
+        int currentSemester = currentSemesterObj == null || currentSemesterObj < 1 ? 1 : currentSemesterObj;
+
+        UUID enrollmentSemesterUuid = null;
+        if (enrollmentSemesterIdStr != null && !enrollmentSemesterIdStr.isBlank()) {
+            try {
+                enrollmentSemesterUuid = UUID.fromString(enrollmentSemesterIdStr);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+
+        String expectedGraduationId = enrollmentSemesterUuid != null
+                ? ExpectedGraduation.semesterId(jdbc, curriculumVersionId, enrollmentSemesterUuid, currentSemester)
+                : null;
+
         int updated = jdbc.update("""
                 UPDATE students
                 SET major_id = ?, curriculum_version_id = ?,
-                    enrollment_semester_id = COALESCE(enrollment_semester_id, ?),
+                    enrollment_semester_id = ?,
+                    expected_graduation_semester_id = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = ?
-                """, curriculum[0], curriculumVersionId.toString(), curriculum[1], studentId.toString());
+                """, curriculum[0], curriculumVersionId.toString(),
+                enrollmentSemesterIdStr, expectedGraduationId, studentId.toString());
 
         if (updated == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Student profile not found");
@@ -161,18 +193,23 @@ public class StudentAcademicService {
 
     public Curriculum curriculum(UUID studentId) {
         Profile p = profile(studentId);
-        if (p.curriculumVersionId() == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Academic profile not assigned");
+        if (p.curriculumVersionId() == null) {
+            return null;
+        }
         return jdbc.query("""
                 SELECT cv.id,cv.version,cv.name,cv.description,m.code AS major_code,m.name AS major_name
                 FROM curriculum_versions cv JOIN majors m ON m.id=cv.major_id WHERE cv.id=?
                 """, (rs, row) -> new Curriculum(rs.getString("id"), rs.getString("version"),
                 rs.getString("name"), rs.getString("description"), rs.getString("major_code"),
                 rs.getString("major_name")), p.curriculumVersionId()).stream().findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found"));
+                .orElse(null);
     }
 
     public List<CurriculumCourse> curriculumCourses(UUID studentId) {
         Curriculum c = curriculum(studentId);
+        if (c == null) {
+            return List.of();
+        }
         return jdbc.query("""
                 SELECT cc.course_id,co.code,co.name,co.credits,cc.semester_number,cc.is_mandatory,cc.group_name
                 FROM curriculum_courses cc JOIN courses co ON co.id=cc.course_id

@@ -31,7 +31,7 @@ class StudentAcademicServiceCurriculumTest {
         jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20), name VARCHAR(100), status VARCHAR(20))");
         jdbc.execute("CREATE TABLE curriculum_versions (id VARCHAR(36) PRIMARY KEY, major_id VARCHAR(36), version VARCHAR(20), name VARCHAR(100), description CLOB, effective_from_semester_id VARCHAR(36), status VARCHAR(20))");
         jdbc.execute("CREATE TABLE semesters (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20), name VARCHAR(100), start_date DATE)");
-        jdbc.execute("CREATE TABLE students (user_id VARCHAR(36) PRIMARY KEY, student_code VARCHAR(20), major_id VARCHAR(36), curriculum_version_id VARCHAR(36), enrollment_semester_id VARCHAR(36), current_semester INT, current_gpa DECIMAL(4,2), total_credits_earned INT, academic_status VARCHAR(20), updated_at TIMESTAMP)");
+        jdbc.execute("CREATE TABLE students (user_id VARCHAR(36) PRIMARY KEY, student_code VARCHAR(20), major_id VARCHAR(36), curriculum_version_id VARCHAR(36), enrollment_semester_id VARCHAR(36), expected_graduation_semester_id VARCHAR(36), current_semester INT, current_gpa DECIMAL(4,2), total_credits_earned INT, academic_status VARCHAR(20), updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE student_course_records (id VARCHAR(36) PRIMARY KEY, student_id VARCHAR(36), course_id VARCHAR(36), semester_id VARCHAR(36), final_score DECIMAL(4,2), status VARCHAR(20), attempt_number INT, credits_earned INT)");
         jdbc.execute("CREATE TABLE courses (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20), name VARCHAR(100), credits INT, category_id VARCHAR(36), description CLOB, objectives CLOB, learning_outcomes CLOB, status VARCHAR(20))");
         jdbc.execute("CREATE TABLE course_categories (id VARCHAR(36) PRIMARY KEY, name VARCHAR(100))");
@@ -59,11 +59,15 @@ class StudentAcademicServiceCurriculumTest {
         StudentAcademicService.Profile initial = service.profile(studentId);
         assertNull(initial.curriculumVersionId());
         assertNull(initial.majorCode());
+        assertNull(service.curriculum(studentId));
+        assertEquals(0, service.curriculumCourses(studentId).size());
 
         StudentAcademicService.Profile updated = service.changeCurriculum(studentId, cur1);
         assertEquals(cur1.toString(), updated.curriculumVersionId());
         assertEquals("SE", updated.majorCode());
         assertEquals("K19", updated.cohort());
+
+        assertNotNull(service.curriculum(studentId));
     }
 
     @Test
@@ -84,5 +88,29 @@ class StudentAcademicServiceCurriculumTest {
         ResponseStatusException conflict = assertThrows(ResponseStatusException.class, () ->
                 service.changeCurriculum(studentId, cur2));
         assertEquals(HttpStatus.CONFLICT, conflict.getStatusCode());
+    }
+
+    @Test
+    void recalculatesExpectedGraduationSemesterWhenCurriculumChosen() {
+        UUID gradSemId = UUID.randomUUID();
+        // Setup semesters: student enrolled in SP2026, current semester is FA2026, student is in term 1 (2 terms behind)
+        // 7-term curriculum finishes in FA2028 (SP26 -> FA28 = 8 terms total with delay)
+        UUID enrollmentSemId = UUID.randomUUID();
+        jdbc.update("INSERT INTO semesters VALUES (?, 'SP2026', 'Spring 2026', DATE '2026-01-01')", enrollmentSemId.toString());
+        jdbc.update("INSERT INTO semesters VALUES (?, 'FA2028', 'Fall 2028', DATE '2028-09-01')", gradSemId.toString());
+        for (int term = 1; term <= 7; term++) {
+            jdbc.update("INSERT INTO curriculum_courses (curriculum_version_id, course_id, semester_number, is_mandatory) VALUES (?, ?, ?, true)",
+                    cur1.toString(), UUID.randomUUID().toString(), term);
+        }
+        // Update cur1 effective from enrollmentSemId
+        jdbc.update("UPDATE curriculum_versions SET effective_from_semester_id = ? WHERE id = ?",
+                enrollmentSemId.toString(), cur1.toString());
+
+        service.changeCurriculum(studentId, cur1);
+
+        String computedGradSem = jdbc.queryForObject(
+                "SELECT expected_graduation_semester_id FROM students WHERE user_id = ?",
+                String.class, studentId.toString());
+        assertEquals(gradSemId.toString(), computedGradSem);
     }
 }

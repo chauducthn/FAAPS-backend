@@ -168,10 +168,10 @@ class AdminUserServiceTest {
                     UUID.randomUUID().toString(), curriculumId.toString(), term);
         }
 
-        // The client sends some other semester id (an impossible choice for a first-semester student): it is ignored.
+        // When client omits expected graduation semester, it is calculated automatically
         Detail created = users.create(new CreateAccount(
                 "STUDENT", "new.student@example.com", "New Student", "0900000000",
-                "se200001", curriculumId, enrollmentSemesterId, wrongSemesterId, 1, null));
+                "se200001", curriculumId, enrollmentSemesterId, null, 1, null));
 
         assertEquals("STUDENT", created.role());
         assertEquals("SE200001", created.userId());
@@ -182,6 +182,28 @@ class AdminUserServiceTest {
                 String.class, created.id().toString()));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE user_id = ?",
                 Integer.class, created.id().toString()));
+    }
+
+    @Test
+    void createsStudentWithAdminSelectedGraduationSemester() {
+        UUID majorId = UUID.randomUUID();
+        UUID curriculumId = UUID.randomUUID();
+        UUID enrollmentSemesterId = UUID.randomUUID();
+        UUID adminChosenGradSemId = UUID.randomUUID();
+        jdbc.update("INSERT INTO majors (id, code, name, status) VALUES (?, 'SE', 'Software Engineering', 'ACTIVE')",
+                majorId.toString());
+        jdbc.update("INSERT INTO curriculum_versions (id, major_id, version, name, status) VALUES (?, ?, 'K20', 'SE K20', 'ACTIVE')",
+                curriculumId.toString(), majorId.toString());
+        jdbc.update("INSERT INTO semesters (id, code, name, start_date, end_date) VALUES (?, 'SP2026', 'Spring 2026', ?, ?)",
+                enrollmentSemesterId.toString(), LocalDate.of(2026, 1, 1), LocalDate.of(2026, 4, 30));
+        jdbc.update("INSERT INTO semesters (id, code, name, start_date, end_date) VALUES (?, 'FA2029', 'Fall 2029', ?, ?)",
+                adminChosenGradSemId.toString(), LocalDate.of(2029, 9, 1), LocalDate.of(2029, 12, 31));
+
+        Detail created = users.create(new CreateAccount(
+                "STUDENT", "chosen.student@example.com", "Chosen Student", "0900000001",
+                "se200002", curriculumId, enrollmentSemesterId, adminChosenGradSemId, 1, null));
+
+        assertEquals(adminChosenGradSemId.toString(), created.expectedGraduationSemesterId());
     }
 
     @Test
@@ -306,6 +328,8 @@ class AdminUserServiceTest {
         String hash = jdbc.queryForObject("SELECT password_hash FROM users WHERE id = ?",
                 String.class, studentId.toString());
         org.junit.jupiter.api.Assertions.assertNotNull(hash);
+        assertEquals("LOCAL", jdbc.queryForObject("SELECT auth_provider FROM users WHERE id = ?",
+                String.class, studentId.toString()));
 
         AdminUserDtos.PasswordResetResult bulkResult = users.bulkResetPassword(List.of(adminId, studentId));
         assertEquals(2, bulkResult.updated());

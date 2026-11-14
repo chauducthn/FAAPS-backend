@@ -3,6 +3,7 @@ package vn.edu.fpt.faaps.academic.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -82,11 +83,15 @@ class StudentRegistrationServiceTest {
     }
 
     @Test
-    void withoutACurriculumOnlyTheAccountIsCreatedAndTheMajorIsChosenLater() {
+    void withoutACurriculumAccountAndStudentProfileAreCreatedAndMajorIsChosenLater() {
         UUID id = registerWithoutMajor("a@fpt.edu.vn", PASSWORD, "SE190001");
 
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE id = ?", Integer.class, id.toString()));
-        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM students", Integer.class));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE user_id = ?", Integer.class, id.toString()));
+        var student = jdbc.queryForMap("SELECT * FROM students WHERE user_id = ?", id.toString());
+        assertEquals("SE190001", student.get("STUDENT_CODE"));
+        assertNull(student.get("MAJOR_ID"));
+        assertNull(student.get("CURRICULUM_VERSION_ID"));
     }
 
     @Test

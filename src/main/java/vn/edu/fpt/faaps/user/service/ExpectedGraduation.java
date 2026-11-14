@@ -18,7 +18,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * semester is behind the number of terms that have already passed since enrollment is late by the difference, and
  * the graduation moves back by the same amount. Semesters follow Spring, Summer, Fall of every year.
  */
-final class ExpectedGraduation {
+public final class ExpectedGraduation {
     private static final String[] ORDER = {"SP", "SU", "FA"};
     private static final Pattern CODE = Pattern.compile("^(SP|SU|FA)(\\d{4})$");
 
@@ -29,7 +29,7 @@ final class ExpectedGraduation {
      * The id of the expected graduation semester, or null when it cannot be known: the curriculum has no courses
      * yet, a semester code is not in the SP/SU/FA form, or the semester does not exist in the catalogue yet.
      */
-    static String semesterId(JdbcTemplate jdbc, UUID curriculumVersionId, UUID enrollmentSemesterId,
+    public static String semesterId(JdbcTemplate jdbc, UUID curriculumVersionId, UUID enrollmentSemesterId,
             int currentSemester) {
         try {
             Integer terms = jdbc.queryForObject("""

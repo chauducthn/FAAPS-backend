@@ -10,9 +10,22 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
 public class ApiErrorHandler {
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiError> responseStatus(ResponseStatusException exception) {
+        String code = exception.getStatusCode().value() == 409 ? "CONFLICT"
+                : exception.getStatusCode().value() == 404 ? "NOT_FOUND"
+                : exception.getStatusCode().value() == 400 ? "INVALID_REQUEST"
+                : exception.getStatusCode().value() == 403 ? "FORBIDDEN"
+                : exception.getStatusCode().value() == 401 ? "UNAUTHORIZED"
+                : "API_ERROR";
+        String message = exception.getReason() != null ? exception.getReason() : exception.getMessage();
+        return ResponseEntity.status(exception.getStatusCode()).body(ApiError.of(code, message));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> invalidBody(MethodArgumentNotValidException exception) {
         String message = exception.getBindingResult().getFieldErrors().stream().findFirst()

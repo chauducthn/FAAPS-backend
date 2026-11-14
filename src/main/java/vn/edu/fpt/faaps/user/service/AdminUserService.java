@@ -184,10 +184,14 @@ public class AdminUserService {
             }
         }
 
-        // The enrollment semester must exist if provided. The expected graduation semester is calculated (see
-        // ExpectedGraduation), so a value sent by the client is ignored when curriculum and enrollment semester are set.
-        if (input.enrollmentSemesterId() != null) {
-            semesterStart(input.enrollmentSemesterId(), "Enrollment semester");
+        LocalDate enrollmentDate = input.enrollmentSemesterId() != null
+                ? semesterStart(input.enrollmentSemesterId(), "Enrollment semester")
+                : null;
+        if (input.expectedGraduationSemesterId() != null) {
+            LocalDate expectedDate = semesterStart(input.expectedGraduationSemesterId(), "Expected graduation semester");
+            if (enrollmentDate != null && expectedDate.isBefore(enrollmentDate)) {
+                throw new IllegalArgumentException("expectedGraduationSemesterId cannot be before enrollmentSemesterId");
+            }
         }
     }
 
@@ -206,9 +210,11 @@ public class AdminUserService {
                     .stream().findFirst().orElseThrow(() -> new NotFound("Curriculum not found"));
         }
         int currentSemester = input.currentSemester() == null ? 1 : input.currentSemester();
-        String expectedGraduationId = (input.curriculumVersionId() != null && input.enrollmentSemesterId() != null)
-                ? ExpectedGraduation.semesterId(jdbc, input.curriculumVersionId(), input.enrollmentSemesterId(), currentSemester)
-                : (input.expectedGraduationSemesterId() != null ? input.expectedGraduationSemesterId().toString() : null);
+        String expectedGraduationId = input.expectedGraduationSemesterId() != null
+                ? input.expectedGraduationSemesterId().toString()
+                : (input.curriculumVersionId() != null && input.enrollmentSemesterId() != null
+                    ? ExpectedGraduation.semesterId(jdbc, input.curriculumVersionId(), input.enrollmentSemesterId(), currentSemester)
+                    : null);
 
         jdbc.update("""
                 INSERT INTO students (user_id, student_code, major_id, curriculum_version_id,
@@ -294,13 +300,23 @@ public class AdminUserService {
         for (UUID id : userIds.stream().sorted().toList()) {
             int rows = jdbc.update("""
                     UPDATE users
-                    SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
+                    SET password_hash = ?,
+                        auth_provider = 'LOCAL',
+                        failed_login_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """, passwordHash, id.toString());
             if (rows == 0) {
                 throw new NotFound("User " + id + " was not found");
             }
             changed += rows;
+            try {
+                jdbc.update("""
+                        INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, created_at)
+                        VALUES (?, ?, 'RESET_PASSWORD', 'USER', ?, CURRENT_TIMESTAMP)
+                        """, UUID.randomUUID().toString(), id.toString(), id.toString());
+            } catch (Exception ignored) {
+                // Non-blocking audit trail fallback when audit_logs table is unavailable
+            }
         }
         return new PasswordResetResult(changed, defaultPassword);
     }
