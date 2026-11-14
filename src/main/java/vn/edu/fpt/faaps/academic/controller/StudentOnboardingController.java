@@ -55,7 +55,7 @@ public class StudentOnboardingController {
 
     public record CompleteOnboardingRequest(
             @NotBlank @Size(max = 20) String studentCode,
-            @NotNull UUID curriculumVersionId,
+            UUID curriculumVersionId,
             @NotNull LocalDate dateOfBirth,
             @Size(max = 20) String phone) {
     }

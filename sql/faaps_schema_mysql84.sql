@@ -142,9 +142,9 @@ CREATE TABLE `curriculum_courses` (
 CREATE TABLE `students` (
   `user_id` char(36) PRIMARY KEY,
   `student_code` varchar(50) UNIQUE NOT NULL,
-  `major_id` char(36) NOT NULL,
-  `curriculum_version_id` char(36) NOT NULL,
-  `enrollment_semester_id` char(36) NOT NULL,
+  `major_id` char(36),
+  `curriculum_version_id` char(36),
+  `enrollment_semester_id` char(36),
   `expected_graduation_semester_id` char(36),
   `current_semester` int DEFAULT 1,
   `current_gpa` decimal(4,2) DEFAULT 0 COMMENT 'GPA 10-point scale (0.00 - 10.00)',

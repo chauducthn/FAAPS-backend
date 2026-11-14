@@ -1,36 +1,52 @@
 package vn.edu.fpt.faaps.user.service;
 
 import vn.edu.fpt.faaps.academic.service.StudentOnboardingService;
+import vn.edu.fpt.faaps.common.validation.StudentCodeValidator;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos;
 import vn.edu.fpt.faaps.user.exception.UserExceptions;
 
+import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.CreateAccount;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Page;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.PasswordResetResult;
 import vn.edu.fpt.faaps.user.repository.AdminUserRepository;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
 
 @Service
 public class AdminUserService {
+    private static final SecureRandom RANDOM = new SecureRandom();
+
     private final JdbcTemplate jdbc;
     private final AdminUserRepository repository;
     private final UserRoleService roles;
+    private final PasswordEncoder passwordEncoder;
 
-    public AdminUserService(JdbcTemplate jdbc, AdminUserRepository repository, UserRoleService roles) {
+    @Autowired
+    public AdminUserService(JdbcTemplate jdbc, AdminUserRepository repository, UserRoleService roles,
+            PasswordEncoder passwordEncoder) {
         this.jdbc = jdbc;
         this.repository = repository;
         this.roles = roles;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    public AdminUserService(JdbcTemplate jdbc, AdminUserRepository repository, UserRoleService roles) {
+        this(jdbc, repository, roles, new BCryptPasswordEncoder());
     }
 
     public Page list(String role, String status, String search, UUID majorId, int page, int size, String sort) {
@@ -150,35 +166,29 @@ public class AdminUserService {
     }
 
     private void validateStudentInput(CreateAccount input) {
-        if (input.studentCode() == null || input.studentCode().isBlank()) {
-            throw new IllegalArgumentException("studentCode is required");
-        }
-        String normalizedCode = input.studentCode().strip().toUpperCase(Locale.ROOT);
-        if (!StudentOnboardingService.STUDENT_CODE.matcher(normalizedCode).matches()) {
-            throw new IllegalArgumentException(
-                    "studentCode must be 2 letters, a cohort from 01 to 22 and 4 digits (e.g. SE190001)");
-        }
-        if (input.curriculumVersionId() == null || input.enrollmentSemesterId() == null) {
-            throw new IllegalArgumentException("curriculumVersionId and enrollmentSemesterId are required for a Student");
-        }
+        StudentCodeValidator.validateAndNormalize(input.studentCode());
         if (input.currentSemester() != null && input.currentSemester() < 1) {
             throw new IllegalArgumentException("currentSemester must be at least 1");
         }
-        List<String> curriculumStatus = jdbc.query("""
-                SELECT cv.status
-                FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id
-                WHERE cv.id = ? AND m.status = 'ACTIVE'
-                """, (rs, rowNum) -> rs.getString("status"), input.curriculumVersionId().toString());
-        if (curriculumStatus.isEmpty()) {
-            throw new NotFound("Curriculum or its major was not found");
-        }
-        if (!"ACTIVE".equalsIgnoreCase(curriculumStatus.get(0))) {
-            throw new Conflict("Student must be enrolled in an active curriculum");
+        if (input.curriculumVersionId() != null) {
+            List<String> curriculumStatus = jdbc.query("""
+                    SELECT cv.status
+                    FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id
+                    WHERE cv.id = ? AND m.status = 'ACTIVE'
+                    """, (rs, rowNum) -> rs.getString("status"), input.curriculumVersionId().toString());
+            if (curriculumStatus.isEmpty()) {
+                throw new NotFound("Curriculum or its major was not found");
+            }
+            if (!"ACTIVE".equalsIgnoreCase(curriculumStatus.get(0))) {
+                throw new Conflict("Student must be enrolled in an active curriculum");
+            }
         }
 
-        // The enrollment semester must exist. The expected graduation semester is calculated (see
-        // ExpectedGraduation), so a value sent by the client is ignored.
-        semesterStart(input.enrollmentSemesterId(), "Enrollment semester");
+        // The enrollment semester must exist if provided. The expected graduation semester is calculated (see
+        // ExpectedGraduation), so a value sent by the client is ignored when curriculum and enrollment semester are set.
+        if (input.enrollmentSemesterId() != null) {
+            semesterStart(input.enrollmentSemesterId(), "Enrollment semester");
+        }
     }
 
     private void validateAdvisorInput(CreateAccount input) {
@@ -188,20 +198,27 @@ public class AdminUserService {
     }
 
     private void addStudentProfile(UUID userId, CreateAccount input) {
-        String majorId = jdbc.query("SELECT major_id FROM curriculum_versions WHERE id = ?",
-                (rs, rowNum) -> rs.getString("major_id"), input.curriculumVersionId().toString())
-                .stream().findFirst().orElseThrow(() -> new NotFound("Curriculum not found"));
+        String normalizedCode = StudentCodeValidator.validateAndNormalize(input.studentCode());
+        String majorId = null;
+        if (input.curriculumVersionId() != null) {
+            majorId = jdbc.query("SELECT major_id FROM curriculum_versions WHERE id = ?",
+                    (rs, rowNum) -> rs.getString("major_id"), input.curriculumVersionId().toString())
+                    .stream().findFirst().orElseThrow(() -> new NotFound("Curriculum not found"));
+        }
         int currentSemester = input.currentSemester() == null ? 1 : input.currentSemester();
-        String expectedGraduationId = ExpectedGraduation.semesterId(jdbc, input.curriculumVersionId(),
-                input.enrollmentSemesterId(), currentSemester);
+        String expectedGraduationId = (input.curriculumVersionId() != null && input.enrollmentSemesterId() != null)
+                ? ExpectedGraduation.semesterId(jdbc, input.curriculumVersionId(), input.enrollmentSemesterId(), currentSemester)
+                : (input.expectedGraduationSemesterId() != null ? input.expectedGraduationSemesterId().toString() : null);
+
         jdbc.update("""
                 INSERT INTO students (user_id, student_code, major_id, curriculum_version_id,
                                       enrollment_semester_id, expected_graduation_semester_id,
                                       current_semester, current_gpa, total_credits_earned, academic_status,
                                       created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, userId.toString(), input.studentCode().strip().toUpperCase(Locale.ROOT), majorId,
-                input.curriculumVersionId().toString(), input.enrollmentSemesterId().toString(),
+                """, userId.toString(), normalizedCode, majorId,
+                input.curriculumVersionId() == null ? null : input.curriculumVersionId().toString(),
+                input.enrollmentSemesterId() == null ? null : input.enrollmentSemesterId().toString(),
                 expectedGraduationId, currentSemester);
     }
 
@@ -250,6 +267,46 @@ public class AdminUserService {
     @Transactional
     public Detail changeRole(UUID userId, ChangeRole input) {
         return roles.change(userId, input);
+    }
+
+    @Transactional
+    public PasswordResetResult resetPassword(UUID id) {
+        if (id == null) {
+            throw new IllegalArgumentException("id is required");
+        }
+        return resetPasswords(List.of(id));
+    }
+
+    @Transactional
+    public PasswordResetResult bulkResetPassword(List<UUID> userIds) {
+        if (userIds == null || userIds.isEmpty() || userIds.size() > 100
+                || userIds.stream().anyMatch(java.util.Objects::isNull)
+                || userIds.stream().distinct().count() != userIds.size()) {
+            throw new IllegalArgumentException("userIds must contain 1 to 100 unique, non-null users");
+        }
+        return resetPasswords(userIds);
+    }
+
+    private PasswordResetResult resetPasswords(List<UUID> userIds) {
+        String defaultPassword = generateDefaultPassword();
+        String passwordHash = passwordEncoder.encode(defaultPassword);
+        int changed = 0;
+        for (UUID id : userIds.stream().sorted().toList()) {
+            int rows = jdbc.update("""
+                    UPDATE users
+                    SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """, passwordHash, id.toString());
+            if (rows == 0) {
+                throw new NotFound("User " + id + " was not found");
+            }
+            changed += rows;
+        }
+        return new PasswordResetResult(changed, defaultPassword);
+    }
+
+    private static String generateDefaultPassword() {
+        return "Faaps@" + (100000 + RANDOM.nextInt(900000));
     }
 
     private record ExistingAccount(UUID id, String role, String externalId, String status,

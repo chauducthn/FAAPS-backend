@@ -39,6 +39,7 @@ class AdminUserServiceTest {
         jdbc.execute("CREATE TABLE roles (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20))");
         jdbc.execute("""
                 CREATE TABLE users (id VARCHAR(36) PRIMARY KEY, role_id VARCHAR(36), email VARCHAR(255),
+                    password_hash VARCHAR(255), failed_login_attempts INT DEFAULT 0, locked_until TIMESTAMP,
                     auth_provider VARCHAR(20), external_id VARCHAR(255), email_verified_at TIMESTAMP,
                     full_name VARCHAR(255), phone VARCHAR(20), status VARCHAR(20),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
@@ -266,6 +267,49 @@ class AdminUserServiceTest {
                 Integer.class, created.id().toString()));
         assertEquals("ACTIVE", jdbc.queryForObject("SELECT status FROM advisors WHERE user_id = ?",
                 String.class, created.id().toString()));
+    }
+
+    @Test
+    void createsStudentAccountWithoutCurriculumAndSemester() {
+        Detail created = users.create(new CreateAccount(
+                "STUDENT", "freshman@example.com", "Freshman Student", "0912345678",
+                "SE180001", null, null, null, null, null));
+
+        assertEquals("STUDENT", created.role());
+        assertEquals("freshman@example.com", created.email());
+        assertEquals("SE180001", created.userId());
+
+        String studentCode = jdbc.queryForObject("SELECT student_code FROM students WHERE user_id = ?",
+                String.class, created.id().toString());
+        assertEquals("SE180001", studentCode);
+
+        String majorId = jdbc.queryForObject("SELECT major_id FROM students WHERE user_id = ?",
+                String.class, created.id().toString());
+        org.junit.jupiter.api.Assertions.assertNull(majorId);
+
+        String curriculumId = jdbc.queryForObject("SELECT curriculum_version_id FROM students WHERE user_id = ?",
+                String.class, created.id().toString());
+        org.junit.jupiter.api.Assertions.assertNull(curriculumId);
+
+        String semesterId = jdbc.queryForObject("SELECT enrollment_semester_id FROM students WHERE user_id = ?",
+                String.class, created.id().toString());
+        org.junit.jupiter.api.Assertions.assertNull(semesterId);
+    }
+
+    @Test
+    void resetsPasswordSingleAndBulk() {
+        AdminUserDtos.PasswordResetResult singleResult = users.resetPassword(studentId);
+        assertEquals(1, singleResult.updated());
+        org.junit.jupiter.api.Assertions.assertNotNull(singleResult.defaultPassword());
+        org.junit.jupiter.api.Assertions.assertTrue(singleResult.defaultPassword().startsWith("Faaps@"));
+
+        String hash = jdbc.queryForObject("SELECT password_hash FROM users WHERE id = ?",
+                String.class, studentId.toString());
+        org.junit.jupiter.api.Assertions.assertNotNull(hash);
+
+        AdminUserDtos.PasswordResetResult bulkResult = users.bulkResetPassword(List.of(adminId, studentId));
+        assertEquals(2, bulkResult.updated());
+        org.junit.jupiter.api.Assertions.assertNotNull(bulkResult.defaultPassword());
     }
 }
 

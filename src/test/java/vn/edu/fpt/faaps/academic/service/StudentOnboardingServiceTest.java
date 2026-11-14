@@ -1,6 +1,7 @@
 package vn.edu.fpt.faaps.academic.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.UUID;
@@ -98,6 +99,17 @@ class StudentOnboardingServiceTest {
         var error = assertThrows(ResponseStatusException.class, () -> service.complete(userId, "SE173012",
                 UUID.fromString(ACTIVE_CURRICULUM), java.time.LocalDate.now().minusYears(12), "0901234567"));
         assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode());
+    }
+
+    @Test
+    void completesOnboardingWithoutCurriculumVersion() {
+        service.complete(userId, "SE173012", null, DOB, "0901234567");
+
+        var row = jdbc.queryForMap("SELECT * FROM students WHERE user_id = ?", userId.toString());
+        assertEquals("SE173012", row.get("STUDENT_CODE"));
+        assertNull(row.get("MAJOR_ID"));
+        assertNull(row.get("CURRICULUM_VERSION_ID"));
+        assertNull(row.get("ENROLLMENT_SEMESTER_ID"));
     }
 
     @Test

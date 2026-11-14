@@ -32,11 +32,13 @@ import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.CreateAccount;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Page;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.PasswordResetResult;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.BulkResetPassword;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
 
 @RestController
-@RequestMapping("/api/admin/users")
+@RequestMapping({"/api/admin/users", "/admin/users"})
 public class AdminUserController {
     private final AdminUserService users;
 
@@ -87,6 +89,16 @@ public class AdminUserController {
     public Map<String, Integer> bulkStatus(@Valid @RequestBody BulkStatus request,
             @AuthenticationPrincipal AuthSession actor) {
         return Map.of("updated", users.changeStatus(request.userIds(), request.status(), actor.id()));
+    }
+
+    @PostMapping("/{id}/reset-password")
+    public PasswordResetResult resetPassword(@PathVariable UUID id) {
+        return users.resetPassword(id);
+    }
+
+    @PostMapping("/reset-password")
+    public PasswordResetResult bulkResetPassword(@Valid @RequestBody BulkResetPassword request) {
+        return users.bulkResetPassword(request.userIds());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

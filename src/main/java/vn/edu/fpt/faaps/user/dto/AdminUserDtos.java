@@ -25,4 +25,8 @@ public final class AdminUserDtos {
             UUID enrollmentSemesterId, Integer maxAdvisees) {}
 
     public record Page(List<Summary> items, int page, int size, long totalElements, long totalPages) {}
+
+    public record PasswordResetResult(int updated, String defaultPassword) {}
+
+    public record BulkResetPassword(List<UUID> userIds) {}
 }

@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.common.validation.StudentCodeValidator;
 
 /**
  * Lets a student who signed in with Google for the first time finish registration. The first Google sign-in
@@ -71,7 +72,17 @@ public class StudentOnboardingService {
     /** Inserts the students row for an existing user. The caller has already validated and normalized the input. */
     void addStudentProfile(UUID userId, String code, UUID curriculumVersionId) {
         if (curriculumVersionId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Curriculum is required");
+            try {
+                jdbc.update("""
+                        INSERT INTO students (user_id, student_code, major_id, curriculum_version_id,
+                                              enrollment_semester_id, current_semester, current_gpa,
+                                              total_credits_earned, academic_status, created_at, updated_at)
+                        VALUES (?, ?, NULL, NULL, NULL, 1, 0, 0, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """, userId.toString(), code);
+                return;
+            } catch (DuplicateKeyException exception) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "This Student ID is already registered");
+            }
         }
         var curriculum = jdbc.query("""
                 SELECT cv.major_id, cv.effective_from_semester_id
@@ -103,12 +114,12 @@ public class StudentOnboardingService {
     }
 
     static String normalizeStudentCode(String studentCode) {
-        String code = studentCode == null ? "" : studentCode.strip().toUpperCase(Locale.ROOT);
-        if (!STUDENT_CODE.matcher(code).matches()) {
+        try {
+            return StudentCodeValidator.validateAndNormalize(studentCode);
+        } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Student ID must be 2 letters, a cohort from 01 to 22 and 4 digits, for example SE190001");
         }
-        return code;
     }
 
     /** Returns null for a blank phone; a given phone must be a Vietnamese mobile number. */

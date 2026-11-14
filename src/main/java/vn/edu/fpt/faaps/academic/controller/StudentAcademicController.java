@@ -4,6 +4,7 @@ import vn.edu.fpt.faaps.academic.service.StudentAcademicService;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
@@ -18,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import vn.edu.fpt.faaps.auth.model.AuthSession;
 
 @RestController
-@RequestMapping("/api/student")
+@RequestMapping({"/api/student", "/student"})
 public class StudentAcademicController {
     private final StudentAcademicService academics;
 
@@ -35,6 +36,12 @@ public class StudentAcademicController {
     public StudentAcademicService.Profile updateProfile(@AuthenticationPrincipal AuthSession student,
             @Valid @RequestBody UpdateProfile request) {
         return academics.updateProfile(student.id(), request.fullName(), request.phone());
+    }
+
+    @PutMapping("/profile/curriculum")
+    public StudentAcademicService.Profile changeCurriculum(@AuthenticationPrincipal AuthSession student,
+            @Valid @RequestBody ChangeCurriculumRequest request) {
+        return academics.changeCurriculum(student.id(), request.curriculumVersionId());
     }
 
     @GetMapping("/transcript")
@@ -70,6 +77,7 @@ public class StudentAcademicController {
 
     public record UpdateProfile(@NotBlank @Size(max = 255) String fullName,
             @Size(max = 20) String phone) {}
+    public record ChangeCurriculumRequest(@NotNull UUID curriculumVersionId) {}
     public record CourseDetail(StudentAcademicService.Course course,
             List<StudentAcademicService.Prerequisite> prerequisites) {}
 }
