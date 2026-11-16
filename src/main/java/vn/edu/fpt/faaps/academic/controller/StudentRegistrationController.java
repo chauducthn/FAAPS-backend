@@ -57,7 +57,7 @@ public class StudentRegistrationController {
     public ResponseEntity<AuthSession> register(@Valid @RequestBody RegisterRequest body,
             HttpServletRequest request, HttpServletResponse response) {
         UUID userId = registration.register(body.fullName(), body.email(), body.password(), body.dateOfBirth(),
-                body.studentCode(), body.curriculumVersionId(), body.phone());
+                body.studentCode(), body.parsedCurriculumVersionId(), body.phone());
         AuthSession session = authService.sessionFor(userId);
         if (request.getSession(false) == null) {
             request.getSession(true);
@@ -90,8 +90,19 @@ public class StudentRegistrationController {
             @NotBlank @Size(max = 72) String password,
             @NotNull LocalDate dateOfBirth,
             @NotBlank @Size(max = 20) String studentCode,
-            /** Optional: the major is chosen in Profile instead of registration. */
-            UUID curriculumVersionId,
+            /** Optional: the major is chosen in Profile instead of registration. Accepts omitted, null, or UUID. */
+            String curriculumVersionId,
             @NotBlank @Size(max = 20) String phone) {
+
+        public UUID parsedCurriculumVersionId() {
+            if (curriculumVersionId == null || curriculumVersionId.isBlank()) {
+                return null;
+            }
+            try {
+                return UUID.fromString(curriculumVersionId.strip());
+            } catch (IllegalArgumentException ex) {
+                return null;
+            }
+        }
     }
 }

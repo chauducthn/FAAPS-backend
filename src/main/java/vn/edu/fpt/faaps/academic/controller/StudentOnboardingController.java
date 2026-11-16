@@ -40,7 +40,7 @@ public class StudentOnboardingController {
     @PutMapping
     public StudentAcademicService.Profile complete(@AuthenticationPrincipal AuthSession student,
             @Valid @RequestBody CompleteOnboardingRequest request) {
-        onboarding.complete(student.id(), request.studentCode(), request.curriculumVersionId(),
+        onboarding.complete(student.id(), request.studentCode(), request.parsedCurriculumVersionId(),
                 request.dateOfBirth(), request.phone());
         return academics.profile(student.id());
     }
@@ -55,8 +55,19 @@ public class StudentOnboardingController {
 
     public record CompleteOnboardingRequest(
             @NotBlank @Size(max = 20) String studentCode,
-            UUID curriculumVersionId,
+            String curriculumVersionId,
             @NotNull LocalDate dateOfBirth,
             @Size(max = 20) String phone) {
+
+        public UUID parsedCurriculumVersionId() {
+            if (curriculumVersionId == null || curriculumVersionId.isBlank()) {
+                return null;
+            }
+            try {
+                return UUID.fromString(curriculumVersionId.strip());
+            } catch (IllegalArgumentException ex) {
+                return null;
+            }
+        }
     }
 }
