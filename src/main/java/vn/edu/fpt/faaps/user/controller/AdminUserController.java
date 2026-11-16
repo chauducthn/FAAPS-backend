@@ -32,7 +32,7 @@ import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.CreateAccount;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Page;
-import vn.edu.fpt.faaps.user.dto.AdminUserDtos.PasswordResetResult;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.PasswordResetResponse;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.BulkResetPassword;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
@@ -92,12 +92,12 @@ public class AdminUserController {
     }
 
     @PostMapping("/{id}/reset-password")
-    public PasswordResetResult resetPassword(@PathVariable UUID id) {
+    public PasswordResetResponse resetPassword(@PathVariable UUID id) {
         return users.resetPassword(id);
     }
 
     @PostMapping("/reset-password")
-    public PasswordResetResult bulkResetPassword(@Valid @RequestBody BulkResetPassword request) {
+    public PasswordResetResponse bulkResetPassword(@Valid @RequestBody BulkResetPassword request) {
         return users.bulkResetPassword(request.userIds());
     }
 

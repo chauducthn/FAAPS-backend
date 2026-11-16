@@ -320,10 +320,14 @@ class AdminUserServiceTest {
 
     @Test
     void resetsPasswordSingleAndBulk() {
-        AdminUserDtos.PasswordResetResult singleResult = users.resetPassword(studentId);
+        AdminUserDtos.PasswordResetResponse singleResult = users.resetPassword(studentId);
         assertEquals(1, singleResult.updated());
         org.junit.jupiter.api.Assertions.assertNotNull(singleResult.defaultPassword());
         org.junit.jupiter.api.Assertions.assertTrue(singleResult.defaultPassword().startsWith("Faaps@"));
+        assertEquals(1, singleResult.resetResults().size());
+        assertEquals("SUCCESS", singleResult.resetResults().get(0).status());
+        assertEquals("student@example.com", singleResult.resetResults().get(0).email());
+        assertEquals(singleResult.defaultPassword(), singleResult.resetResults().get(0).newPassword());
 
         String hash = jdbc.queryForObject("SELECT password_hash FROM users WHERE id = ?",
                 String.class, studentId.toString());
@@ -331,9 +335,19 @@ class AdminUserServiceTest {
         assertEquals("LOCAL", jdbc.queryForObject("SELECT auth_provider FROM users WHERE id = ?",
                 String.class, studentId.toString()));
 
-        AdminUserDtos.PasswordResetResult bulkResult = users.bulkResetPassword(List.of(adminId, studentId));
+        AdminUserDtos.PasswordResetResponse bulkResult = users.bulkResetPassword(List.of(adminId, studentId));
         assertEquals(2, bulkResult.updated());
         org.junit.jupiter.api.Assertions.assertNotNull(bulkResult.defaultPassword());
+        assertEquals(2, bulkResult.resetResults().size());
+
+        // Verify that each user receives a distinct unique random password
+        String pwd1 = bulkResult.resetResults().get(0).newPassword();
+        String pwd2 = bulkResult.resetResults().get(1).newPassword();
+        org.junit.jupiter.api.Assertions.assertNotNull(pwd1);
+        org.junit.jupiter.api.Assertions.assertNotNull(pwd2);
+        org.junit.jupiter.api.Assertions.assertTrue(pwd1.startsWith("Faaps@"));
+        org.junit.jupiter.api.Assertions.assertTrue(pwd2.startsWith("Faaps@"));
+        org.junit.jupiter.api.Assertions.assertNotEquals(pwd1, pwd2);
     }
 }
 

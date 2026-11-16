@@ -7,8 +7,11 @@ import vn.edu.fpt.faaps.user.exception.UserExceptions;
 
 import java.security.SecureRandom;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -22,6 +25,8 @@ import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.CreateAccount;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Page;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.PasswordResetEntry;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.PasswordResetResponse;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.PasswordResetResult;
 import vn.edu.fpt.faaps.user.repository.AdminUserRepository;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
@@ -276,7 +281,7 @@ public class AdminUserService {
     }
 
     @Transactional
-    public PasswordResetResult resetPassword(UUID id) {
+    public PasswordResetResponse resetPassword(UUID id) {
         if (id == null) {
             throw new IllegalArgumentException("id is required");
         }
@@ -284,7 +289,7 @@ public class AdminUserService {
     }
 
     @Transactional
-    public PasswordResetResult bulkResetPassword(List<UUID> userIds) {
+    public PasswordResetResponse bulkResetPassword(List<UUID> userIds) {
         if (userIds == null || userIds.isEmpty() || userIds.size() > 100
                 || userIds.stream().anyMatch(java.util.Objects::isNull)
                 || userIds.stream().distinct().count() != userIds.size()) {
@@ -293,11 +298,50 @@ public class AdminUserService {
         return resetPasswords(userIds);
     }
 
-    private PasswordResetResult resetPasswords(List<UUID> userIds) {
-        String defaultPassword = generateDefaultPassword();
-        String passwordHash = passwordEncoder.encode(defaultPassword);
+    private PasswordResetResponse resetPasswords(List<UUID> userIds) {
+        List<PasswordResetEntry> resetResults = new ArrayList<>();
+        Set<String> generatedPasswords = new HashSet<>();
         int changed = 0;
+        String firstPassword = null;
+
         for (UUID id : userIds.stream().sorted().toList()) {
+            List<ResetTarget> targets = jdbc.query("""
+                    SELECT u.id,
+                           CASE WHEN r.code = 'STUDENT' THEN COALESCE(s.student_code, u.email) ELSE u.email END AS user_code,
+                           u.email,
+                           u.full_name,
+                           u.status
+                    FROM users u
+                    LEFT JOIN roles r ON r.id = u.role_id
+                    LEFT JOIN students s ON s.user_id = u.id
+                    WHERE u.id = ?
+                    FOR UPDATE
+                    """, (rs, rowNum) -> new ResetTarget(
+                            UUID.fromString(rs.getString("id")),
+                            rs.getString("user_code"),
+                            rs.getString("email"),
+                            rs.getString("full_name"),
+                            rs.getString("status")
+                    ), id.toString());
+
+            if (targets.isEmpty()) {
+                throw new NotFound("User " + id + " was not found");
+            }
+
+            ResetTarget target = targets.get(0);
+
+            // Generate a unique random password for EACH account in the batch
+            String newPassword;
+            do {
+                newPassword = generateRandomPassword();
+            } while (!generatedPasswords.add(newPassword));
+
+            if (firstPassword == null) {
+                firstPassword = newPassword;
+            }
+
+            String passwordHash = passwordEncoder.encode(newPassword);
+
             int rows = jdbc.update("""
                     UPDATE users
                     SET password_hash = ?,
@@ -305,10 +349,9 @@ public class AdminUserService {
                         failed_login_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """, passwordHash, id.toString());
-            if (rows == 0) {
-                throw new NotFound("User " + id + " was not found");
-            }
+
             changed += rows;
+
             try {
                 jdbc.update("""
                         INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, created_at)
@@ -317,12 +360,43 @@ public class AdminUserService {
             } catch (Exception ignored) {
                 // Non-blocking audit trail fallback when audit_logs table is unavailable
             }
+
+            // =========================================================================================
+            // [OPTIONAL EXTENSION HOOK]: Email Sender / Notification Dispatcher
+            // -----------------------------------------------------------------------------------------
+            // Reserved for future email dispatch (e.g. sending new credentials / reset alert to user):
+            // e.g. emailSender.sendPasswordReset(target.email(), target.fullName(), newPassword);
+            // In case user lost email access, Admin retains this password on screen / CSV to hand over.
+            // =========================================================================================
+            dispatchPasswordResetNotification(target.email(), target.fullName(), newPassword);
+
+            resetResults.add(new PasswordResetEntry(
+                    target.userCode(),
+                    target.email(),
+                    target.fullName(),
+                    "SUCCESS",
+                    newPassword,
+                    null
+            ));
         }
-        return new PasswordResetResult(changed, defaultPassword);
+
+        return new PasswordResetResponse(changed, firstPassword, resetResults);
     }
 
-    private static String generateDefaultPassword() {
+    /**
+     * Optional extension point: dispatch password reset notification via email.
+     * Currently a no-op placeholder until mail server configuration is wired up.
+     */
+    private void dispatchPasswordResetNotification(String email, String fullName, String newPassword) {
+        // [EXTENSION HOOK]: Send email alert with new password or password reset notification
+        // e.g. emailSender.sendResetAlert(email, fullName, newPassword);
+    }
+
+    private static String generateRandomPassword() {
         return "Faaps@" + (100000 + RANDOM.nextInt(900000));
+    }
+
+    private record ResetTarget(UUID id, String userCode, String email, String fullName, String status) {
     }
 
     private record ExistingAccount(UUID id, String role, String externalId, String status,

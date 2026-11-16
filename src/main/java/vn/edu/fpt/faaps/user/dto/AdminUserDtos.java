@@ -26,7 +26,14 @@ public final class AdminUserDtos {
 
     public record Page(List<Summary> items, int page, int size, long totalElements, long totalPages) {}
 
-    public record PasswordResetResult(int updated, String defaultPassword) {}
+    public record PasswordResetEntry(String userId, String email, String fullName,
+            String status, String newPassword, String reason) {}
+
+    public record PasswordResetResponse(int updated, String defaultPassword,
+            List<PasswordResetEntry> resetResults) {}
+
+    public record PasswordResetResult(int updated, String defaultPassword,
+            List<PasswordResetEntry> resetResults) {}
 
     public record BulkResetPassword(List<UUID> userIds) {}
 }
