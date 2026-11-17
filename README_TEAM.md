@@ -13,7 +13,7 @@ Các địa chỉ và tên dịch vụ trên do nhóm cung cấp; hãy kiểm tr
 ### Truy cập web đã deploy
 
 1. Mở [http://56.10.8.193](http://56.10.8.193) trên trình duyệt. Nếu không vào được, kiểm tra EC2/Nginx hoặc hỏi người phụ trách deploy; không cần cài FE/BE để dùng bản web này.
-2. Admin đăng nhập bằng tài khoản được bàn giao và mật khẩu nhận qua kênh riêng. Hệ thống chỉ cho **admin hiện hành** trong `admin_control` thao tác; admin cũ không đăng nhập được sau bàn giao.
+2. Admin đăng nhập bằng tài khoản duy nhất và mật khẩu nhận qua kênh riêng. Tài khoản này được liên kết trong `admin_account`; hệ thống không có luồng bàn giao Admin.
 3. Student/Advisor chọn Google nếu OAuth đã được cấu hình cho địa chỉ triển khai. Tài khoản Google student mới có thể chưa có hồ sơ học tập/khóa, nên chưa dùng được đầy đủ các chức năng phân công.
 4. Mỗi thao tác tạo/sửa/xóa trên web này ghi vào **AWS RDS dùng chung**. Chỉ dùng dữ liệu demo được nhóm đồng ý; đăng xuất sau buổi test.
 

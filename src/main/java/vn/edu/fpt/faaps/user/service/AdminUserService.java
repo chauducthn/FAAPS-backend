@@ -31,6 +31,7 @@ import vn.edu.fpt.faaps.user.dto.AdminUserDtos.PasswordResetResult;
 import vn.edu.fpt.faaps.user.repository.AdminUserRepository;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
+import vn.edu.fpt.faaps.common.validation.IdentityInput;
 
 @Service
 public class AdminUserService {
@@ -84,11 +85,10 @@ public class AdminUserService {
         if (!List.of("STUDENT", "ADVISOR").contains(role)) {
             throw new IllegalArgumentException("role must be STUDENT or ADVISOR");
         }
-        requireText(input.email(), "email", 255);
         requireText(input.fullName(), "fullName", 255);
         String phone = normalizePhone(input.phone());
 
-        String email = input.email().strip().toLowerCase(Locale.ROOT);
+        String email = IdentityInput.email(input.email());
         ExistingAccount existing = findByEmailForUpdate(email);
         boolean completeGoogleStudent = existing != null && "STUDENT".equals(role)
                 && "STUDENT".equals(existing.role()) && existing.externalId() != null

@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import vn.edu.fpt.faaps.advising.dto.AdvisorProfileDtos.Profile;
 import vn.edu.fpt.faaps.advising.repository.AdvisorProfileRepository;
+import vn.edu.fpt.faaps.common.validation.IdentityInput;
 
 @Service
 public class AdvisorProfileService {
@@ -29,10 +30,7 @@ public class AdvisorProfileService {
         String normalizedName = fullName == null ? "" : fullName.strip().replaceAll("\\s+", " ");
         if (normalizedName.isBlank()) throw new IllegalArgumentException("Full name is required");
 
-        String normalizedPhone = phone == null ? null : phone.strip();
-        if (normalizedPhone != null && normalizedPhone.isBlank()) {
-            normalizedPhone = null;
-        }
+        String normalizedPhone = IdentityInput.phone(phone);
 
         String normalizedSpec = specialization == null ? null : specialization.strip();
         if (normalizedSpec != null && normalizedSpec.isBlank()) {

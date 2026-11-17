@@ -14,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.common.validation.IdentityInput;
 
 /**
  * Manual student registration: the student picks an email and a password instead of signing in with Google.
@@ -46,9 +47,11 @@ public class StudentRegistrationService {
         if (name.length() < 2 || name.length() > 255) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Full name must be 2 to 255 characters");
         }
-        String loginEmail = email == null ? "" : email.strip().toLowerCase(Locale.ROOT);
-        if (loginEmail.length() > 255 || !loginEmail.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid email address");
+        String loginEmail;
+        try {
+            loginEmail = IdentityInput.email(email);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
         StudentOnboardingService.requireDateOfBirth(dateOfBirth);
         String code = StudentOnboardingService.normalizeStudentCode(studentCode);
