@@ -28,7 +28,11 @@ public class AdminCourseService {
     }
 
     public Page list(String search, String status, UUID categoryId, int page, int size, String sort) {
-        return reads.list(search, status, categoryId, page, size, sort);
+        return reads.list(search, status, categoryId, null, page, size, sort);
+    }
+
+    public Page list(String search, String status, UUID categoryId, Integer credits, int page, int size, String sort) {
+        return reads.list(search, status, categoryId, credits, page, size, sort);
     }
 
     public CourseDetail detail(UUID id) {
@@ -200,6 +204,9 @@ public class AdminCourseService {
                     ? "PREREQUISITE" : relation.type().strip().toUpperCase();
             if (!List.of("PREREQUISITE", "REPLACEMENT").contains(type)) {
                 throw new IllegalArgumentException("Unsupported course relation type: " + type);
+            }
+            if (relationService.createsCycle(courseId, relation.prerequisiteCourseId())) {
+                throw new Conflict("Circular course prerequisite detected");
             }
         }
     }

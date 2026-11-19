@@ -51,10 +51,11 @@ public class AdminCourseController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) Integer credits,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "code,asc") String sort) {
-        return courses.list(search, status, categoryId, page, size, sort);
+        return courses.list(search, status, categoryId, credits, page, size, sort);
     }
 
     @GetMapping("/{id}")

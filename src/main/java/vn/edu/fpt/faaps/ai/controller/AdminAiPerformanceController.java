@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiPerformanceResultDto;
+import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.ApiResponse;
 
 @RestController
 @RequestMapping({"/api/admin/ai-performance", "/admin/ai-performance"})
@@ -21,12 +22,12 @@ public class AdminAiPerformanceController {
     }
 
     @GetMapping
-    public AiPerformanceResultDto getPerformance(
+    public ApiResponse<AiPerformanceResultDto> getPerformance(
             @RequestParam(required = false) UUID configId,
             @RequestParam(required = false) String purpose,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate) {
-        return service.getPerformance(configId, purpose, startDate, endDate);
+        return ApiResponse.success(service.getPerformance(configId, purpose, startDate, endDate));
     }
 }
 

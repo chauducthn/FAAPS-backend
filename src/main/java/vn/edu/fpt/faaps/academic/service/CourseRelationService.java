@@ -3,7 +3,11 @@ package vn.edu.fpt.faaps.academic.service;
 import vn.edu.fpt.faaps.academic.repository.CourseReadRepository;
 
 import java.math.BigDecimal;
+import java.util.ArrayDeque;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Queue;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,9 +22,29 @@ class CourseRelationService {
         reads.detail(courseId);validate(courseId,kind,groupNo,other,score);reads.detail(other);String type=kind.strip().toUpperCase();
         Integer count=jdbc.queryForObject("SELECT COUNT(*) FROM course_prerequisites WHERE course_id=? AND prerequisite_course_id=? AND type=?",Integer.class,courseId.toString(),other.toString(),type);
         if(count!=null&&count>0)throw new AdminCourseService.Conflict("This course relation already exists");
+        if(createsCycle(courseId,other))throw new AdminCourseService.Conflict("Circular course prerequisite detected");
         try{jdbc.update("INSERT INTO course_prerequisites(id,course_id,prerequisite_course_id,group_no,type,minimum_score,created_at) VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP)",UUID.randomUUID().toString(),courseId.toString(),other.toString(),type.equals("REPLACEMENT")?1:groupNo,type,type.equals("REPLACEMENT")?null:score);}
         catch(DuplicateKeyException e){throw new AdminCourseService.Conflict("This course relation already exists");}
         return list(courseId).stream().filter(r->r.otherCourseId().equals(other)&&r.kind().equals(type)).findFirst().orElseThrow();
+    }
+    boolean createsCycle(UUID courseId,UUID candidatePrerequisiteId){
+        if(courseId.equals(candidatePrerequisiteId))return true;
+        String target=courseId.toString();
+        Queue<String> queue=new ArrayDeque<>();
+        Set<String> visited=new HashSet<>();
+        queue.add(candidatePrerequisiteId.toString());
+        visited.add(candidatePrerequisiteId.toString());
+        while(!queue.isEmpty()){
+            String current=queue.poll();
+            List<String> next=jdbc.query("SELECT prerequisite_course_id FROM course_prerequisites WHERE course_id=?",
+                    (rs,row)->rs.getString(1),current);
+            for(String dep:next){
+                if(dep==null)continue;
+                if(dep.equalsIgnoreCase(target))return true;
+                if(visited.add(dep))queue.add(dep);
+            }
+        }
+        return false;
     }
     @Transactional AdminCourseService.CourseRelation update(UUID courseId,UUID relationId,Integer groupNo,BigDecimal score){
         var current=get(courseId,relationId);int group=current.kind().equals("REPLACEMENT")?1:groupNo==null?current.groupNo():groupNo;

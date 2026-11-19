@@ -98,5 +98,25 @@ public class AdminAiConfigDtos {
             List<AiUsageSummaryDto> summary,
             List<AiUsageByDayDto> byDay
     ) {}
+
+    public record AiConfigPageDto(
+            List<AiConfigDto> items,
+            int page,
+            int pageSize,
+            int size,
+            long totalItems,
+            long totalElements,
+            long totalPages
+    ) {}
+
+    public record ApiResponse<T>(
+            boolean success,
+            String message,
+            T data
+    ) {
+        public static <T> ApiResponse<T> success(T data) {
+            return new ApiResponse<>(true, "Success", data);
+        }
+    }
 }
 

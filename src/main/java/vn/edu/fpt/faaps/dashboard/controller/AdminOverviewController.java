@@ -67,22 +67,52 @@ public class AdminOverviewController {
                 parameters);
     }
 
+    public Page<Appointment> appointments(String status, String search, int page, int size) {
+        return appointments(status, search, null, null, null, page, size);
+    }
+
     @GetMapping("/appointments")
     public Page<Appointment> appointments(@RequestParam(required = false) String status,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID advisorId,
+            @RequestParam(required = false) String fromDate,
+            @RequestParam(required = false) String toDate,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("page or size is invalid");
         }
-        if (status != null && !List.of("SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW").contains(status)) {
+        if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status)
+                && !List.of("SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW").contains(status)) {
             throw new IllegalArgumentException("status is invalid");
         }
         StringBuilder where = new StringBuilder(" WHERE 1 = 1");
         java.util.ArrayList<Object> values = new java.util.ArrayList<>();
-        if (status != null) {
+        if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status)) {
             where.append(" AND session.status = ?");
             values.add(status);
+        }
+        if (advisorId != null) {
+            where.append(" AND session.advisor_id = ?");
+            values.add(advisorId.toString());
+        }
+        if (fromDate != null && !fromDate.isBlank()) {
+            try {
+                LocalDate from = LocalDate.parse(fromDate.strip());
+                where.append(" AND session.scheduled_at >= ?");
+                values.add(java.sql.Timestamp.valueOf(from.atStartOfDay()));
+            } catch (RuntimeException ex) {
+                throw new IllegalArgumentException("fromDate must use yyyy-MM-dd");
+            }
+        }
+        if (toDate != null && !toDate.isBlank()) {
+            try {
+                LocalDate to = LocalDate.parse(toDate.strip());
+                where.append(" AND session.scheduled_at < ?");
+                values.add(java.sql.Timestamp.valueOf(to.plusDays(1).atStartOfDay()));
+            } catch (RuntimeException ex) {
+                throw new IllegalArgumentException("toDate must use yyyy-MM-dd");
+            }
         }
         if (search != null && !search.isBlank()) {
             where.append(" AND (LOWER(student.full_name) LIKE ? OR LOWER(advisor.full_name) LIKE ? OR LOWER(session.agenda) LIKE ?)");

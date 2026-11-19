@@ -3,8 +3,11 @@ package vn.edu.fpt.faaps.auth.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -23,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import vn.edu.fpt.faaps.common.dto.ApiError;
+import vn.edu.fpt.faaps.auth.service.AuthPasswordService;
 import vn.edu.fpt.faaps.auth.service.AuthRefreshTokenService;
 import vn.edu.fpt.faaps.auth.service.AuthService;
 import vn.edu.fpt.faaps.auth.model.AuthSession;
@@ -35,12 +39,20 @@ public class AuthController {
     private final AuthService authService;
     private final SecurityContextRepository securityContextRepository;
     private final AuthRefreshTokenService refreshTokens;
+    private final AuthPasswordService passwordService;
 
     public AuthController(AuthService authService, SecurityContextRepository securityContextRepository,
             AuthRefreshTokenService refreshTokens) {
+        this(authService, securityContextRepository, refreshTokens, null);
+    }
+
+    @Autowired
+    public AuthController(AuthService authService, SecurityContextRepository securityContextRepository,
+            AuthRefreshTokenService refreshTokens, AuthPasswordService passwordService) {
         this.authService = authService;
         this.securityContextRepository = securityContextRepository;
         this.refreshTokens = refreshTokens;
+        this.passwordService = passwordService;
     }
 
     @GetMapping("/csrf")
@@ -108,6 +120,49 @@ public class AuthController {
     public AuthSession me(@AuthenticationPrincipal AuthSession session) {
         return session;
     }
+
+    @PostMapping("/forgot-password")
+    public AuthPasswordService.ForgotPasswordResult forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest body,
+            HttpServletRequest request) {
+        if (passwordService == null) {
+            throw new AuthUnavailableException();
+        }
+        return passwordService.forgotPassword(body.email(), request.getRemoteAddr());
+    }
+
+    @PostMapping("/reset-password")
+    public Map<String, Object> resetPassword(@Valid @RequestBody ResetPasswordRequest body) {
+        if (passwordService == null) {
+            throw new AuthUnavailableException();
+        }
+        passwordService.resetPassword(body.token(), body.newPassword());
+        return Map.of("success", true, "message", "Password has been reset successfully");
+    }
+
+    @PostMapping("/change-password")
+    public Map<String, Object> changePassword(
+            @AuthenticationPrincipal AuthSession session,
+            @Valid @RequestBody ChangePasswordRequest body) {
+        if (session == null) {
+            throw new BadCredentialsException("Authentication required");
+        }
+        if (passwordService == null) {
+            throw new AuthUnavailableException();
+        }
+        passwordService.changePassword(session.id(), body.currentPassword(), body.newPassword());
+        return Map.of("success", true, "message", "Password changed successfully");
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiError> invalidArgument(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiError.of("INVALID_REQUEST", exception.getMessage()));
+    }
+
+    public record ForgotPasswordRequest(@NotBlank @Email String email) {}
+    public record ResetPasswordRequest(@NotBlank String token, @NotBlank String newPassword) {}
+    public record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {}
 
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiError> invalidCredentials() {

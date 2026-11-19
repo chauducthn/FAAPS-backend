@@ -64,6 +64,12 @@ public class StudentAcademicController {
         return academics.courses(search, page, size);
     }
 
+    @GetMapping("/courses/paged")
+    public StudentAcademicService.CoursePage coursesPaged(@RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return academics.coursesPaged(search, page, size);
+    }
+
     @GetMapping("/courses/{id}")
     public CourseDetail course(@PathVariable UUID id) {
         return new CourseDetail(academics.course(id), academics.prerequisites(id));

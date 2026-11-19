@@ -30,7 +30,9 @@ public class StudentAcademicService {
                 LEFT JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id
                 WHERE u.id=?
                 """, (rs, row) -> new Profile(rs.getString("id"), rs.getString("full_name"),
-                rs.getString("email"), rs.getString("phone"), rs.getString("account_status"),
+                rs.getString("email"),
+                rs.getString("phone") == null ? null : rs.getString("phone").replaceAll("\\s+", ""),
+                rs.getString("account_status"),
                 rs.getString("student_code"), rs.getString("major_id"), rs.getString("major_code"),
                 rs.getString("major_name"), rs.getString("curriculum_version_id"),
                 rs.getString("cohort"), (Integer) rs.getObject("current_semester"),
@@ -41,10 +43,11 @@ public class StudentAcademicService {
 
     @Transactional
     public Profile updateProfile(UUID studentId, String fullName, String phone) {
-        if (fullName.isBlank()) throw new IllegalArgumentException("fullName is required");
-        // A blank phone is allowed here (it clears the number); a given one must be a Vietnamese mobile number.
+        if (fullName == null || fullName.isBlank()) throw new IllegalArgumentException("fullName is required");
+        // Strip formatting spaces (e.g. "0912 345 678") before validating as a 10-digit Vietnamese mobile number.
+        String compactPhone = phone == null ? null : phone.strip().replaceAll("\\s+", "");
         jdbc.update("UPDATE users SET full_name=?, phone=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                fullName.strip(), StudentOnboardingService.normalizePhone(phone), studentId.toString());
+                fullName.strip(), StudentOnboardingService.normalizePhone(compactPhone), studentId.toString());
         return profile(studentId);
     }
 
@@ -171,6 +174,19 @@ public class StudentAcademicService {
                 """, (rs, row) -> mapCourse(rs), term, term, size, page * size);
     }
 
+    public CoursePage coursesPaged(String search, int page, int size) {
+        if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("Invalid pagination");
+        String term = "%" + (search == null ? "" : search.strip().toLowerCase()) + "%";
+        Long total = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM courses c JOIN course_categories cat ON cat.id=c.category_id
+                WHERE c.status='ACTIVE' AND (LOWER(c.code) LIKE ? OR LOWER(c.name) LIKE ?)
+                """, Long.class, term, term);
+        long totalElements = total == null ? 0 : total;
+        List<Course> items = courses(search, page, size);
+        long totalPages = (totalElements + size - 1) / size;
+        return new CoursePage(items, page, size, totalElements, totalPages);
+    }
+
     public Course course(UUID id) {
         return jdbc.query("""
                 SELECT c.id,c.code,c.name,c.credits,c.description,c.objectives,c.learning_outcomes,
@@ -238,6 +254,7 @@ public class StudentAcademicService {
             BigDecimal currentGpa, int completedCourses, List<SemesterSummary> semesters) {}
     public record Course(String id, String code, String name, int credits, String category,
             String description, String objectives, String learningOutcomes) {}
+    public record CoursePage(List<Course> items, int page, int size, long totalElements, long totalPages) {}
     public record Prerequisite(String id, String courseCode, String courseName, int groupNo,
             String type, BigDecimal minimumScore) {}
     public record Curriculum(String id, String version, String name, String description,

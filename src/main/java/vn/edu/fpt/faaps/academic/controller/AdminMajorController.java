@@ -65,7 +65,7 @@ public class AdminMajorController {
     public Map<String, Object> update(@PathVariable UUID id, @RequestBody UpdateMajorRequest request) {
         AdminMajorService.MajorItem updated = majors.update(
                 id, request.code(), request.name(), request.description(),
-                request.totalCredits(), request.durationYears(), request.status());
+                request.totalCredits(), request.durationYears(), request.status(), request.cohort());
         return Map.of("data", updated, "success", true, "message", "Major updated");
     }
 
@@ -143,7 +143,8 @@ public class AdminMajorController {
             String description,
             Integer totalCredits,
             BigDecimal durationYears,
-            String status) {
+            String status,
+            String cohort) {
     }
 
     public record BulkDeleteRequest(@NotEmpty List<UUID> ids) {

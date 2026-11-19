@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiConfigDto;
+import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiConfigPageDto;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiConfigSecretDto;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiPerformanceResultDto;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiPresetDto;
@@ -61,6 +62,54 @@ public class AdminAiConfigService {
 
         sql.append(" ORDER BY name ASC");
         return jdbc.query(sql.toString(), (rs, rowNum) -> mapConfig(rs), args.toArray());
+    }
+
+    public AiConfigPageDto listPage(String search, String purpose, String provider, String isActive,
+            int page, int size, String sort) {
+        int safePage = Math.max(0, page);
+        int safeSize = size < 1 ? 20 : Math.min(size, 100);
+
+        StringBuilder where = new StringBuilder(" WHERE 1 = 1");
+        List<Object> args = new ArrayList<>();
+
+        if (purpose != null && !purpose.isBlank() && !"ALL".equalsIgnoreCase(purpose)) {
+            where.append(" AND purpose = ?");
+            args.add(purpose.toUpperCase());
+        }
+        if (provider != null && !provider.isBlank() && !"ALL".equalsIgnoreCase(provider)) {
+            where.append(" AND provider = ?");
+            args.add(provider.toUpperCase());
+        }
+        if (isActive != null && !isActive.isBlank() && !"ALL".equalsIgnoreCase(isActive)) {
+            where.append(" AND is_active = ?");
+            args.add(Boolean.parseBoolean(isActive));
+        }
+        if (search != null && !search.isBlank()) {
+            where.append(" AND (LOWER(name) LIKE ? OR LOWER(model_name) LIKE ?)");
+            String term = "%" + search.strip().toLowerCase() + "%";
+            args.add(term);
+            args.add(term);
+        }
+
+        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM ai_configurations" + where, Long.class, args.toArray());
+        long totalElements = total == null ? 0 : total;
+        long totalPages = (totalElements + safeSize - 1) / safeSize;
+
+        String orderBy = "updatedAt,desc".equalsIgnoreCase(sort)
+                ? " ORDER BY updated_at DESC, name ASC"
+                : " ORDER BY name ASC";
+
+        String sql = """
+                SELECT id, name, provider, model_name, purpose, temperature, max_tokens,
+                       retrieval_top_k, similarity_threshold, timeout_seconds, daily_request_limit,
+                       system_prompt, fallback_message, is_active, updated_by_user_id, updated_at
+                FROM ai_configurations
+                """ + where + orderBy + " LIMIT ? OFFSET ?";
+        args.add(safeSize);
+        args.add(safePage * safeSize);
+
+        List<AiConfigDto> items = jdbc.query(sql, (rs, rowNum) -> mapConfig(rs), args.toArray());
+        return new AiConfigPageDto(items, safePage, safeSize, safeSize, totalElements, totalElements, totalPages);
     }
 
     public List<AiPresetDto> getPresets() {

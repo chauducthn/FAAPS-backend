@@ -60,7 +60,7 @@ public class AdminAcademicRuleController {
                 request.curriculumVersionId(), request.policyType(),
                 request.conditionExpression(), request.restrictionExpression(),
                 request.approvalRequired(), request.priority(),
-                request.description(), request.displayMessage(), request.isActive());
+                request.description(), request.displayMessage(), request.isActive(), request.status());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -70,12 +70,12 @@ public class AdminAcademicRuleController {
                 id, request.curriculumVersionId(), request.policyType(),
                 request.conditionExpression(), request.restrictionExpression(),
                 request.approvalRequired(), request.priority(),
-                request.description(), request.displayMessage(), request.isActive());
+                request.description(), request.displayMessage(), request.isActive(), request.status());
     }
 
     @PatchMapping("/{id}/status")
     public AdminAcademicRuleService.RuleSummary updateStatus(@PathVariable UUID id, @Valid @RequestBody UpdateStatusRequest request) {
-        return rules.updateStatus(id, request.isActive());
+        return rules.updateStatus(id, request.isActive(), request.status());
     }
 
     @DeleteMapping("/{id}")
@@ -129,7 +129,8 @@ public class AdminAcademicRuleController {
             Integer priority,
             String description,
             String displayMessage,
-            Boolean isActive) {
+            Boolean isActive,
+            String status) {
     }
 
     public record UpdateRuleRequest(
@@ -141,10 +142,11 @@ public class AdminAcademicRuleController {
             Integer priority,
             String description,
             String displayMessage,
-            Boolean isActive) {
+            Boolean isActive,
+            String status) {
     }
 
-    public record UpdateStatusRequest(boolean isActive) {
+    public record UpdateStatusRequest(Boolean isActive, String status) {
     }
 }
 

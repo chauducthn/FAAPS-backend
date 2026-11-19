@@ -67,8 +67,9 @@ public class AdminUserController {
     public ResponseEntity<Detail> create(@Valid @RequestBody CreateUserRequest request) {
         Detail created = users.create(new CreateAccount(
                 request.role(), request.email(), request.fullName(), request.phone(),
-                request.studentCode(), request.curriculumVersionId(), request.enrollmentSemesterId(),
-                request.expectedGraduationSemesterId(), request.currentSemester(), request.maxAdvisees()));
+                request.studentCode(), request.advisorCode(), request.curriculumVersionId(),
+                request.enrollmentSemesterId(), request.expectedGraduationSemesterId(),
+                request.currentSemester(), request.maxAdvisees()));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -82,7 +83,8 @@ public class AdminUserController {
     @PatchMapping("/{id}/role")
     public Detail role(@PathVariable UUID id, @Valid @RequestBody ChangeRoleRequest request) {
         return users.changeRole(id, new ChangeRole(request.role(), request.studentCode(),
-                request.curriculumVersionId(), request.enrollmentSemesterId(), request.maxAdvisees()));
+                request.advisorCode(), request.curriculumVersionId(), request.enrollmentSemesterId(),
+                request.maxAdvisees()));
     }
 
     @PostMapping("/status")
@@ -126,6 +128,7 @@ public class AdminUserController {
     }
 
     public record ChangeRoleRequest(@NotBlank String role, @Size(max = 50) String studentCode,
+            @Size(max = 50) String advisorCode,
             UUID curriculumVersionId, UUID enrollmentSemesterId, @Positive Integer maxAdvisees) {
     }
 
@@ -135,6 +138,7 @@ public class AdminUserController {
             @NotBlank @Size(max = 255) String fullName,
             @Size(max = 20) String phone,
             @Size(max = 50) String studentCode,
+            @Size(max = 50) String advisorCode,
             UUID curriculumVersionId,
             UUID enrollmentSemesterId,
             UUID expectedGraduationSemesterId,

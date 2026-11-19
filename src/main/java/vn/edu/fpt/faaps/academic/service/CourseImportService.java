@@ -313,6 +313,9 @@ final class CourseImportService {
                         "SELECT COUNT(*) FROM course_prerequisites WHERE course_id = ? AND prerequisite_course_id = ?",
                         Integer.class, pc.id().toString(), prereqId);
                 if (count != null && count > 0) continue;
+                if (createsCycle(pc.id().toString(), prereqId)) {
+                    throw new AdminCourseService.Conflict("Circular course prerequisite detected");
+                }
                 try {
                     jdbc.update("""
                             INSERT INTO course_prerequisites (id, course_id, prerequisite_course_id, group_no, type, minimum_score, created_at)
@@ -325,6 +328,25 @@ final class CourseImportService {
         }
 
         return pending.size();
+    }
+
+    private boolean createsCycle(String courseId, String candidatePrerequisiteId) {
+        if (courseId.equalsIgnoreCase(candidatePrerequisiteId)) return true;
+        java.util.Queue<String> queue = new java.util.ArrayDeque<>();
+        Set<String> visited = new HashSet<>();
+        queue.add(candidatePrerequisiteId);
+        visited.add(candidatePrerequisiteId);
+        while (!queue.isEmpty()) {
+            String current = queue.poll();
+            List<String> next = jdbc.query("SELECT prerequisite_course_id FROM course_prerequisites WHERE course_id = ?",
+                    (rs, row) -> rs.getString(1), current);
+            for (String dep : next) {
+                if (dep == null) continue;
+                if (dep.equalsIgnoreCase(courseId)) return true;
+                if (visited.add(dep)) queue.add(dep);
+            }
+        }
+        return false;
     }
 
 }

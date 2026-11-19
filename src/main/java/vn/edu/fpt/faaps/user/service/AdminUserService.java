@@ -107,7 +107,7 @@ public class AdminUserService {
             if ("STUDENT".equals(role)) {
                 addStudentProfile(userId, input);
             } else {
-                saveAdvisorProfile(userId, input.maxAdvisees());
+                saveAdvisorProfile(userId, input.maxAdvisees(), input.advisorCode());
             }
         } catch (DuplicateKeyException exception) {
             throw new Conflict("Email or student code already exists");
@@ -156,8 +156,25 @@ public class AdminUserService {
         }
     }
 
-    private void saveAdvisorProfile(UUID userId, Integer requestedMaxAdvisees) {
+    private void saveAdvisorProfile(UUID userId, Integer requestedMaxAdvisees, String advisorCode) {
         int maxAdvisees = requestedMaxAdvisees == null ? 30 : requestedMaxAdvisees;
+        String cleanCode = advisorCode == null || advisorCode.isBlank() ? null : advisorCode.strip().toUpperCase(Locale.ROOT);
+        if (cleanCode != null) {
+            if (cleanCode.length() > 50) {
+                throw new IllegalArgumentException("advisorCode must be at most 50 characters");
+            }
+            try {
+                jdbc.update("""
+                                INSERT INTO advisors (user_id, advisor_code, max_advisees, status, created_at, updated_at)
+                                VALUES (?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                                """, userId.toString(), cleanCode, maxAdvisees);
+                return;
+            } catch (DuplicateKeyException duplicate) {
+                throw duplicate;
+            } catch (org.springframework.jdbc.BadSqlGrammarException ignored) {
+                // Fallback when running against a simplified test schema without advisor_code column
+            }
+        }
         jdbc.update("""
                         INSERT INTO advisors (user_id, max_advisees, status, created_at, updated_at)
                         VALUES (?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)

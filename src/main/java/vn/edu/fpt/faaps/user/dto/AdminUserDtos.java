@@ -18,11 +18,23 @@ public final class AdminUserDtos {
             Integer currentSemester, String academicStatus) {}
 
     public record CreateAccount(String role, String email, String fullName, String phone,
-            String studentCode, UUID curriculumVersionId, UUID enrollmentSemesterId,
-            UUID expectedGraduationSemesterId, Integer currentSemester, Integer maxAdvisees) {}
+            String studentCode, String advisorCode, UUID curriculumVersionId, UUID enrollmentSemesterId,
+            UUID expectedGraduationSemesterId, Integer currentSemester, Integer maxAdvisees) {
+        public CreateAccount(String role, String email, String fullName, String phone,
+                String studentCode, UUID curriculumVersionId, UUID enrollmentSemesterId,
+                UUID expectedGraduationSemesterId, Integer currentSemester, Integer maxAdvisees) {
+            this(role, email, fullName, phone, studentCode, null, curriculumVersionId,
+                    enrollmentSemesterId, expectedGraduationSemesterId, currentSemester, maxAdvisees);
+        }
+    }
 
-    public record ChangeRole(String role, String studentCode, UUID curriculumVersionId,
-            UUID enrollmentSemesterId, Integer maxAdvisees) {}
+    public record ChangeRole(String role, String studentCode, String advisorCode, UUID curriculumVersionId,
+            UUID enrollmentSemesterId, Integer maxAdvisees) {
+        public ChangeRole(String role, String studentCode, UUID curriculumVersionId,
+                UUID enrollmentSemesterId, Integer maxAdvisees) {
+            this(role, studentCode, null, curriculumVersionId, enrollmentSemesterId, maxAdvisees);
+        }
+    }
 
     public record Page(List<Summary> items, int page, int size, long totalElements, long totalPages) {}
 

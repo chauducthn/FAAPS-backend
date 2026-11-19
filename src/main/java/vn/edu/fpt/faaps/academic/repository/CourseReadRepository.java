@@ -22,11 +22,18 @@ public final class CourseReadRepository {
     }
 
     public Page list(String search, String status, UUID categoryId, int page, int size, String sort) {
+        return list(search, status, categoryId, null, page, size, sort);
+    }
+
+    public Page list(String search, String status, UUID categoryId, Integer credits, int page, int size, String sort) {
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("page or size is invalid");
         }
         if (status != null && !status.equalsIgnoreCase("ALL") && !List.of("ACTIVE", "INACTIVE").contains(status.toUpperCase())) {
             throw new IllegalArgumentException("status is invalid");
+        }
+        if (credits != null && credits <= 0) {
+            throw new IllegalArgumentException("credits must be positive");
         }
 
         StringBuilder where = new StringBuilder(" WHERE 1 = 1");
@@ -40,6 +47,11 @@ public final class CourseReadRepository {
         if (categoryId != null) {
             where.append(" AND c.category_id = ?");
             params.add(categoryId.toString());
+        }
+
+        if (credits != null) {
+            where.append(" AND c.credits = ?");
+            params.add(credits);
         }
 
         if (search != null && !search.isBlank()) {
