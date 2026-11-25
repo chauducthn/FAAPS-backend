@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import vn.edu.fpt.faaps.academic.service.StudentAcademicService.Profile;
+import vn.edu.fpt.faaps.common.validation.IdentityInput;
 import vn.edu.fpt.faaps.user.service.ExpectedGraduation;
 
 final class StudentProfileUpdater {
@@ -25,9 +26,8 @@ final class StudentProfileUpdater {
         if (fullName == null || fullName.isBlank()) {
             throw new IllegalArgumentException("fullName is required");
         }
-        String compactPhone = phone == null ? null : phone.strip().replaceAll("\\s+", "");
         jdbc.update("UPDATE users SET full_name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                fullName.strip(), StudentOnboardingService.normalizePhone(compactPhone), studentId.toString());
+                IdentityInput.fullName(fullName), IdentityInput.compactPhone(phone), studentId.toString());
         return queries.profile(studentId);
     }
 

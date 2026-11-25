@@ -26,4 +26,10 @@ public final class AdvisorProfileDtos {
             @Size(max = 20) String phone,
             String specialization
     ) {}
+
+    /**
+     * The identity fields (name, phone) are written through the shared {@code /api/profile} endpoint, so this
+     * request carries only the advisor-specific field.
+     */
+    public record SpecializationRequest(@Size(max = 120) String specialization) {}
 }

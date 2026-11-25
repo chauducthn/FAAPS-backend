@@ -50,4 +50,12 @@ public class AdvisorProfileRepository {
         }
         return userUpdated;
     }
+
+    /** Writes only the advisor-specific column, leaving the shared identity columns untouched. */
+    public int updateSpecialization(UUID advisorId, String specialization) {
+        return jdbc.update("""
+                UPDATE advisors SET specialization=?, updated_at=CURRENT_TIMESTAMP
+                WHERE user_id=?
+                """, specialization, advisorId.toString());
+    }
 }

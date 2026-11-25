@@ -1,6 +1,7 @@
 package vn.edu.fpt.faaps.advising.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.UUID;
@@ -20,11 +21,13 @@ class AdvisorProfileServiceTest {
         JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:advisor-profile-" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         jdbc.execute("CREATE TABLE users(id VARCHAR(36),full_name VARCHAR(255),email VARCHAR(255),phone VARCHAR(20),updated_at TIMESTAMP)");
-        jdbc.execute("CREATE TABLE advisors(user_id VARCHAR(36),advisor_code VARCHAR(50),specialization CLOB,max_advisees INT,status VARCHAR(20),assignment_start_date DATE,updated_at TIMESTAMP)");
+        jdbc.execute("CREATE TABLE advisors(user_id VARCHAR(36),advisor_code VARCHAR(50),specialization CLOB,"
+                + "max_advisees INT,status VARCHAR(20),assignment_start_date DATE,updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE student_advisor_assignments(id VARCHAR(36),advisor_id VARCHAR(36),status VARCHAR(20),end_date DATE)");
         advisor = UUID.randomUUID();
         jdbc.update("INSERT INTO users VALUES (?,'Nguyen Van An','advisor@fpt.edu.vn','0901234567',CURRENT_TIMESTAMP)", advisor.toString());
-        jdbc.update("INSERT INTO advisors VALUES (?,'ADV001','Software Engineering',30,'ACTIVE',DATE '2026-01-01',CURRENT_TIMESTAMP)", advisor.toString());
+        jdbc.update("INSERT INTO advisors VALUES (?,'ADV001','Software Engineering',30,'ACTIVE',"
+                + "DATE '2026-01-01',CURRENT_TIMESTAMP)", advisor.toString());
         service = new AdvisorProfileService(new AdvisorProfileRepository(jdbc));
     }
 
@@ -47,5 +50,17 @@ class AdvisorProfileServiceTest {
     @Test
     void rejectsUnknownAdvisor() {
         assertThrows(ResponseStatusException.class, () -> service.get(UUID.randomUUID()));
+    }
+
+    @Test
+    void updatesSpecializationWithoutTouchingTheIdentityColumns() {
+        var profile = service.updateSpecialization(advisor, "  Data Science  ");
+        assertEquals("Data Science", profile.specialization());
+        assertEquals("Nguyen Van An", profile.fullName());
+        assertEquals("0901234567", profile.phone());
+
+        var cleared = service.updateSpecialization(advisor, "   ");
+        assertNull(cleared.specialization());
+        assertEquals("Nguyen Van An", cleared.fullName());
     }
 }

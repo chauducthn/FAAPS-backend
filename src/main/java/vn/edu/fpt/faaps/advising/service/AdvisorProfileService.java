@@ -27,10 +27,9 @@ public class AdvisorProfileService {
 
     @Transactional
     public Profile update(UUID advisorId, String fullName, String phone, String specialization) {
-        String normalizedName = fullName == null ? "" : fullName.strip().replaceAll("\\s+", " ");
-        if (normalizedName.isBlank()) throw new IllegalArgumentException("Full name is required");
+        String normalizedName = IdentityInput.fullName(fullName);
 
-        String normalizedPhone = IdentityInput.phone(phone);
+        String normalizedPhone = IdentityInput.compactPhone(phone);
 
         String normalizedSpec = specialization == null ? null : specialization.strip();
         if (normalizedSpec != null && normalizedSpec.isBlank()) {
@@ -38,6 +37,23 @@ public class AdvisorProfileService {
         }
 
         if (repository.update(advisorId, normalizedName, normalizedPhone, normalizedSpec) != 1) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Advisor profile not found");
+        }
+        return get(advisorId);
+    }
+
+    /**
+     * Writes only the advisor-specific field. The identity fields go through the shared {@code /api/profile}
+     * endpoint, so the two writes never fight over the same columns.
+     */
+    @Transactional
+    public Profile updateSpecialization(UUID advisorId, String specialization) {
+        String normalizedSpec = specialization == null ? null : specialization.strip();
+        if (normalizedSpec != null && normalizedSpec.isBlank()) {
+            normalizedSpec = null;
+        }
+
+        if (repository.updateSpecialization(advisorId, normalizedSpec) != 1) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Advisor profile not found");
         }
         return get(advisorId);

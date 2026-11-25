@@ -40,6 +40,30 @@ public final class IdentityInput {
         return normalized;
     }
 
+    /**
+     * The display name shared by every profile endpoint: trimmed, inner whitespace collapsed to single spaces.
+     * Every flow that writes a name uses this, so the same user cannot end up with two spellings of their name.
+     */
+    public static String fullName(String value) {
+        String normalized = value == null ? "" : value.strip().replaceAll("\\s+", " ");
+        if (normalized.length() < 2 || normalized.length() > 255) {
+            throw new IllegalArgumentException("Full name must be between 2 and 255 characters");
+        }
+        return normalized;
+    }
+
+    /**
+     * The stored phone number: validated by {@link #phone(String)} first, then reduced to digits and an optional
+     * leading plus. Reading a profile therefore returns the same shape no matter which endpoint wrote the row.
+     */
+    public static String compactPhone(String value) {
+        String validated = phone(value);
+        if (validated == null) {
+            return null;
+        }
+        return validated.replaceAll("[\\s-]+", "");
+    }
+
     public static boolean validRegistrationPassword(String value) {
         return value != null && value.length() >= 8 && value.length() <= 72
                 && value.codePoints().anyMatch(Character::isLetter)

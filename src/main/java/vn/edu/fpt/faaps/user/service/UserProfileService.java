@@ -8,10 +8,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.common.validation.IdentityInput;
 
 @Service
 public class UserProfileService {
-    private static final int MAX_NAME_LENGTH = 255;
 
     private final JdbcTemplate jdbc;
 
@@ -32,7 +32,7 @@ public class UserProfileService {
                         rs.getString("id"),
                         rs.getString("email"),
                         rs.getString("full_name"),
-                        compactPhone(rs.getString("phone")),
+                        IdentityInput.compactPhone(rs.getString("phone")),
                         rs.getObject("date_of_birth", LocalDate.class),
                         rs.getString("role_code"),
                         rs.getString("status"),
@@ -47,8 +47,8 @@ public class UserProfileService {
 
     @Transactional
     public UserProfile updateProfile(UUID userId, String fullName, String phone) {
-        String normalizedName = normalizeFullName(fullName);
-        String normalizedPhone = normalizeOptionalPhone(phone);
+        String normalizedName = IdentityInput.fullName(fullName);
+        String normalizedPhone = IdentityInput.compactPhone(phone);
         int updated = jdbc.update(
                 "UPDATE users SET full_name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 normalizedName,
@@ -58,32 +58,6 @@ public class UserProfileService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User account not found");
         }
         return getProfile(userId);
-    }
-
-    public static String normalizeFullName(String fullName) {
-        if (fullName == null || fullName.isBlank()) {
-            throw new IllegalArgumentException("Full name is required");
-        }
-        String trimmed = fullName.strip();
-        if (trimmed.length() < 2 || trimmed.length() > MAX_NAME_LENGTH) {
-            throw new IllegalArgumentException("Full name must be between 2 and 255 characters");
-        }
-        return trimmed;
-    }
-
-    public static String normalizeOptionalPhone(String phone) {
-        if (phone == null || phone.isBlank()) {
-            return null;
-        }
-        String compact = phone.strip().replaceAll("[\\s-]+", "");
-        if (!compact.matches("^\\+?\\d{8,15}$")) {
-            throw new IllegalArgumentException("Phone number must contain 8 to 15 digits");
-        }
-        return compact;
-    }
-
-    private static String compactPhone(String phone) {
-        return phone == null ? null : phone.replaceAll("\\s+", "");
     }
 
     public record UserProfile(
