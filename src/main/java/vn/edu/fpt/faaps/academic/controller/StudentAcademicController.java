@@ -64,6 +64,12 @@ public class StudentAcademicController {
         return academics.courses(search, page, size);
     }
 
+    @GetMapping("/courses/paged")
+    public StudentAcademicService.CoursePage coursesPaged(@RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return academics.coursesPaged(search, page, size);
+    }
+
     @GetMapping("/courses/{id}")
     public CourseDetail course(@PathVariable UUID id) {
         return new CourseDetail(academics.course(id), academics.prerequisites(id));
@@ -77,6 +83,11 @@ public class StudentAcademicController {
     @GetMapping("/curriculum/courses")
     public List<StudentAcademicService.CurriculumCourse> curriculumCourses(@AuthenticationPrincipal AuthSession student) {
         return academics.curriculumCourses(student.id());
+    }
+
+    @GetMapping("/warnings")
+    public List<StudentAcademicService.AcademicWarning> warnings(@AuthenticationPrincipal AuthSession student) {
+        return academics.warnings(student.id());
     }
 
     /** Spring hides the reason of a ResponseStatusException by default; client UI needs the specific message. */

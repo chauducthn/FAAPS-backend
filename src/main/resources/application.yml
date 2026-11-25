@@ -1,6 +1,7 @@
 server:
   port: 8080
-  forward-headers-strategy: framework
+  # Only enable forwarded headers when a trusted proxy strips client-supplied forwarding headers.
+  forward-headers-strategy: ${FAAPS_FORWARD_HEADERS_STRATEGY:none}
   servlet:
     session:
       timeout: ${FAAPS_SESSION_TIMEOUT:30m}
@@ -19,13 +20,43 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+  session:
+    store-type: ${SPRING_SESSION_STORE_TYPE:none}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:true}
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 faaps:
   frontend-url: ${FAAPS_FRONTEND_URL:http://localhost:5173}
+  seed:
+    auto-enable: ${FAAPS_SEED_AUTO_ENABLE:false}
+  mail:
+    enabled: ${FAAPS_MAIL_ENABLED:false}
+    from: ${MAIL_FROM:}
+    from-name: ${MAIL_FROM_NAME:FAAPS Academic Advising}
   ai:
     gemini-api-key: ${FAAPS_GEMINI_API_KEY:}
   auth:
     refresh-token-lifetime: ${FAAPS_REFRESH_TOKEN_LIFETIME:14d}
     cookie-secure: ${FAAPS_AUTH_COOKIE_SECURE:false}
+  websocket:
+    redis-pubsub-enabled: ${FAAPS_REDIS_PUBSUB_ENABLED:false}
 springdoc:
   swagger-ui:
     csrf:

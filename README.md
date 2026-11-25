@@ -14,6 +14,8 @@ mvn spring-boot:run
 
 The health endpoint is `http://localhost:8080/api/health`.
 
+Forwarded request headers are disabled by default so clients cannot spoof their IP for password-reset rate limits. If the API runs behind a trusted reverse proxy, set `FAAPS_FORWARD_HEADERS_STRATEGY=framework` only after the proxy removes incoming `Forwarded` and `X-Forwarded-*` headers, writes its own values, and prevents direct access to the API port.
+
 ## Test APIs with Swagger UI
 
 Start the backend, then open `http://localhost:8080/swagger-ui.html`. The generated OpenAPI JSON is at `http://localhost:8080/v3/api-docs`. Swagger UI and the API docs can be viewed without logging in; the Admin, Student, and Advisor APIs still require their respective roles.

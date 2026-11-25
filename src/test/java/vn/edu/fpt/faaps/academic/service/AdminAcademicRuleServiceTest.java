@@ -98,5 +98,15 @@ class AdminAcademicRuleServiceTest {
         rules.delete(rule.id());
         assertThrows(AdminAcademicRuleService.NotFound.class, () -> rules.detail(rule.id()));
     }
+
+    @Test
+    void createsSystemWideRuleWithoutCurriculumVersionId() {
+        AdminAcademicRuleService.RuleSummary rule = rules.create(
+                null, "GPA_WARNING", "{\"rule_name\":\"Academic GPA Warning Threshold\",\"grade\":5.0,\"min_gpa\":5.0}",
+                null, true, 10, "System-wide GPA warning rule", null, true);
+        assertNotNull(rule.id());
+        assertEquals(cvId, rule.curriculumVersionId());
+        assertEquals("GPA_WARNING", rule.policyType());
+    }
 }
 

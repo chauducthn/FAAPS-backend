@@ -68,7 +68,7 @@ public class AdminMajorService {
         String sql = """
                 SELECT m.id, m.code, m.name, m.description, m.total_credits, m.duration_years,
                        m.status, m.created_at, m.updated_at,
-                       (SELECT cv.version FROM curriculum_versions cv WHERE cv.major_id = m.id ORDER BY cv.created_at DESC LIMIT 1) AS latest_cohort
+                       (SELECT cv.version FROM curriculum_versions cv WHERE cv.major_id = m.id ORDER BY cv.updated_at DESC, cv.created_at DESC LIMIT 1) AS latest_cohort
                 FROM majors m
                 """ + where + orderBy + " LIMIT ? OFFSET ?";
 
@@ -85,7 +85,7 @@ public class AdminMajorService {
         String sql = """
                 SELECT m.id, m.code, m.name, m.description, m.total_credits, m.duration_years,
                        m.status, m.created_at, m.updated_at,
-                       (SELECT cv.version FROM curriculum_versions cv WHERE cv.major_id = m.id ORDER BY cv.created_at DESC LIMIT 1) AS latest_cohort
+                       (SELECT cv.version FROM curriculum_versions cv WHERE cv.major_id = m.id ORDER BY cv.updated_at DESC, cv.created_at DESC LIMIT 1) AS latest_cohort
                 FROM majors m
                 WHERE m.id = ?
                 """;
@@ -163,6 +163,12 @@ public class AdminMajorService {
     @Transactional
     public MajorItem update(UUID id, String code, String name, String description,
             Integer totalCredits, BigDecimal durationYears, String status) {
+        return update(id, code, name, description, totalCredits, durationYears, status, null);
+    }
+
+    @Transactional
+    public MajorItem update(UUID id, String code, String name, String description,
+            Integer totalCredits, BigDecimal durationYears, String status, String cohort) {
         MajorItem current = detail(id);
         String newCode = (code != null && !code.isBlank()) ? code.strip() : current.code();
         String newName = (name != null && !name.isBlank()) ? name.strip() : current.name();
@@ -189,7 +195,65 @@ public class AdminMajorService {
             throw new Conflict("Major code already exists");
         }
 
+        if (cohort != null && !cohort.isBlank()) {
+            upsertCohortForMajor(id, newName, cohort.strip());
+        }
+
         return detail(id);
+    }
+
+    private void upsertCohortForMajor(UUID majorId, String majorName, String cohortVersion) {
+        List<String> matchingIds = jdbc.query(
+                "SELECT id FROM curriculum_versions WHERE major_id = ? AND version = ?",
+                (rs, r) -> rs.getString(1), majorId.toString(), cohortVersion);
+        if (!matchingIds.isEmpty()) {
+            jdbc.update("UPDATE curriculum_versions SET is_current = true, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    matchingIds.get(0));
+            return;
+        }
+        List<String> existingVersions = jdbc.query(
+                "SELECT id FROM curriculum_versions WHERE major_id = ? ORDER BY updated_at DESC, created_at DESC",
+                (rs, r) -> rs.getString(1), majorId.toString());
+        if (existingVersions.size() == 1) {
+            String onlyId = existingVersions.get(0);
+            Integer studentsUsing = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM students WHERE curriculum_version_id = ?", Integer.class, onlyId);
+            if (studentsUsing == null || studentsUsing == 0) {
+                jdbc.update("""
+                        UPDATE curriculum_versions
+                        SET version = ?, name = ?, is_current = true, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """, cohortVersion, majorName + " - " + cohortVersion, onlyId);
+                return;
+            }
+        }
+        String semesterId = null;
+        try {
+            List<String> sems = jdbc.query("SELECT id FROM semesters ORDER BY is_current DESC, start_date DESC LIMIT 1",
+                    (rs, r) -> rs.getString(1));
+            if (!sems.isEmpty()) {
+                semesterId = sems.get(0);
+            }
+        } catch (Exception ignored) {
+        }
+        if (semesterId != null) {
+            try {
+                jdbc.update("""
+                        INSERT INTO curriculum_versions (id, major_id, version, name, effective_from_semester_id, is_current, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, true, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """,
+                        UUID.randomUUID().toString(), majorId.toString(), cohortVersion,
+                        majorName + " - " + cohortVersion, semesterId);
+                return;
+            } catch (Exception ignored) {
+            }
+        }
+        jdbc.update("""
+                INSERT INTO curriculum_versions (id, major_id, version, name, is_current, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, true, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID().toString(), majorId.toString(), cohortVersion,
+                majorName + " - " + cohortVersion);
     }
 
     @Transactional

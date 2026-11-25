@@ -33,8 +33,9 @@ public class AdvisorAppointmentController {
     public List<AdvisorAppointmentDto> getAppointments(
             @AuthenticationPrincipal AuthSession advisor,
             @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to) {
-        return appointmentService.getAdvisorAppointments(advisor.id(), from, to);
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) String status) {
+        return appointmentService.getAdvisorAppointments(advisor.id(), from, to, status);
     }
 
     @GetMapping("/{id}")

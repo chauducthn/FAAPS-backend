@@ -189,31 +189,75 @@ public class AppointmentService {
 
     @Transactional
     public BookedAppointmentDto updateAppointmentStatus(UUID appointmentId, UUID advisorId, UpdateAppointmentStatusDto body) {
-        String status = body.status().toUpperCase(Locale.ROOT);
-        if (!"ACCEPTED".equals(status) && !"REJECTED".equals(status)) {
-            throw new IllegalArgumentException("status must be ACCEPTED or REJECTED");
+        String status = body.status() == null ? "" : body.status().strip().toUpperCase(Locale.ROOT);
+        if (!List.of("ACCEPTED", "REJECTED", "CANCELLED", "COMPLETED", "NO_SHOW").contains(status)) {
+            throw new IllegalArgumentException("status must be ACCEPTED, REJECTED, CANCELLED, COMPLETED, or NO_SHOW");
         }
-        if ("REJECTED".equals(status) && (body.reason() == null || body.reason().isBlank())) {
-            throw new IllegalArgumentException("Reason is required when rejecting an appointment");
+        String consultationSummary = body.consultationSummary() != null && !body.consultationSummary().isBlank()
+                ? body.consultationSummary().strip() : null;
+        String reason = body.reason() != null && !body.reason().isBlank()
+                ? body.reason().strip() : null;
+        String noteOrSummary = consultationSummary != null ? consultationSummary : reason;
+
+        if (("REJECTED".equals(status) || "CANCELLED".equals(status)) && noteOrSummary == null) {
+            throw new IllegalArgumentException("Reason is required when rejecting or cancelling an appointment");
+        }
+        if ("COMPLETED".equals(status) && noteOrSummary == null) {
+            throw new IllegalArgumentException("consultationSummary is required when completing an appointment");
         }
 
-        int updated = jdbc.update("""
-                UPDATE advising_sessions
-                SET status = ?, summary = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND advisor_id = ? AND status = 'PENDING'
-                """, status, body.reason() != null ? body.reason().strip() : null,
-                appointmentId.toString(), advisorId.toString());
+        int updated;
+        if ("ACCEPTED".equals(status) || "REJECTED".equals(status)) {
+            updated = jdbc.update("""
+                    UPDATE advising_sessions
+                    SET status = ?, summary = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND advisor_id = ? AND status = 'PENDING'
+                    """, status, reason != null ? reason : noteOrSummary, appointmentId.toString(), advisorId.toString());
+        } else if ("COMPLETED".equals(status)) {
+            try {
+                updated = jdbc.update("""
+                        UPDATE advising_sessions
+                        SET status = 'COMPLETED',
+                            consultation_summary = COALESCE(?, consultation_summary),
+                            summary = COALESCE(?, summary),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND advisor_id = ?
+                          AND status IN ('ACCEPTED', 'SCHEDULED', 'IN_PROGRESS', 'PENDING', 'COMPLETED')
+                        """, noteOrSummary, reason, appointmentId.toString(), advisorId.toString());
+            } catch (Exception ex) {
+                updated = jdbc.update("""
+                        UPDATE advising_sessions
+                        SET status = 'COMPLETED', summary = COALESCE(?, summary), updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND advisor_id = ?
+                          AND status IN ('ACCEPTED', 'SCHEDULED', 'IN_PROGRESS', 'PENDING', 'COMPLETED')
+                        """, noteOrSummary, appointmentId.toString(), advisorId.toString());
+            }
+        } else if ("NO_SHOW".equals(status)) {
+            updated = jdbc.update("""
+                    UPDATE advising_sessions
+                    SET status = 'NO_SHOW', summary = COALESCE(?, summary), updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND advisor_id = ?
+                      AND status IN ('ACCEPTED', 'SCHEDULED', 'IN_PROGRESS', 'PENDING', 'NO_SHOW')
+                    """, noteOrSummary, appointmentId.toString(), advisorId.toString());
+        } else {
+            updated = jdbc.update("""
+                    UPDATE advising_sessions
+                    SET status = 'CANCELLED', summary = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND advisor_id = ?
+                      AND status NOT IN ('CANCELLED', 'COMPLETED')
+                    """, noteOrSummary, appointmentId.toString(), advisorId.toString());
+        }
 
         if (updated == 0) {
             boolean exists = !jdbc.queryForList("SELECT id FROM advising_sessions WHERE id = ?", appointmentId.toString()).isEmpty();
             if (!exists) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Appointment not found");
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Appointment is not pending or unauthorized");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Appointment cannot transition to " + status + " or unauthorized");
         }
 
         BookedAppointmentDto appointment = getBookedAppointment(appointmentId);
 
         String notifTitle = "Appointment " + status;
-        String notifMsg = "Your appointment has been " + status.toLowerCase(Locale.ROOT);
+        String notifMsg = "Your appointment has been marked as " + status.toLowerCase(Locale.ROOT).replace('_', ' ');
         jdbc.update("""
                 INSERT INTO notifications (id, recipient_user_id, notification_type, title, message, is_read)
                 VALUES (?, ?, 'INFO', ?, ?, FALSE)
@@ -223,6 +267,10 @@ public class AppointmentService {
     }
 
     public List<AdvisorAppointmentDto> getAdvisorAppointments(UUID advisorId, String fromStr, String toStr) {
+        return getAdvisorAppointments(advisorId, fromStr, toStr, null);
+    }
+
+    public List<AdvisorAppointmentDto> getAdvisorAppointments(UUID advisorId, String fromStr, String toStr, String status) {
         LocalDateTime from = fromStr != null && !fromStr.isBlank()
                 ? parseRangeBoundary(fromStr, false) : LocalDateTime.now().minusDays(30);
         LocalDateTime to = toStr != null && !toStr.isBlank()
@@ -230,7 +278,12 @@ public class AppointmentService {
         if (to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The 'to' date must not be before 'from'");
         }
-        return reads.advisorAppointments(advisorId, from, to);
+        List<AdvisorAppointmentDto> items = reads.advisorAppointments(advisorId, from, to);
+        if (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status.strip())) {
+            return items;
+        }
+        String target = status.strip().toUpperCase(Locale.ROOT);
+        return items.stream().filter(a -> a.status() != null && a.status().equalsIgnoreCase(target)).toList();
     }
 
     public List<BookedAppointmentDto> getStudentAppointments(UUID studentId) {

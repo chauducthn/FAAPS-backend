@@ -126,6 +126,22 @@ class AppointmentServiceTest {
         UpdateAppointmentStatusDto acceptInput = new UpdateAppointmentStatusDto("ACCEPTED", null);
         BookedAppointmentDto accepted = appointmentService.updateAppointmentStatus(UUID.fromString(booked.id()), advisorId, acceptInput);
         assertEquals("ACCEPTED", accepted.status());
+
+        // Advisor marks appointment as COMPLETED with consultationSummary
+        UpdateAppointmentStatusDto completeInput = new UpdateAppointmentStatusDto("COMPLETED", null, "Reviewed semester plan and approved courses.");
+        BookedAppointmentDto completed = appointmentService.updateAppointmentStatus(UUID.fromString(booked.id()), advisorId, completeInput);
+        assertEquals("COMPLETED", completed.status());
+        assertEquals("Reviewed semester plan and approved courses.", completed.consultationSummary());
+
+        // Advisor can also mark an appointment as NO_SHOW
+        String secondSlot = slots.get(1).startTime();
+        BookedAppointmentDto booked2 = appointmentService.bookAppointment(studentId,
+                new BookAppointmentDto(advisorId, secondSlot, "Follow-up meeting"));
+        appointmentService.updateAppointmentStatus(UUID.fromString(booked2.id()), advisorId,
+                new UpdateAppointmentStatusDto("ACCEPTED", null));
+        BookedAppointmentDto noShow = appointmentService.updateAppointmentStatus(UUID.fromString(booked2.id()), advisorId,
+                new UpdateAppointmentStatusDto("NO_SHOW", "Student did not attend"));
+        assertEquals("NO_SHOW", noShow.status());
     }
 
     @Test

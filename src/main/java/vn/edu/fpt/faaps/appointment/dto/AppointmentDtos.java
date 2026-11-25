@@ -32,8 +32,13 @@ public class AppointmentDtos {
 
     public record UpdateAppointmentStatusDto(
             @NotBlank String status,
-            String reason
-    ) {}
+            String reason,
+            String consultationSummary
+    ) {
+        public UpdateAppointmentStatusDto(String status, String reason) {
+            this(status, reason, null);
+        }
+    }
 
     public record RescheduleAppointmentDto(
             @NotBlank String startTime,
@@ -54,8 +59,15 @@ public class AppointmentDtos {
             String reason,
             String status,
             String decisionNote,
+            String consultationSummary,
             String createdAt
-    ) {}
+    ) {
+        public AdvisorAppointmentDto(String id, String studentId, String studentName, String studentCode,
+                String startTime, String endTime, String reason, String status, String decisionNote, String createdAt) {
+            this(id, studentId, studentName, studentCode, startTime, endTime, reason, status, decisionNote,
+                    "COMPLETED".equalsIgnoreCase(status) ? decisionNote : null, createdAt);
+        }
+    }
 
     public record BookedAppointmentDto(
             String id,
@@ -69,6 +81,14 @@ public class AppointmentDtos {
             String reason,
             String status,
             String decisionNote,
+            String consultationSummary,
             String createdAt
-    ) {}
+    ) {
+        public BookedAppointmentDto(String id, String studentId, String studentName, String studentCode,
+                String advisorId, String advisorName, String startTime, String endTime, String reason,
+                String status, String decisionNote, String createdAt) {
+            this(id, studentId, studentName, studentCode, advisorId, advisorName, startTime, endTime, reason,
+                    status, decisionNote, "COMPLETED".equalsIgnoreCase(status) ? decisionNote : null, createdAt);
+        }
+    }
 }

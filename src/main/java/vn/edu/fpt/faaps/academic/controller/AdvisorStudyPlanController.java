@@ -13,11 +13,12 @@ import org.springframework.web.bind.annotation.RestController;
 import vn.edu.fpt.faaps.academic.dto.AdvisorPlanDtos.DecisionRequest;
 import vn.edu.fpt.faaps.academic.dto.AdvisorPlanDtos.Detail;
 import vn.edu.fpt.faaps.academic.dto.AdvisorPlanDtos.Page;
+import vn.edu.fpt.faaps.academic.repository.AdvisorStudyPlanRepository.Counts;
 import vn.edu.fpt.faaps.academic.service.AdvisorStudyPlanService;
 import vn.edu.fpt.faaps.auth.model.AuthSession;
 
 @RestController
-@RequestMapping("/api/advisor/study-plans")
+@RequestMapping({"/api/advisor/study-plans", "/advisor/study-plans"})
 public class AdvisorStudyPlanController {
     private final AdvisorStudyPlanService plans;
     public AdvisorStudyPlanController(AdvisorStudyPlanService plans) { this.plans = plans; }
@@ -27,6 +28,11 @@ public class AdvisorStudyPlanController {
             @RequestParam(defaultValue = "SUBMITTED") String status,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         return plans.list(advisor.id(), status, page, size);
+    }
+
+    @GetMapping("/counts")
+    public Counts counts(@AuthenticationPrincipal AuthSession advisor) {
+        return plans.counts(advisor.id());
     }
 
     @GetMapping("/{id}")

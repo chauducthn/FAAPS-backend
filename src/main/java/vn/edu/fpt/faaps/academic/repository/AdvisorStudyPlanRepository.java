@@ -24,7 +24,8 @@ public class AdvisorStudyPlanRepository {
 
     public Page list(UUID advisorId, String status, int page, int size) {
         validatePage(page, size);
-        String normalized = status == null || status.isBlank() ? null : status.strip().toUpperCase();
+        String normalized = status == null || status.isBlank() || "ALL".equalsIgnoreCase(status.strip())
+                ? null : status.strip().toUpperCase();
         String filter = normalized == null ? "" : " AND p.status=?";
         List<Object> args = new ArrayList<>(List.of(advisorId.toString()));
         if (normalized != null) args.add(normalized);
@@ -41,6 +42,40 @@ public class AdvisorStudyPlanRepository {
                         rs.getInt("total_credits_planned"), rs.getString("status"),
                         time(rs.getTimestamp("submitted_at"))), args.toArray());
         return new Page(items, page, size, total, (total + size - 1) / size);
+    }
+
+    public Page listByStudent(UUID advisorId, UUID studentId, int page, int size) {
+        validatePage(page, size);
+        String filter = " AND p.student_id=?";
+        Object[] countArgs = new Object[] { advisorId.toString(), studentId.toString() };
+        Long totalObj = jdbc.queryForObject("SELECT COUNT(DISTINCT p.id) " + ACCESS + filter,
+                Long.class, countArgs);
+        long total = totalObj == null ? 0 : totalObj;
+        List<Summary> items = jdbc.query("""
+                SELECT DISTINCT p.id,p.student_id,s.student_code,u.full_name,sem.code semester_code,
+                       p.version,p.total_credits_planned,p.status,p.submitted_at
+                """ + ACCESS + filter + " ORDER BY p.submitted_at DESC,p.id LIMIT ? OFFSET ?",
+                (rs, row) -> new Summary(rs.getString("id"), rs.getString("student_id"),
+                        rs.getString("student_code"), rs.getString("full_name"),
+                        rs.getString("semester_code"), rs.getInt("version"),
+                        rs.getInt("total_credits_planned"), rs.getString("status"),
+                        time(rs.getTimestamp("submitted_at"))),
+                advisorId.toString(), studentId.toString(), size, page * size);
+        return new Page(items, page, size, total, (total + size - 1) / size);
+    }
+
+    public Counts counts(UUID advisorId) {
+        long submitted = countByStatus(advisorId, "SUBMITTED");
+        long approved = countByStatus(advisorId, "APPROVED");
+        long needsRevision = countByStatus(advisorId, "NEEDS_REVISION");
+        long total = submitted + approved + needsRevision;
+        return new Counts(submitted, approved, needsRevision, total);
+    }
+
+    private long countByStatus(UUID advisorId, String status) {
+        Long c = jdbc.queryForObject("SELECT COUNT(DISTINCT p.id) " + ACCESS + " AND p.status=?",
+                Long.class, advisorId.toString(), status);
+        return c == null ? 0 : c;
     }
 
     public Student student(UUID advisorId, UUID planId, boolean lock) {
@@ -76,4 +111,5 @@ public class AdvisorStudyPlanRepository {
     }
     private LocalDateTime time(Timestamp value) { return value == null ? null : value.toLocalDateTime(); }
     public record Student(UUID id, String code, String name) {}
+    public record Counts(long submitted, long approved, long needsRevision, long total) {}
 }

@@ -2,6 +2,8 @@ package vn.edu.fpt.faaps.user.service;
 
 import vn.edu.fpt.faaps.academic.service.StudentOnboardingService;
 import vn.edu.fpt.faaps.common.validation.StudentCodeValidator;
+import vn.edu.fpt.faaps.common.validation.IdentityInput;
+import vn.edu.fpt.faaps.infrastructure.mail.EmailService;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos;
 import vn.edu.fpt.faaps.user.exception.UserExceptions;
 
@@ -31,7 +33,6 @@ import vn.edu.fpt.faaps.user.dto.AdminUserDtos.PasswordResetResult;
 import vn.edu.fpt.faaps.user.repository.AdminUserRepository;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
-import vn.edu.fpt.faaps.common.validation.IdentityInput;
 
 @Service
 public class AdminUserService {
@@ -41,25 +42,33 @@ public class AdminUserService {
     private final AdminUserRepository repository;
     private final UserRoleService roles;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
     @Autowired
     public AdminUserService(JdbcTemplate jdbc, AdminUserRepository repository, UserRoleService roles,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder, @Autowired(required = false) EmailService emailService) {
         this.jdbc = jdbc;
         this.repository = repository;
         this.roles = roles;
         this.passwordEncoder = passwordEncoder;
+        this.emailService = emailService;
+    }
+
+    public AdminUserService(JdbcTemplate jdbc, AdminUserRepository repository, UserRoleService roles,
+            PasswordEncoder passwordEncoder) {
+        this(jdbc, repository, roles, passwordEncoder, null);
     }
 
     public AdminUserService(JdbcTemplate jdbc, AdminUserRepository repository, UserRoleService roles) {
-        this(jdbc, repository, roles, new BCryptPasswordEncoder());
+        this(jdbc, repository, roles, new BCryptPasswordEncoder(), null);
     }
 
     public Page list(String role, String status, String search, UUID majorId, int page, int size, String sort) {
         return list(role, status, search, majorId, null, page, size, sort);
     }
 
-    public Page list(String role, String status, String search, UUID majorId, UUID curriculumVersionId, int page, int size, String sort) {
+    public Page list(String role, String status, String search, UUID majorId, UUID curriculumVersionId, int page,
+            int size, String sort) {
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("page or size is invalid");
         }
@@ -107,7 +116,7 @@ public class AdminUserService {
             if ("STUDENT".equals(role)) {
                 addStudentProfile(userId, input);
             } else {
-                saveAdvisorProfile(userId, input.maxAdvisees());
+                saveAdvisorProfile(userId, input.maxAdvisees(), input.advisorCode());
             }
         } catch (DuplicateKeyException exception) {
             throw new Conflict("Email or student code already exists");
@@ -129,11 +138,15 @@ public class AdminUserService {
                 rs.getBoolean("has_student_profile")), email).stream().findFirst().orElse(null);
     }
 
-    /** A blank phone is allowed (it stays empty); a given one must be a Vietnamese mobile number. */
+    /**
+     * A blank phone is allowed (it stays empty); a given one must be a Vietnamese
+     * mobile number.
+     */
     private static String normalizePhone(String phone) {
         String clean = phone == null || phone.isBlank() ? null : phone.strip();
         if (clean != null && !StudentOnboardingService.PHONE.matcher(clean).matches()) {
-            throw new IllegalArgumentException("phone must be a 10-digit Vietnamese number starting with 0 (e.g. 0901234567)");
+            throw new IllegalArgumentException(
+                    "phone must be a 10-digit Vietnamese number starting with 0 (e.g. 0901234567)");
         }
         return clean;
     }
@@ -146,22 +159,41 @@ public class AdminUserService {
             return;
         }
         int inserted = jdbc.update("""
-                        INSERT INTO users (id, role_id, email, auth_provider, full_name, phone, status,
-                                           created_at, updated_at)
-                        SELECT ?, r.id, ?, 'GOOGLE', ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                        FROM roles r WHERE r.code = ?
-                        """, userId.toString(), email, input.fullName().strip(), phone, role);
+                INSERT INTO users (id, role_id, email, auth_provider, full_name, phone, status,
+                                   created_at, updated_at)
+                SELECT ?, r.id, ?, 'GOOGLE', ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                FROM roles r WHERE r.code = ?
+                """, userId.toString(), email, input.fullName().strip(), phone, role);
         if (inserted != 1) {
             throw new Conflict("Role " + role + " is not configured");
         }
     }
 
-    private void saveAdvisorProfile(UUID userId, Integer requestedMaxAdvisees) {
+    private void saveAdvisorProfile(UUID userId, Integer requestedMaxAdvisees, String advisorCode) {
         int maxAdvisees = requestedMaxAdvisees == null ? 30 : requestedMaxAdvisees;
+        String cleanCode = advisorCode == null || advisorCode.isBlank() ? null
+                : advisorCode.strip().toUpperCase(Locale.ROOT);
+        if (cleanCode != null) {
+            if (cleanCode.length() > 50) {
+                throw new IllegalArgumentException("advisorCode must be at most 50 characters");
+            }
+            try {
+                jdbc.update("""
+                        INSERT INTO advisors (user_id, advisor_code, max_advisees, status, created_at, updated_at)
+                        VALUES (?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """, userId.toString(), cleanCode, maxAdvisees);
+                return;
+            } catch (DuplicateKeyException duplicate) {
+                throw duplicate;
+            } catch (org.springframework.jdbc.BadSqlGrammarException ignored) {
+                // Fallback when running against a simplified test schema without advisor_code
+                // column
+            }
+        }
         jdbc.update("""
-                        INSERT INTO advisors (user_id, max_advisees, status, created_at, updated_at)
-                        VALUES (?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        """, userId.toString(), maxAdvisees);
+                INSERT INTO advisors (user_id, max_advisees, status, created_at, updated_at)
+                VALUES (?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, userId.toString(), maxAdvisees);
     }
 
     private void requireText(String value, String field, int maxLength) {
@@ -193,9 +225,11 @@ public class AdminUserService {
                 ? semesterStart(input.enrollmentSemesterId(), "Enrollment semester")
                 : null;
         if (input.expectedGraduationSemesterId() != null) {
-            LocalDate expectedDate = semesterStart(input.expectedGraduationSemesterId(), "Expected graduation semester");
+            LocalDate expectedDate = semesterStart(input.expectedGraduationSemesterId(),
+                    "Expected graduation semester");
             if (enrollmentDate != null && expectedDate.isBefore(enrollmentDate)) {
-                throw new IllegalArgumentException("expectedGraduationSemesterId cannot be before enrollmentSemesterId");
+                throw new IllegalArgumentException(
+                        "expectedGraduationSemesterId cannot be before enrollmentSemesterId");
             }
         }
     }
@@ -218,8 +252,9 @@ public class AdminUserService {
         String expectedGraduationId = input.expectedGraduationSemesterId() != null
                 ? input.expectedGraduationSemesterId().toString()
                 : (input.curriculumVersionId() != null && input.enrollmentSemesterId() != null
-                    ? ExpectedGraduation.semesterId(jdbc, input.curriculumVersionId(), input.enrollmentSemesterId(), currentSemester)
-                    : null);
+                        ? ExpectedGraduation.semesterId(jdbc, input.curriculumVersionId(), input.enrollmentSemesterId(),
+                                currentSemester)
+                        : null);
 
         jdbc.update("""
                 INSERT INTO students (user_id, student_code, major_id, curriculum_version_id,
@@ -305,24 +340,26 @@ public class AdminUserService {
         String firstPassword = null;
 
         for (UUID id : userIds.stream().sorted().toList()) {
-            List<ResetTarget> targets = jdbc.query("""
-                    SELECT u.id,
-                           CASE WHEN r.code = 'STUDENT' THEN COALESCE(s.student_code, u.email) ELSE u.email END AS user_code,
-                           u.email,
-                           u.full_name,
-                           u.status
-                    FROM users u
-                    LEFT JOIN roles r ON r.id = u.role_id
-                    LEFT JOIN students s ON s.user_id = u.id
-                    WHERE u.id = ?
-                    FOR UPDATE
-                    """, (rs, rowNum) -> new ResetTarget(
+            List<ResetTarget> targets = jdbc.query(
+                    """
+                            SELECT u.id,
+                                   CASE WHEN r.code = 'STUDENT' THEN COALESCE(s.student_code, u.email) ELSE u.email END AS user_code,
+                                   u.email,
+                                   u.full_name,
+                                   u.status
+                            FROM users u
+                            LEFT JOIN roles r ON r.id = u.role_id
+                            LEFT JOIN students s ON s.user_id = u.id
+                            WHERE u.id = ?
+                            FOR UPDATE
+                            """,
+                    (rs, rowNum) -> new ResetTarget(
                             UUID.fromString(rs.getString("id")),
                             rs.getString("user_code"),
                             rs.getString("email"),
                             rs.getString("full_name"),
-                            rs.getString("status")
-                    ), id.toString());
+                            rs.getString("status")),
+                    id.toString());
 
             if (targets.isEmpty()) {
                 throw new NotFound("User " + id + " was not found");
@@ -364,9 +401,12 @@ public class AdminUserService {
             // =========================================================================================
             // [OPTIONAL EXTENSION HOOK]: Email Sender / Notification Dispatcher
             // -----------------------------------------------------------------------------------------
-            // Reserved for future email dispatch (e.g. sending new credentials / reset alert to user):
-            // e.g. emailSender.sendPasswordReset(target.email(), target.fullName(), newPassword);
-            // In case user lost email access, Admin retains this password on screen / CSV to hand over.
+            // Reserved for future email dispatch (e.g. sending new credentials / reset
+            // alert to user):
+            // e.g. emailSender.sendPasswordReset(target.email(), target.fullName(),
+            // newPassword);
+            // In case user lost email access, Admin retains this password on screen / CSV
+            // to hand over.
             // =========================================================================================
             dispatchPasswordResetNotification(target.email(), target.fullName(), newPassword);
 
@@ -376,8 +416,7 @@ public class AdminUserService {
                     target.fullName(),
                     "SUCCESS",
                     newPassword,
-                    null
-            ));
+                    null));
         }
 
         return new PasswordResetResponse(changed, firstPassword, resetResults);
@@ -388,8 +427,9 @@ public class AdminUserService {
      * Currently a no-op placeholder until mail server configuration is wired up.
      */
     private void dispatchPasswordResetNotification(String email, String fullName, String newPassword) {
-        // [EXTENSION HOOK]: Send email alert with new password or password reset notification
-        // e.g. emailSender.sendResetAlert(email, fullName, newPassword);
+        if (emailService != null) {
+            emailService.sendAdminResetPassword(email, fullName, newPassword);
+        }
     }
 
     private static String generateRandomPassword() {

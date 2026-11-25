@@ -4,12 +4,15 @@ import vn.edu.fpt.faaps.auth.model.AuthAccount;
 import vn.edu.fpt.faaps.auth.model.GoogleIdentity;
 import vn.edu.fpt.faaps.auth.repository.AuthAccountStore;
 import vn.edu.fpt.faaps.auth.service.AuthRefreshTokenService;
+import vn.edu.fpt.faaps.auth.service.AuthPasswordService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import org.mockito.ArgumentCaptor;
 
 import java.net.CookieManager;
 import java.net.HttpCookie;
@@ -43,6 +46,9 @@ class AuthFlowApiTest {
 
     @MockitoBean
     private AuthRefreshTokenService refreshTokens;
+
+    @MockitoBean
+    private AuthPasswordService passwordService;
 
     @Autowired
     private Environment environment;
@@ -89,6 +95,31 @@ class AuthFlowApiTest {
         accountStore.account.set(new AuthAccount(admin.id(), admin.email(), admin.fullName(),
                 "ADMIN", "SUSPENDED", admin.passwordHash()));
         assertEquals(401, get(client, baseUrl.resolve("/api/auth/me")).statusCode());
+    }
+
+    @Test
+    void forwardedForCannotChangePasswordResetRateLimitAddress() throws Exception {
+        URI baseUrl = URI.create("http://localhost:" + environment.getRequiredProperty("local.server.port"));
+        HttpClient client = HttpClient.newBuilder().cookieHandler(new CookieManager()).build();
+        String csrfToken = getCsrfToken(client, baseUrl);
+        when(passwordService.forgotPassword(any(), any()))
+                .thenReturn(new AuthPasswordService.ForgotPasswordResult(true, "Accepted", null));
+
+        for (String forwardedFor : new String[] {"198.51.100.1", "198.51.100.2"}) {
+            HttpRequest request = HttpRequest.newBuilder(baseUrl.resolve("/api/auth/forgot-password"))
+                    .header("Content-Type", "application/json")
+                    .header("X-XSRF-TOKEN", csrfToken)
+                    .header("X-Forwarded-For", forwardedFor)
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"email\":\"student@example.com\"}"))
+                    .build();
+            assertEquals(200, send(client, request).statusCode());
+        }
+
+        ArgumentCaptor<String> addresses = ArgumentCaptor.forClass(String.class);
+        verify(passwordService, org.mockito.Mockito.times(2))
+                .forgotPassword(eq("student@example.com"), addresses.capture());
+        assertEquals(addresses.getAllValues().get(0), addresses.getAllValues().get(1));
+        assertTrue(!addresses.getAllValues().get(0).startsWith("198.51.100."));
     }
 
     @Test

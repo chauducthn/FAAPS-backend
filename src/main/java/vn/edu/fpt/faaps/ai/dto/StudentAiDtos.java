@@ -1,5 +1,6 @@
 package vn.edu.fpt.faaps.ai.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 
@@ -60,8 +61,15 @@ public class StudentAiDtos {
 
     public record GenerateRoadmapDto(
             String goal,
-            Integer maxCreditsPerSemester
-    ) {}
+            @JsonAlias("maxCredits") Integer maxCreditsPerSemester,
+            String expectedGraduationSemesterId,
+            String orientation,
+            Double targetGpa
+    ) {
+        public GenerateRoadmapDto(String goal, Integer maxCreditsPerSemester) {
+            this(goal, maxCreditsPerSemester, null, null, null);
+        }
+    }
 
     public record RoadmapCourseDto(
             String courseId,

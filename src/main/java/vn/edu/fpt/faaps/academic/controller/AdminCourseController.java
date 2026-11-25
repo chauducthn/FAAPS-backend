@@ -51,10 +51,11 @@ public class AdminCourseController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) Integer credits,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "code,asc") String sort) {
-        return courses.list(search, status, categoryId, page, size, sort);
+        return courses.list(search, status, categoryId, credits, page, size, sort);
     }
 
     @GetMapping("/{id}")
@@ -95,7 +96,7 @@ public class AdminCourseController {
         AdminCourseService.CourseDetail created = courses.create(
                 request.code(), request.name(), request.credits(), request.categoryId(),
                 request.description(), request.objectives(), request.learningOutcomes(),
-                request.status(), request.prerequisites());
+                request.materialLink(), request.status(), request.prerequisites());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -104,6 +105,7 @@ public class AdminCourseController {
         return courses.update(
                 id, request.code(), request.name(), request.credits(), request.categoryId(),
                 request.description(), request.objectives(), request.learningOutcomes(),
+                request.materialLink(), true,
                 request.status(), request.prerequisites());
     }
 
@@ -117,6 +119,12 @@ public class AdminCourseController {
     public ResponseEntity<Map<String, Object>> bulkDelete(@Valid @RequestBody BulkDeleteRequest request) {
         int deleted = courses.bulkDelete(request.ids());
         return ResponseEntity.ok(Map.of("success", true, "deletedCount", deleted, "message", "Deleted " + deleted + " course(s)"));
+    }
+
+    @PostMapping("/bulk-status")
+    public ResponseEntity<Map<String, Object>> bulkStatus(@Valid @RequestBody BulkStatusRequest request) {
+        int updated = courses.bulkUpdateStatus(request.ids(), request.status());
+        return ResponseEntity.ok(Map.of("success", true, "updatedCount", updated, "message", "Updated status for " + updated + " course(s)"));
     }
 
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -191,28 +199,47 @@ public class AdminCourseController {
     public record CreateCourseRequest(
             @NotBlank @Pattern(regexp = "^[A-Za-z]{3}[0-9]{3}[A-Za-z]?$", message = "Course code must consist of 3 letters, 3 digits, and optional 1 letter suffix") String code,
             @NotBlank @Size(max = 255) String name,
-            @NotNull @Positive @Max(30) Integer credits,
+            @NotNull @Min(0) @Max(30) Integer credits,
             @NotNull UUID categoryId,
             String description,
             String objectives,
             String learningOutcomes,
+            @Size(max = 500, message = "Material link must be at most 500 characters")
+            @Pattern(regexp = "^$|^https?://\\S+$", message = "Enter a full link starting with http:// or https://")
+            String materialLink,
             String status,
             List<AdminCourseService.PrerequisiteInput> prerequisites) {
+        public CreateCourseRequest(String code, String name, Integer credits, UUID categoryId,
+                String description, String objectives, String learningOutcomes, String status,
+                List<AdminCourseService.PrerequisiteInput> prerequisites) {
+            this(code, name, credits, categoryId, description, objectives, learningOutcomes, null, status, prerequisites);
+        }
     }
 
     public record UpdateCourseRequest(
             @Pattern(regexp = "^[A-Za-z]{3}[0-9]{3}[A-Za-z]?$", message = "Course code must consist of 3 letters, 3 digits, and optional 1 letter suffix") String code,
             String name,
-            @Positive @Max(30) Integer credits,
+            @Min(0) @Max(30) Integer credits,
             UUID categoryId,
             String description,
             String objectives,
             String learningOutcomes,
+            @Size(max = 500, message = "Material link must be at most 500 characters")
+            @Pattern(regexp = "^$|^https?://\\S+$", message = "Enter a full link starting with http:// or https://")
+            String materialLink,
             String status,
             List<AdminCourseService.PrerequisiteInput> prerequisites) {
+        public UpdateCourseRequest(String code, String name, Integer credits, UUID categoryId,
+                String description, String objectives, String learningOutcomes, String status,
+                List<AdminCourseService.PrerequisiteInput> prerequisites) {
+            this(code, name, credits, categoryId, description, objectives, learningOutcomes, AdminCourseService.KEEP_EXISTING_MATERIAL_LINK, status, prerequisites);
+        }
     }
 
     public record BulkDeleteRequest(@NotEmpty List<UUID> ids) {
+    }
+
+    public record BulkStatusRequest(@NotEmpty List<UUID> ids, @NotBlank String status) {
     }
 
     public record ConfirmImportRequest(@NotEmpty List<AdminCourseService.ImportConfirmItem> items) {

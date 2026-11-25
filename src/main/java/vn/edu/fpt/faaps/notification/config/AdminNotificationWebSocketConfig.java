@@ -46,11 +46,20 @@ public class AdminNotificationWebSocketConfig implements WebSocketMessageBrokerC
                 if (accessor == null) return message;
                 StompCommand command = accessor.getCommand();
                 if (command == StompCommand.CONNECT) {
-                    requireAdmin(accessor.getUser());
+                    requireAuthenticated(accessor.getUser());
                 } else if (command == StompCommand.SUBSCRIBE) {
-                    requireAdmin(accessor.getUser());
-                    if (!"/user/queue/admin/notifications".equals(accessor.getDestination()))
+                    String dest = accessor.getDestination();
+                    if ("/user/queue/admin/notifications".equals(dest)) {
+                        requireRole(accessor.getUser(), "ROLE_ADMIN");
+                    } else if ("/user/queue/advisor/notifications".equals(dest)) {
+                        requireRole(accessor.getUser(), "ROLE_ADVISOR");
+                    } else if ("/user/queue/student/notifications".equals(dest)) {
+                        requireRole(accessor.getUser(), "ROLE_STUDENT");
+                    } else if ("/user/queue/notifications".equals(dest)) {
+                        requireAuthenticated(accessor.getUser());
+                    } else {
                         throw new IllegalArgumentException("Subscription is not allowed");
+                    }
                 } else if (command == StompCommand.SEND) {
                     throw new IllegalArgumentException("Client messages are not supported");
                 }
@@ -59,11 +68,19 @@ public class AdminNotificationWebSocketConfig implements WebSocketMessageBrokerC
         });
     }
 
-    private void requireAdmin(Principal principal) {
+    private void requireAuthenticated(Principal principal) {
+        if (!(principal instanceof Authentication authentication)
+                || !authentication.isAuthenticated()
+                || authentication.getAuthorities().isEmpty()) {
+            throw new IllegalArgumentException("Authentication required");
+        }
+    }
+
+    private void requireRole(Principal principal, String requiredRole) {
         if (!(principal instanceof Authentication authentication)
                 || authentication.getAuthorities().stream().map(GrantedAuthority::getAuthority)
-                        .noneMatch("ROLE_ADMIN"::equals)) {
-            throw new IllegalArgumentException("Admin authentication required");
+                        .noneMatch(requiredRole::equals)) {
+            throw new IllegalArgumentException(requiredRole + " authentication required");
         }
     }
 }

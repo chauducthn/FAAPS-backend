@@ -26,6 +26,14 @@ public class AdvisorStudyPlanService {
         return repository.list(advisorId, status, page, size);
     }
 
+    public Page listByStudent(UUID advisorId, UUID studentId, int page, int size) {
+        return repository.listByStudent(advisorId, studentId, page, size);
+    }
+
+    public AdvisorStudyPlanRepository.Counts counts(UUID advisorId) {
+        return repository.counts(advisorId);
+    }
+
     public Detail detail(UUID advisorId, UUID planId) {
         Student student = requireStudent(advisorId, planId, false);
         return new Detail(student.id().toString(), student.code(), student.name(),

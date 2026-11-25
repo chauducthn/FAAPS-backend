@@ -37,7 +37,7 @@ public class UserRoleService {
                 """, (rs, row) -> rs.getString(1), userId.toString()).stream()
                 .findFirst().orElseThrow(NotFound::new);
         if (current.equals(input.role())) return users.detail(userId);
-        if ("ADVISOR".equals(input.role())) toAdvisor(userId, input.maxAdvisees());
+        if ("ADVISOR".equals(input.role())) toAdvisor(userId, input.maxAdvisees(), input.advisorCode());
         else toStudent(userId, input);
         int updated = jdbc.update("""
                 UPDATE users SET role_id=(SELECT id FROM roles WHERE code=?), updated_at=CURRENT_TIMESTAMP
@@ -47,14 +47,29 @@ public class UserRoleService {
         return users.detail(userId);
     }
 
-    private void toAdvisor(UUID userId, Integer requestedLimit) {
+    private void toAdvisor(UUID userId, Integer requestedLimit, String advisorCode) {
         int limit = requestedLimit == null ? 30 : requestedLimit;
         if (limit < 1) throw new IllegalArgumentException("maxAdvisees must be at least 1");
-        jdbc.update("""
-                INSERT INTO advisors (user_id,max_advisees,status,created_at,updated_at)
-                VALUES (?,?,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
-                ON DUPLICATE KEY UPDATE max_advisees=VALUES(max_advisees),status='ACTIVE',updated_at=CURRENT_TIMESTAMP
-                """, userId.toString(), limit);
+        String cleanCode = advisorCode == null || advisorCode.isBlank() ? null : advisorCode.strip().toUpperCase(Locale.ROOT);
+        boolean insertedWithCode = false;
+        if (cleanCode != null) {
+            try {
+                jdbc.update("""
+                        INSERT INTO advisors (user_id,advisor_code,max_advisees,status,created_at,updated_at)
+                        VALUES (?,?,?,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                        ON DUPLICATE KEY UPDATE advisor_code=VALUES(advisor_code),max_advisees=VALUES(max_advisees),status='ACTIVE',updated_at=CURRENT_TIMESTAMP
+                        """, userId.toString(), cleanCode, limit);
+                insertedWithCode = true;
+            } catch (org.springframework.jdbc.BadSqlGrammarException ignored) {
+            }
+        }
+        if (!insertedWithCode) {
+            jdbc.update("""
+                    INSERT INTO advisors (user_id,max_advisees,status,created_at,updated_at)
+                    VALUES (?,?,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                    ON DUPLICATE KEY UPDATE max_advisees=VALUES(max_advisees),status='ACTIVE',updated_at=CURRENT_TIMESTAMP
+                    """, userId.toString(), limit);
+        }
         jdbc.update("""
                 UPDATE student_advisor_assignments SET status='COMPLETED',end_date=CURRENT_DATE,updated_at=CURRENT_TIMESTAMP
                 WHERE student_id=? AND status='ACTIVE' AND end_date IS NULL

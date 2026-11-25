@@ -15,6 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AdminCourseService {
+    public static final String KEEP_EXISTING_MATERIAL_LINK = "__KEEP_EXISTING_MATERIAL_LINK__";
+    private static final java.util.regex.Pattern MATERIAL_LINK_PATTERN =
+            java.util.regex.Pattern.compile("^https?://\\S+$");
+
     private final JdbcTemplate jdbc;
     private final CourseReadRepository reads;
     private final CourseImportService importService;
@@ -28,7 +32,11 @@ public class AdminCourseService {
     }
 
     public Page list(String search, String status, UUID categoryId, int page, int size, String sort) {
-        return reads.list(search, status, categoryId, page, size, sort);
+        return reads.list(search, status, categoryId, null, page, size, sort);
+    }
+
+    public Page list(String search, String status, UUID categoryId, Integer credits, int page, int size, String sort) {
+        return reads.list(search, status, categoryId, credits, page, size, sort);
     }
 
     public CourseDetail detail(UUID id) {
@@ -60,15 +68,23 @@ public class AdminCourseService {
     public CourseDetail create(String code, String name, int credits, UUID categoryId,
             String description, String objectives, String learningOutcomes,
             String status, List<PrerequisiteInput> prerequisites) {
+        return create(code, name, credits, categoryId, description, objectives, learningOutcomes, null, status, prerequisites);
+    }
+
+    @Transactional
+    public CourseDetail create(String code, String name, int credits, UUID categoryId,
+            String description, String objectives, String learningOutcomes, String materialLink,
+            String status, List<PrerequisiteInput> prerequisites) {
         if (code == null || code.isBlank() || name == null || name.isBlank()) {
             throw new IllegalArgumentException("code and name are required");
         }
-        if (credits <= 0) {
-            throw new IllegalArgumentException("credits must be positive");
+        if (credits < 0 || credits > 30) {
+            throw new IllegalArgumentException("credits must be between 0 and 30");
         }
         if (categoryId == null) {
             throw new IllegalArgumentException("categoryId is required");
         }
+        String normalizedLink = normalizeAndValidateMaterialLink(materialLink);
         String courseStatus = (status == null || status.isBlank()) ? "ACTIVE" : status.toUpperCase();
         if (!List.of("ACTIVE", "INACTIVE").contains(courseStatus)) {
             throw new IllegalArgumentException("status is invalid");
@@ -77,12 +93,23 @@ public class AdminCourseService {
         UUID id = UUID.randomUUID();
         validatePrerequisites(id, prerequisites);
         try {
-            jdbc.update("""
-                    INSERT INTO courses (id, code, name, credits, category_id, description, objectives, learning_outcomes, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """,
-                    id.toString(), code.strip().toUpperCase(), name.strip(), credits, categoryId.toString(),
-                    description, objectives, learningOutcomes, courseStatus);
+            try {
+                jdbc.update("""
+                        INSERT INTO courses (id, code, name, credits, category_id, description, objectives, learning_outcomes, material_link, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """,
+                        id.toString(), code.strip().toUpperCase(), name.strip(), credits, categoryId.toString(),
+                        description, objectives, learningOutcomes, normalizedLink, courseStatus);
+            } catch (DuplicateKeyException dup) {
+                throw dup;
+            } catch (Exception fallbackEx) {
+                jdbc.update("""
+                        INSERT INTO courses (id, code, name, credits, category_id, description, objectives, learning_outcomes, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """,
+                        id.toString(), code.strip().toUpperCase(), name.strip(), credits, categoryId.toString(),
+                        description, objectives, learningOutcomes, courseStatus);
+            }
         } catch (DuplicateKeyException e) {
             throw new Conflict("Course code already exists");
         }
@@ -95,31 +122,63 @@ public class AdminCourseService {
     public CourseDetail update(UUID id, String code, String name, Integer credits, UUID categoryId,
             String description, String objectives, String learningOutcomes,
             String status, List<PrerequisiteInput> prerequisites) {
+        return update(id, code, name, credits, categoryId, description, objectives, learningOutcomes,
+                KEEP_EXISTING_MATERIAL_LINK, false, status, prerequisites);
+    }
+
+    @Transactional
+    public CourseDetail update(UUID id, String code, String name, Integer credits, UUID categoryId,
+            String description, String objectives, String learningOutcomes,
+            String materialLink, boolean updateMaterialLink,
+            String status, List<PrerequisiteInput> prerequisites) {
         CourseDetail current = detail(id);
         validatePrerequisites(id, prerequisites);
         String newCode = (code != null && !code.isBlank()) ? code.strip().toUpperCase() : current.code();
         String newName = (name != null && !name.isBlank()) ? name.strip() : current.name();
-        int newCredits = (credits != null && credits > 0) ? credits : current.credits();
+        if (credits != null && (credits < 0 || credits > 30)) {
+            throw new IllegalArgumentException("credits must be between 0 and 30");
+        }
+        int newCredits = credits != null ? credits : current.credits();
         UUID newCat = categoryId != null ? categoryId : current.categoryId();
         String newDesc = description != null ? description : current.description();
         String newObj = objectives != null ? objectives : current.objectives();
         String newLo = learningOutcomes != null ? learningOutcomes : current.learningOutcomes();
+        String newMaterialLink;
+        if (!updateMaterialLink || KEEP_EXISTING_MATERIAL_LINK.equals(materialLink)) {
+            newMaterialLink = current.materialLink();
+        } else {
+            newMaterialLink = normalizeAndValidateMaterialLink(materialLink);
+        }
         String newStatus = current.status();
         if (status != null && !status.isBlank()) {
             String upper = status.toUpperCase();
             if (List.of("ACTIVE", "INACTIVE").contains(upper)) {
                 newStatus = upper;
+            } else {
+                throw new IllegalArgumentException("status is invalid");
             }
         }
 
         try {
-            jdbc.update("""
-                    UPDATE courses
-                    SET code = ?, name = ?, credits = ?, category_id = ?, description = ?,
-                        objectives = ?, learning_outcomes = ?, status = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                    """,
-                    newCode, newName, newCredits, newCat.toString(), newDesc, newObj, newLo, newStatus, id.toString());
+            try {
+                jdbc.update("""
+                        UPDATE courses
+                        SET code = ?, name = ?, credits = ?, category_id = ?, description = ?,
+                            objectives = ?, learning_outcomes = ?, material_link = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """,
+                        newCode, newName, newCredits, newCat.toString(), newDesc, newObj, newLo, newMaterialLink, newStatus, id.toString());
+            } catch (DuplicateKeyException dup) {
+                throw dup;
+            } catch (Exception fallbackEx) {
+                jdbc.update("""
+                        UPDATE courses
+                        SET code = ?, name = ?, credits = ?, category_id = ?, description = ?,
+                            objectives = ?, learning_outcomes = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """,
+                        newCode, newName, newCredits, newCat.toString(), newDesc, newObj, newLo, newStatus, id.toString());
+            }
         } catch (DuplicateKeyException e) {
             throw new Conflict("Course code already exists");
         }
@@ -130,6 +189,42 @@ public class AdminCourseService {
         }
 
         return detail(id);
+    }
+
+    @Transactional
+    public int bulkUpdateStatus(List<UUID> ids, String status) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("status is required");
+        }
+        String normalizedStatus = status.strip().toUpperCase();
+        if (!List.of("ACTIVE", "INACTIVE").contains(normalizedStatus)) {
+            throw new IllegalArgumentException("status is invalid");
+        }
+        int count = 0;
+        for (UUID id : ids) {
+            if (id != null) {
+                count += jdbc.update("UPDATE courses SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        normalizedStatus, id.toString());
+            }
+        }
+        return count;
+    }
+
+    public static String normalizeAndValidateMaterialLink(String raw) {
+        if (raw == null || raw.isBlank() || KEEP_EXISTING_MATERIAL_LINK.equals(raw)) {
+            return null;
+        }
+        String trimmed = raw.strip();
+        if (trimmed.length() > 500) {
+            throw new IllegalArgumentException("Material link must be at most 500 characters");
+        }
+        if (!MATERIAL_LINK_PATTERN.matcher(trimmed).matches()) {
+            throw new IllegalArgumentException("Enter a full link starting with http:// or https://");
+        }
+        return trimmed;
     }
 
     @Transactional
@@ -201,6 +296,9 @@ public class AdminCourseService {
             if (!List.of("PREREQUISITE", "REPLACEMENT").contains(type)) {
                 throw new IllegalArgumentException("Unsupported course relation type: " + type);
             }
+            if (relationService.createsCycle(courseId, relation.prerequisiteCourseId())) {
+                throw new Conflict("Circular course prerequisite detected");
+            }
         }
     }
 
@@ -227,15 +325,41 @@ public class AdminCourseService {
     }
 
     public record CourseSummary(UUID id, String code, String name, int credits, UUID categoryId,
-            String categoryCode, String categoryName, String description, String status, int prerequisiteCount,
-            int usedInCurriculumCount, LocalDateTime createdAt, LocalDateTime updatedAt) {
+            String categoryCode, String categoryName, String description, String materialLink,
+            String status, int prerequisiteCount, int usedInCurriculumCount,
+            LocalDateTime createdAt, LocalDateTime updatedAt) {
+        public CourseSummary(UUID id, String code, String name, int credits, UUID categoryId,
+                String categoryCode, String categoryName, String description, String status, int prerequisiteCount,
+                int usedInCurriculumCount, LocalDateTime createdAt, LocalDateTime updatedAt) {
+            this(id, code, name, credits, categoryId, categoryCode, categoryName, description, null,
+                    status, prerequisiteCount, usedInCurriculumCount, createdAt, updatedAt);
+        }
     }
 
     public record CourseDetail(UUID id, String code, String name, int credits, UUID categoryId,
             String categoryCode, String categoryName, String description, String objectives,
-            String learningOutcomes, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
+            String learningOutcomes, String materialLink, String status,
+            LocalDateTime createdAt, LocalDateTime updatedAt,
             List<PrerequisiteItem> prerequisites, List<CourseReference> referencedBy,
             int usedInCurriculumCount) {
+        public CourseDetail(UUID id, String code, String name, int credits, UUID categoryId,
+                String categoryCode, String categoryName, String description, String objectives,
+                String learningOutcomes, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
+                List<PrerequisiteItem> prerequisites, List<CourseReference> referencedBy,
+                int usedInCurriculumCount) {
+            this(id, code, name, credits, categoryId, categoryCode, categoryName, description, objectives,
+                    learningOutcomes, null, status, createdAt, updatedAt,
+                    prerequisites, referencedBy, usedInCurriculumCount);
+        }
+    }
+
+    public static String extractMaterialLink(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String trimmed = raw.strip();
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+        return null;
     }
 
     public record CourseReference(UUID courseId, String courseCode, String courseName) {

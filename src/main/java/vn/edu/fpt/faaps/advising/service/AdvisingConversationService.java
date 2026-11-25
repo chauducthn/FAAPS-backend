@@ -2,6 +2,8 @@ package vn.edu.fpt.faaps.advising.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,14 +20,63 @@ public class AdvisingConversationService {
     }
 
     public List<Request> list(UUID actorId, boolean advisor) {
+        return list(actorId, advisor, null, null);
+    }
+
+    public List<Request> list(UUID actorId, boolean advisor, String statusFilter, String search) {
         String filter = advisor ? "r.advisor_id=?" : "r.student_id=?";
-        return jdbc.query("""
-                SELECT r.id,r.student_id,s.full_name AS student_name,r.advisor_id,a.full_name AS advisor_name,
-                       r.title,r.description,r.request_type,r.status,r.resolution_summary,r.created_at,r.updated_at
-                FROM advising_requests r JOIN users s ON s.id=r.student_id
-                LEFT JOIN users a ON a.id=r.advisor_id WHERE
-                """ + filter + " ORDER BY r.created_at DESC,r.id DESC",
-                (rs, row) -> mapRequest(rs), actorId.toString());
+        List<Request> all;
+        try {
+            all = jdbc.query("""
+                    SELECT r.id,r.student_id,s.full_name AS student_name,st.student_code,
+                           r.advisor_id,a.full_name AS advisor_name,r.study_plan_id,
+                           r.title,r.description,r.request_type,r.status,r.resolution_summary,
+                           r.resolved_at,r.created_at,r.updated_at
+                    FROM advising_requests r JOIN users s ON s.id=r.student_id
+                    LEFT JOIN students st ON st.user_id=r.student_id
+                    LEFT JOIN users a ON a.id=r.advisor_id WHERE
+                    """ + filter + " ORDER BY r.created_at DESC,r.id DESC",
+                    (rs, row) -> mapFullRequest(rs), actorId.toString());
+        } catch (Exception ignored) {
+            all = jdbc.query("""
+                    SELECT r.id,r.student_id,s.full_name AS student_name,r.advisor_id,a.full_name AS advisor_name,
+                           r.title,r.description,r.request_type,r.status,r.resolution_summary,r.created_at,r.updated_at
+                    FROM advising_requests r JOIN users s ON s.id=r.student_id
+                    LEFT JOIN users a ON a.id=r.advisor_id WHERE
+                    """ + filter + " ORDER BY r.created_at DESC,r.id DESC",
+                    (rs, row) -> mapRequest(rs), actorId.toString());
+        }
+
+        return all.stream()
+                .filter(req -> {
+                    if (statusFilter == null || statusFilter.isBlank() || "ALL".equalsIgnoreCase(statusFilter.strip())) {
+                        return true;
+                    }
+                    return req.status() != null && req.status().equalsIgnoreCase(statusFilter.strip());
+                })
+                .filter(req -> {
+                    if (search == null || search.isBlank()) {
+                        return true;
+                    }
+                    String kw = search.strip().toLowerCase(Locale.ROOT);
+                    return (req.title() != null && req.title().toLowerCase(Locale.ROOT).contains(kw))
+                            || (req.studentName() != null && req.studentName().toLowerCase(Locale.ROOT).contains(kw))
+                            || (req.studentCode() != null && req.studentCode().toLowerCase(Locale.ROOT).contains(kw));
+                })
+                .toList();
+    }
+
+    public Page listPaged(UUID actorId, boolean advisor, String statusFilter, String search, int page, int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new IllegalArgumentException("Invalid page or size");
+        }
+        List<Request> filtered = list(actorId, advisor, statusFilter, search);
+        long total = filtered.size();
+        int fromIdx = Math.min(page * size, filtered.size());
+        int toIdx = Math.min(fromIdx + size, filtered.size());
+        List<Request> items = filtered.subList(fromIdx, toIdx);
+        long totalPages = (total + size - 1) / size;
+        return new Page(items, page, size, total, totalPages);
     }
 
     public Detail detail(UUID actorId, boolean advisor, UUID requestId) {
@@ -70,11 +121,11 @@ public class AdvisingConversationService {
         lockRequest(requestId);
         Request request = request(actorId, advisor, requestId);
         if (advisor) {
-            if (!"IN_PROGRESS".equals(status) && !"RESOLVED".equals(status))
-                throw new IllegalArgumentException("Advisor status must be IN_PROGRESS or RESOLVED");
+            if (!Set.of("IN_PROGRESS", "RESOLVED", "CANCELLED").contains(status))
+                throw new IllegalArgumentException("Advisor status must be IN_PROGRESS, RESOLVED, or CANCELLED");
             if ("RESOLVED".equals(request.status()) || "CANCELLED".equals(request.status()))
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Request is closed");
-            if ("RESOLVED".equals(status) && (summary == null || summary.isBlank()))
+            if (("RESOLVED".equals(status) || "CANCELLED".equals(status)) && (summary == null || summary.isBlank()))
                 throw new IllegalArgumentException("Resolution summary is required");
             if (summary != null && summary.length() > 10_000)
                 throw new IllegalArgumentException("Resolution summary is too long");
@@ -96,13 +147,28 @@ public class AdvisingConversationService {
 
     private Request request(UUID actorId, boolean advisor, UUID requestId) {
         String filter = advisor ? "r.advisor_id=?" : "r.student_id=?";
-        return jdbc.query("""
-                SELECT r.id,r.student_id,s.full_name AS student_name,r.advisor_id,a.full_name AS advisor_name,
-                       r.title,r.description,r.request_type,r.status,r.resolution_summary,r.created_at,r.updated_at
-                FROM advising_requests r JOIN users s ON s.id=r.student_id
-                LEFT JOIN users a ON a.id=r.advisor_id WHERE r.id=? AND
-                """ + filter, (rs, row) -> mapRequest(rs), requestId.toString(), actorId.toString())
-                .stream().findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Advising request not found"));
+        try {
+            return jdbc.query("""
+                    SELECT r.id,r.student_id,s.full_name AS student_name,st.student_code,
+                           r.advisor_id,a.full_name AS advisor_name,r.study_plan_id,
+                           r.title,r.description,r.request_type,r.status,r.resolution_summary,
+                           r.resolved_at,r.created_at,r.updated_at
+                    FROM advising_requests r JOIN users s ON s.id=r.student_id
+                    LEFT JOIN students st ON st.user_id=r.student_id
+                    LEFT JOIN users a ON a.id=r.advisor_id WHERE r.id=? AND
+                    """ + filter, (rs, row) -> mapFullRequest(rs), requestId.toString(), actorId.toString())
+                    .stream().findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Advising request not found"));
+        } catch (ResponseStatusException notFound) {
+            throw notFound;
+        } catch (Exception ignored) {
+            return jdbc.query("""
+                    SELECT r.id,r.student_id,s.full_name AS student_name,r.advisor_id,a.full_name AS advisor_name,
+                           r.title,r.description,r.request_type,r.status,r.resolution_summary,r.created_at,r.updated_at
+                    FROM advising_requests r JOIN users s ON s.id=r.student_id
+                    LEFT JOIN users a ON a.id=r.advisor_id WHERE r.id=? AND
+                    """ + filter, (rs, row) -> mapRequest(rs), requestId.toString(), actorId.toString())
+                    .stream().findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Advising request not found"));
+        }
     }
 
     private void lockRequest(UUID requestId) {
@@ -110,12 +176,36 @@ public class AdvisingConversationService {
                 (rs, row) -> rs.getString(1), requestId.toString());
     }
 
+    private Request mapFullRequest(java.sql.ResultSet rs) throws java.sql.SQLException {
+        var resolvedTs = rs.getTimestamp("resolved_at");
+        var createdTs = rs.getTimestamp("created_at");
+        var updatedTs = rs.getTimestamp("updated_at");
+        return new Request(
+                rs.getString("id"),
+                rs.getString("student_id"),
+                rs.getString("student_name"),
+                rs.getString("student_code"),
+                rs.getString("advisor_id"),
+                rs.getString("advisor_name"),
+                rs.getString("study_plan_id"),
+                rs.getString("title"),
+                rs.getString("description"),
+                rs.getString("request_type"),
+                rs.getString("status"),
+                rs.getString("resolution_summary"),
+                resolvedTs != null ? resolvedTs.toLocalDateTime() : null,
+                createdTs != null ? createdTs.toLocalDateTime() : null,
+                updatedTs != null ? updatedTs.toLocalDateTime() : null
+        );
+    }
+
     private Request mapRequest(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new Request(rs.getString("id"), rs.getString("student_id"), rs.getString("student_name"),
-                rs.getString("advisor_id"), rs.getString("advisor_name"), rs.getString("title"),
+                null, rs.getString("advisor_id"), rs.getString("advisor_name"), null, rs.getString("title"),
                 rs.getString("description"), rs.getString("request_type"), rs.getString("status"),
-                rs.getString("resolution_summary"), rs.getTimestamp("created_at").toLocalDateTime(),
-                rs.getTimestamp("updated_at").toLocalDateTime());
+                rs.getString("resolution_summary"), null,
+                rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null,
+                rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null);
     }
 
     private void notifyUser(String recipient, String title, String message) {
@@ -125,11 +215,21 @@ public class AdvisingConversationService {
                 """, UUID.randomUUID().toString(), recipient, title, message);
     }
 
-    public record Request(String id, String studentId, String studentName, String advisorId,
-            String advisorName, String title, String description, String requestType, String status,
-            String resolutionSummary, LocalDateTime createdAt, LocalDateTime updatedAt) {}
+    public record Request(String id, String studentId, String studentName, String studentCode,
+            String advisorId, String advisorName, String studyPlanId, String title,
+            String description, String requestType, String status, String resolutionSummary,
+            LocalDateTime resolvedAt, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        public Request(String id, String studentId, String studentName, String advisorId,
+                String advisorName, String title, String description, String requestType, String status,
+                String resolutionSummary, LocalDateTime createdAt, LocalDateTime updatedAt) {
+            this(id, studentId, studentName, null, advisorId, advisorName, null, title,
+                    description, requestType, status, resolutionSummary, null, createdAt, updatedAt);
+        }
+    }
     public record Message(String id, String senderId, String senderName, String content,
             boolean internal, LocalDateTime createdAt) {}
     public record Detail(Request request, List<Message> messages) {}
+    public record Page(List<Request> items, int page, int size, long totalElements, long totalPages) {}
+    public record Attachment(String id, String fileName, String url, long size, LocalDateTime uploadedAt) {}
 }
 

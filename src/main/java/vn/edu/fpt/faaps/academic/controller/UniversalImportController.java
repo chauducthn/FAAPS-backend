@@ -21,7 +21,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.multipart.MultipartFile;
+import vn.edu.fpt.faaps.academic.service.AdminAttendanceService;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService;
 import vn.edu.fpt.faaps.academic.service.CurriculumImportService;
 import vn.edu.fpt.faaps.academic.service.TranscriptImportService;
@@ -31,7 +33,7 @@ import vn.edu.fpt.faaps.common.dto.ApiError;
 /**
  * Universal Unified Excel Import Controller.
  * Provides a single entry point for uploading Excel workbooks (.xlsx, .xls)
- * across academic domains (Transcripts, Courses, Curriculums) without breaking
+ * across academic domains (Transcripts, Courses, Curriculums, Attendance) without breaking
  * existing endpoints.
  */
 @RestController
@@ -40,14 +42,25 @@ public class UniversalImportController {
     private final TranscriptImportService transcriptImports;
     private final AdminCourseService courseService;
     private final CurriculumImportService curriculumImports;
+    private final AdminAttendanceService attendanceService;
 
     public UniversalImportController(
             TranscriptImportService transcriptImports,
             AdminCourseService courseService,
             CurriculumImportService curriculumImports) {
+        this(transcriptImports, courseService, curriculumImports, null);
+    }
+
+    @Autowired
+    public UniversalImportController(
+            TranscriptImportService transcriptImports,
+            AdminCourseService courseService,
+            CurriculumImportService curriculumImports,
+            AdminAttendanceService attendanceService) {
         this.transcriptImports = transcriptImports;
         this.courseService = courseService;
         this.curriculumImports = curriculumImports;
+        this.attendanceService = attendanceService;
     }
 
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -57,9 +70,12 @@ public class UniversalImportController {
             @RequestParam("type") String type,
             @RequestParam(value = "targetId", required = false) UUID targetId) throws IOException {
 
-        validateExcelFile(file);
-
         String normalizedType = type == null ? "" : type.trim().toUpperCase();
+        if ("ATTENDANCE".equals(normalizedType)) {
+            validateAttendanceFile(file);
+        } else {
+            validateExcelFile(file);
+        }
 
         authorize(session, normalizedType);
 
@@ -77,7 +93,13 @@ public class UniversalImportController {
                 }
                 yield ResponseEntity.ok(curriculumImports.preview(file.getInputStream()));
             }
-            default -> throw new IllegalArgumentException("Unsupported import type: " + type + ". Supported: TRANSCRIPT, COURSE, CURRICULUM");
+            case "ATTENDANCE" -> {
+                if (attendanceService == null) {
+                    throw new IllegalStateException("Attendance import service is not configured");
+                }
+                yield ResponseEntity.ok(attendanceService.previewImport(file));
+            }
+            default -> throw new IllegalArgumentException("Unsupported import type: " + type + ". Supported: TRANSCRIPT, COURSE, CURRICULUM, ATTENDANCE");
         };
     }
 
@@ -116,6 +138,16 @@ public class UniversalImportController {
                 int count = curriculumImports.confirm(request.targetId(), request.curriculumItems());
                 yield ResponseEntity.ok(Map.of("success", true, "importedCount", count, "message", "Successfully imported " + count + " curriculum course(s)"));
             }
+            case "ATTENDANCE" -> {
+                if (attendanceService == null) {
+                    throw new IllegalStateException("Attendance import service is not configured");
+                }
+                UUID id = request.importId() != null ? request.importId() : request.targetId();
+                if (id == null) {
+                    throw new IllegalArgumentException("importId is required for attendance import confirmation");
+                }
+                yield ResponseEntity.ok(attendanceService.confirmImport(id));
+            }
             default -> throw new IllegalArgumentException("Unsupported import type: " + request.type());
         };
     }
@@ -128,6 +160,18 @@ public class UniversalImportController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=transcript-import-errors.xlsx")
                 .body(transcriptImports.errorWorkbook(session.id(), id));
+    }
+
+    private void validateAttendanceFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Uploaded file is empty");
+        }
+        String filename = file.getOriginalFilename();
+        if (filename == null || (!filename.toLowerCase().endsWith(".xlsx")
+                && !filename.toLowerCase().endsWith(".xls")
+                && !filename.toLowerCase().endsWith(".csv"))) {
+            throw new InvalidFileFormatException("Invalid file format. Please upload an Excel workbook (.xlsx, .xls) or CSV (.csv).");
+        }
     }
 
     private void validateExcelFile(MultipartFile file) {

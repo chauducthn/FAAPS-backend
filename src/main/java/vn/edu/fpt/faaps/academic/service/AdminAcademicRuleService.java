@@ -29,7 +29,7 @@ public class AdminAcademicRuleService {
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("page or size is invalid");
         }
-        if (status != null && !status.equalsIgnoreCase("ALL") && !List.of("ACTIVE", "INACTIVE").contains(status.toUpperCase())) {
+        if (status != null && !status.equalsIgnoreCase("ALL") && !List.of("ACTIVE", "INACTIVE", "DRAFT").contains(status.toUpperCase())) {
             throw new IllegalArgumentException("status is invalid");
         }
 
@@ -37,8 +37,12 @@ public class AdminAcademicRuleService {
         List<Object> params = new ArrayList<>();
 
         if (status != null && !status.equalsIgnoreCase("ALL")) {
-            where.append(" AND ap.is_active = ?");
-            params.add(status.equalsIgnoreCase("ACTIVE"));
+            if (status.equalsIgnoreCase("DRAFT")) {
+                where.append(" AND ap.is_active IS NULL");
+            } else {
+                where.append(" AND ap.is_active = ?");
+                params.add(status.equalsIgnoreCase("ACTIVE"));
+            }
         }
 
         if (policyType != null && !policyType.isBlank() && !policyType.equalsIgnoreCase("ALL")) {
@@ -116,8 +120,17 @@ public class AdminAcademicRuleService {
     public RuleSummary create(UUID curriculumVersionId, String policyType, String conditionExpression,
             String restrictionExpression, Boolean approvalRequired, Integer priority,
             String description, String displayMessage, Boolean isActive) {
-        if (curriculumVersionId == null) {
-            throw new IllegalArgumentException("curriculumVersionId is required");
+        return create(curriculumVersionId, policyType, conditionExpression, restrictionExpression,
+                approvalRequired, priority, description, displayMessage, isActive, null);
+    }
+
+    @Transactional
+    public RuleSummary create(UUID curriculumVersionId, String policyType, String conditionExpression,
+            String restrictionExpression, Boolean approvalRequired, Integer priority,
+            String description, String displayMessage, Boolean isActive, String status) {
+        UUID effectiveCvId = curriculumVersionId != null ? curriculumVersionId : resolveDefaultCurriculumVersionId();
+        if (effectiveCvId == null) {
+            throw new IllegalArgumentException("curriculumVersionId is required when no curriculum versions exist");
         }
         if (policyType == null || policyType.isBlank()) {
             throw new IllegalArgumentException("policyType is required");
@@ -128,7 +141,7 @@ public class AdminAcademicRuleService {
         }
 
         UUID id = UUID.randomUUID();
-        boolean active = isActive == null || isActive;
+        Boolean active = resolveActiveFlag(status, isActive, Boolean.TRUE);
         boolean approval = approvalRequired != null && approvalRequired;
         int prio = priority != null ? priority : 0;
 
@@ -138,16 +151,44 @@ public class AdminAcademicRuleService {
                     is_active, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """,
-                id.toString(), curriculumVersionId.toString(), type, conditionExpression,
+                id.toString(), effectiveCvId.toString(), type, conditionExpression,
                 restrictionExpression, approval, prio, description, displayMessage, active);
 
         return detail(id);
+    }
+
+    private UUID resolveDefaultCurriculumVersionId() {
+        try {
+            List<String> ids = jdbc.query(
+                    "SELECT id FROM curriculum_versions ORDER BY is_current DESC, created_at DESC LIMIT 1",
+                    (rs, row) -> rs.getString(1));
+            if (!ids.isEmpty() && ids.get(0) != null) {
+                return UUID.fromString(ids.get(0));
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            List<String> ids = jdbc.query("SELECT id FROM curriculum_versions LIMIT 1", (rs, row) -> rs.getString(1));
+            if (!ids.isEmpty() && ids.get(0) != null) {
+                return UUID.fromString(ids.get(0));
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     @Transactional
     public RuleSummary update(UUID id, UUID curriculumVersionId, String policyType,
             String conditionExpression, String restrictionExpression, Boolean approvalRequired,
             Integer priority, String description, String displayMessage, Boolean isActive) {
+        return update(id, curriculumVersionId, policyType, conditionExpression, restrictionExpression,
+                approvalRequired, priority, description, displayMessage, isActive, null);
+    }
+
+    @Transactional
+    public RuleSummary update(UUID id, UUID curriculumVersionId, String policyType,
+            String conditionExpression, String restrictionExpression, Boolean approvalRequired,
+            Integer priority, String description, String displayMessage, Boolean isActive, String status) {
         RuleSummary current = detail(id);
         UUID newCvId = curriculumVersionId != null ? curriculumVersionId : current.curriculumVersionId();
         String newType = current.policyType();
@@ -163,7 +204,8 @@ public class AdminAcademicRuleService {
         int newPrio = priority != null ? priority : current.priority();
         String newDesc = description != null ? description : current.description();
         String newMsg = displayMessage != null ? displayMessage : current.displayMessage();
-        boolean newActive = isActive != null ? isActive : current.isActive();
+        Boolean currentActive = "DRAFT".equalsIgnoreCase(current.status()) ? null : current.isActive();
+        Boolean newActive = resolveActiveFlag(status, isActive, currentActive);
 
         jdbc.update("""
                 UPDATE academic_policies
@@ -180,10 +222,33 @@ public class AdminAcademicRuleService {
 
     @Transactional
     public RuleSummary updateStatus(UUID id, boolean isActive) {
-        detail(id);
+        return updateStatus(id, isActive, null);
+    }
+
+    @Transactional
+    public RuleSummary updateStatus(UUID id, Boolean isActive, String status) {
+        RuleSummary current = detail(id);
+        Boolean currentActive = "DRAFT".equalsIgnoreCase(current.status()) ? null : current.isActive();
+        Boolean newActive = resolveActiveFlag(status, isActive, currentActive);
         jdbc.update("UPDATE academic_policies SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                isActive, id.toString());
+                newActive, id.toString());
         return detail(id);
+    }
+
+    private Boolean resolveActiveFlag(String status, Boolean isActive, Boolean fallback) {
+        if (status != null && !status.isBlank()) {
+            String normalized = status.strip().toUpperCase();
+            return switch (normalized) {
+                case "ACTIVE" -> Boolean.TRUE;
+                case "INACTIVE" -> Boolean.FALSE;
+                case "DRAFT" -> null;
+                default -> throw new IllegalArgumentException("status is invalid");
+            };
+        }
+        if (isActive != null) {
+            return isActive;
+        }
+        return fallback;
     }
 
     @Transactional
@@ -197,6 +262,9 @@ public class AdminAcademicRuleService {
     }
 
     private RuleSummary mapRule(ResultSet rs) throws SQLException {
+        Object activeObj = rs.getObject("is_active");
+        String status = activeObj == null ? "DRAFT" : (rs.getBoolean("is_active") ? "ACTIVE" : "INACTIVE");
+        boolean isActive = "ACTIVE".equals(status);
         return new RuleSummary(
                 UUID.fromString(rs.getString("id")),
                 rs.getString("curriculum_version_id") != null ? UUID.fromString(rs.getString("curriculum_version_id")) : null,
@@ -211,7 +279,8 @@ public class AdminAcademicRuleService {
                 rs.getInt("priority"),
                 rs.getString("description"),
                 rs.getString("display_message"),
-                rs.getBoolean("is_active"),
+                isActive,
+                status,
                 rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null,
                 rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null
         );
@@ -220,7 +289,15 @@ public class AdminAcademicRuleService {
     public record RuleSummary(UUID id, UUID curriculumVersionId, String curriculumVersion, String curriculumName,
             String majorCode, String majorName, String policyType, String conditionExpression,
             String restrictionExpression, boolean approvalRequired, int priority, String description,
-            String displayMessage, boolean isActive, LocalDateTime createdAt, LocalDateTime updatedAt) {
+            String displayMessage, boolean isActive, String status, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        public RuleSummary(UUID id, UUID curriculumVersionId, String curriculumVersion, String curriculumName,
+                String majorCode, String majorName, String policyType, String conditionExpression,
+                String restrictionExpression, boolean approvalRequired, int priority, String description,
+                String displayMessage, boolean isActive, LocalDateTime createdAt, LocalDateTime updatedAt) {
+            this(id, curriculumVersionId, curriculumVersion, curriculumName, majorCode, majorName, policyType,
+                    conditionExpression, restrictionExpression, approvalRequired, priority, description,
+                    displayMessage, isActive, isActive ? "ACTIVE" : "INACTIVE", createdAt, updatedAt);
+        }
     }
 
     public record Page(List<RuleSummary> items, int page, int size, long totalElements, long totalPages) {

@@ -272,7 +272,7 @@ class AdminApiConventionTest {
         HttpRequest invalidCourseReq = HttpRequest.newBuilder(baseUrl.resolve("/api/admin/courses"))
                 .header("Content-Type", "application/json")
                 .header("X-XSRF-TOKEN", csrf)
-                .POST(HttpRequest.BodyPublishers.ofString("{\"code\":\"\",\"name\":\"\",\"credits\":0}"))
+                .POST(HttpRequest.BodyPublishers.ofString("{\"code\":\"\",\"name\":\"\",\"credits\":-1}"))
                 .build();
         HttpResponse<String> courseResp = send(adminClient, invalidCourseReq);
         assertEquals(400, courseResp.statusCode());

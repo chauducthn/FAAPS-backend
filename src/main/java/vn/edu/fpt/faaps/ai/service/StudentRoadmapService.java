@@ -7,8 +7,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.GenerateRoadmapDto;
@@ -34,23 +36,90 @@ class StudentRoadmapService {
     }
 
     StudyRoadmapDto generate(UUID studentId, GenerateRoadmapDto input) {
+        validateInput(input);
+        updateExpectedGraduationIfProvided(studentId, input);
         List<Map<String, Object>> courses = curriculumCourses(studentId);
         int maxCredits = input != null && input.maxCreditsPerSemester() != null
                 && input.maxCreditsPerSemester() > 0 ? input.maxCreditsPerSemester() : 20;
-        Map<Integer, List<RoadmapCourseDto>> grouped = groupCourses(courses, maxCredits);
+        Map<Integer, List<RoadmapCourseDto>> grouped = groupCourses(courses, maxCredits, input);
         List<RoadmapSemesterDto> semesters = semesters(grouped, maxCredits);
         int totalCredits = semesters.stream().mapToInt(RoadmapSemesterDto::totalCredits).sum();
         String planId = UUID.randomUUID().toString();
         save(studentId, planId, semesters, totalCredits);
-        String description = input != null && input.goal() != null
-                ? "Customized for goal: " + input.goal()
-                : "Optimal curriculum progression based on prerequisites and university guidelines.";
+        String description = buildDescription(input);
         return new StudyRoadmapDto(planId, studentId.toString(), "Curriculum Study Roadmap",
                 description, LocalDateTime.now().format(ISO_DT), "RULE_BASED", null,
                 semesters.size(), totalCredits, semesters);
     }
 
+    private void validateInput(GenerateRoadmapDto input) {
+        if (input == null) {
+            return;
+        }
+        if (input.maxCreditsPerSemester() != null && (input.maxCreditsPerSemester() < 1 || input.maxCreditsPerSemester() > 30)) {
+            throw new IllegalArgumentException("maxCreditsPerSemester must be between 1 and 30");
+        }
+        if (input.targetGpa() != null && (input.targetGpa() < 0.0 || input.targetGpa() > 10.0)) {
+            throw new IllegalArgumentException("targetGpa must be between 0.00 and 10.00");
+        }
+        if (input.orientation() != null && !input.orientation().isBlank()) {
+            String orient = input.orientation().strip().toUpperCase();
+            if (!Set.of("ACADEMIC", "JOB", "RESEARCH", "ENTREPRENEURIAL").contains(orient)) {
+                throw new IllegalArgumentException("orientation must be ACADEMIC, JOB, RESEARCH, or ENTREPRENEURIAL");
+            }
+        }
+    }
+
+    private void updateExpectedGraduationIfProvided(UUID studentId, GenerateRoadmapDto input) {
+        if (input == null || input.expectedGraduationSemesterId() == null || input.expectedGraduationSemesterId().isBlank()) {
+            return;
+        }
+        String expSemId = input.expectedGraduationSemesterId().strip();
+        try {
+            List<String> exists = jdbc.query("SELECT id FROM semesters WHERE id = ?",
+                    (rs, row) -> rs.getString(1), expSemId);
+            if (!exists.isEmpty()) {
+                jdbc.update("UPDATE students SET expected_graduation_semester_id = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                        expSemId, studentId.toString());
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private String buildDescription(GenerateRoadmapDto input) {
+        if (input == null) {
+            return "Optimal curriculum progression based on prerequisites and university guidelines.";
+        }
+        List<String> parts = new ArrayList<>();
+        if (input.goal() != null && !input.goal().isBlank()) {
+            parts.add("Customized for goal: " + input.goal().strip());
+        }
+        if (input.orientation() != null && !input.orientation().isBlank()) {
+            parts.add("Orientation: " + input.orientation().strip().toUpperCase());
+        }
+        if (input.targetGpa() != null) {
+            parts.add(String.format(java.util.Locale.ROOT, "Target GPA: %.2f", input.targetGpa()));
+        }
+        if (input.expectedGraduationSemesterId() != null && !input.expectedGraduationSemesterId().isBlank()) {
+            String semCode = resolveSemesterCode(input.expectedGraduationSemesterId().strip());
+            parts.add("Target graduation: " + (semCode != null ? semCode : input.expectedGraduationSemesterId().strip()));
+        }
+        return parts.isEmpty()
+                ? "Optimal curriculum progression based on prerequisites and university guidelines."
+                : String.join(" | ", parts);
+    }
+
+    private String resolveSemesterCode(String semesterId) {
+        try {
+            return jdbc.query("SELECT code FROM semesters WHERE id = ?", (rs, row) -> rs.getString(1), semesterId)
+                    .stream().findFirst().orElse(null);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private List<Map<String, Object>> curriculumCourses(UUID studentId) {
+        Set<String> passedIds = passedCourseIds(studentId);
         String curriculumId = jdbc.queryForList(
                 "SELECT curriculum_version_id FROM students WHERE user_id = ?", studentId.toString())
                 .stream().map(row -> row.get("curriculum_version_id")).filter(java.util.Objects::nonNull)
@@ -62,18 +131,39 @@ class StudentRoadmapService {
                 LEFT JOIN course_categories cat ON cat.id = c.category_id
                 WHERE cc.curriculum_version_id = ? ORDER BY cc.semester_number, c.code
                 """, curriculumId);
-        if (!courses.isEmpty()) return courses;
-        return jdbc.queryForList("""
-                SELECT c.id, c.code, c.name, c.credits, cat.name AS category_name,
-                       1 AS semester_number, 1 AS is_mandatory
-                FROM courses c LEFT JOIN course_categories cat ON cat.id = c.category_id LIMIT 20
-                """);
+        if (courses.isEmpty()) {
+            courses = jdbc.queryForList("""
+                    SELECT c.id, c.code, c.name, c.credits, cat.name AS category_name,
+                           1 AS semester_number, 1 AS is_mandatory
+                    FROM courses c LEFT JOIN course_categories cat ON cat.id = c.category_id LIMIT 20
+                    """);
+        }
+        if (passedIds.isEmpty()) {
+            return courses;
+        }
+        return courses.stream()
+                .filter(row -> row.get("id") == null || !passedIds.contains(row.get("id").toString()))
+                .toList();
     }
 
-    private Map<Integer, List<RoadmapCourseDto>> groupCourses(List<Map<String, Object>> rows, int maxCredits) {
+    private Set<String> passedCourseIds(UUID studentId) {
+        try {
+            return new HashSet<>(jdbc.query("""
+                    SELECT DISTINCT course_id FROM student_course_records
+                    WHERE student_id = ? AND status IN ('PASSED', 'EXEMPTED')
+                    """, (rs, row) -> rs.getString(1), studentId.toString()));
+        } catch (Exception ignored) {
+            return Set.of();
+        }
+    }
+
+    private Map<Integer, List<RoadmapCourseDto>> groupCourses(List<Map<String, Object>> rows, int maxCredits,
+            GenerateRoadmapDto input) {
         Map<Integer, List<RoadmapCourseDto>> grouped = new HashMap<>();
         int semester = 1;
         int creditsInSemester = 0;
+        String orientSuffix = input != null && input.orientation() != null && !input.orientation().isBlank()
+                ? " (" + input.orientation().strip().toUpperCase() + " track)" : "";
         for (Map<String, Object> row : rows) {
             int credits = ((Number) row.getOrDefault("credits", 3)).intValue();
             if (creditsInSemester + credits > maxCredits) {
@@ -84,8 +174,8 @@ class StudentRoadmapService {
             boolean mandatory = booleanValue(row.get("is_mandatory"));
             String courseId = row.get("id").toString();
             String reason = mandatory
-                    ? "Mandatory core curriculum course required for degree completion."
-                    : "Recommended elective to satisfy degree specialization requirements.";
+                    ? "Mandatory core curriculum course required for degree completion" + orientSuffix + "."
+                    : "Recommended elective to satisfy degree specialization requirements" + orientSuffix + ".";
             var course = new RoadmapCourseDto(courseId, (String) row.get("code"), (String) row.get("name"),
                     credits, (String) row.get("category_name"), mandatory, mandatory ? "HIGH" : "MEDIUM",
                     semester == 1 ? "IN_PROGRESS" : "PLANNED", reason, prerequisites(courseId));
@@ -114,13 +204,19 @@ class StudentRoadmapService {
     }
 
     private void save(UUID studentId, String planId, List<RoadmapSemesterDto> semesters, int totalCredits) {
+        String semesterId = resolveCurrentSemesterId();
+        Integer nextVersion = jdbc.queryForObject("""
+                SELECT COALESCE(MAX(version), 0) + 1 FROM study_plans
+                WHERE student_id = ? AND semester_id = ?
+                """, Integer.class, studentId.toString(), semesterId);
+        int version = nextVersion == null ? 1 : nextVersion;
         jdbc.update("UPDATE study_plans SET is_current = FALSE WHERE student_id = ?", studentId.toString());
         jdbc.update("""
                 INSERT INTO study_plans (id, student_id, semester_id, version, is_current, plan_type,
                     total_credits_planned, status, created_at, updated_at)
-                VALUES (?, ?, (SELECT id FROM semesters LIMIT 1), 1, TRUE, 'REGULAR', ?, 'DRAFT',
+                VALUES (?, ?, ?, ?, TRUE, 'REGULAR', ?, 'DRAFT',
                     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, planId, studentId.toString(), totalCredits);
+                """, planId, studentId.toString(), semesterId, version, totalCredits);
         for (RoadmapSemesterDto semester : semesters) for (RoadmapCourseDto course : semester.courses()) {
             jdbc.update("""
                     INSERT INTO study_plan_courses (id, study_plan_id, course_id, planned_credits, priority, notes)
@@ -130,10 +226,33 @@ class StudentRoadmapService {
             jdbc.update("""
                     INSERT INTO course_recommendations (id, student_id, course_id, semester_id,
                         recommendation_source, confidence_score, reasoning, priority, status)
-                    VALUES (?, ?, ?, (SELECT id FROM semesters LIMIT 1), 'CURRICULUM', NULL, ?, ?, 'PENDING')
+                    VALUES (?, ?, ?, ?, 'CURRICULUM', NULL, ?, ?, 'PENDING')
                     """, UUID.randomUUID().toString(), studentId.toString(), course.courseId(),
-                    course.reason(), course.priority());
+                    semesterId, course.reason(), course.priority());
         }
+    }
+
+    private String resolveCurrentSemesterId() {
+        try {
+            List<String> current = jdbc.query(
+                    "SELECT id FROM semesters WHERE is_current = TRUE ORDER BY start_date DESC LIMIT 1",
+                    (rs, row) -> rs.getString(1));
+            if (!current.isEmpty()) {
+                return current.get(0);
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            List<String> byDate = jdbc.query(
+                    "SELECT id FROM semesters ORDER BY start_date DESC LIMIT 1",
+                    (rs, row) -> rs.getString(1));
+            if (!byDate.isEmpty()) {
+                return byDate.get(0);
+            }
+        } catch (Exception ignored) {
+        }
+        return jdbc.query("SELECT id FROM semesters LIMIT 1", (rs, row) -> rs.getString(1))
+                .stream().findFirst().orElse(null);
     }
 
     private StudyRoadmapDto build(String planId, UUID studentId, String generatedAt) {

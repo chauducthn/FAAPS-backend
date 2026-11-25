@@ -54,6 +54,7 @@ class AdminCourseServiceTest {
                     description TEXT,
                     objectives TEXT,
                     learning_outcomes TEXT,
+                    material_link VARCHAR(500),
                     status VARCHAR(20) DEFAULT 'ACTIVE',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -165,6 +166,64 @@ class AdminCourseServiceTest {
                 () -> courses.delete(course.id()));
         assertEquals(HttpStatus.CONFLICT, new AdminCourseController(courses).conflict(conflict).getStatusCode());
         assertEquals(course.id(), courses.detail(course.id()).id());
+    }
+
+    @Test
+    void materialLinkIsStoredSeparatelyFromObjectivesValidatedAndClearedByNullOrEmptyString() {
+        AdminCourseController controller = new AdminCourseController(courses);
+
+        // 1. Create with objectives + materialLink
+        AdminCourseController.CreateCourseRequest createReq = new AdminCourseController.CreateCourseRequest(
+                "PRF192", "Programming Fundamentals", 3, catGeneral,
+                "Desc", "Real objectives text...", "LO text",
+                "https://drive.google.com/drive/folders/abc123", "ACTIVE", List.of());
+        AdminCourseService.CourseDetail created = controller.create(createReq).getBody();
+        assertNotNull(created);
+        assertEquals("Real objectives text...", created.objectives());
+        assertEquals("https://drive.google.com/drive/folders/abc123", created.materialLink());
+
+        // 2. Update materialLink to a new URL without losing objectives
+        AdminCourseService.CourseDetail updatedLink = controller.update(created.id(),
+                new AdminCourseController.UpdateCourseRequest(
+                        "PRF192", "Programming Fundamentals", 3, catGeneral,
+                        null, null, null, "https://flm.fpt.edu.vn/gui/role/student/SyllabusDetails?sylId=PRF192",
+                        "ACTIVE", null));
+        assertEquals("Real objectives text...", updatedLink.objectives());
+        assertEquals("https://flm.fpt.edu.vn/gui/role/student/SyllabusDetails?sylId=PRF192", updatedLink.materialLink());
+
+        // 3. Clear materialLink with null while preserving objectives
+        AdminCourseService.CourseDetail clearedByNull = controller.update(created.id(),
+                new AdminCourseController.UpdateCourseRequest(
+                        "PRF192", "Programming Fundamentals", 3, catGeneral,
+                        null, null, null, null, "ACTIVE", null));
+        assertNull(clearedByNull.materialLink());
+        assertEquals("Real objectives text...", clearedByNull.objectives());
+
+        // 4. Re-add link, then clear with "" while preserving objectives
+        controller.update(created.id(),
+                new AdminCourseController.UpdateCourseRequest(
+                        "PRF192", "Programming Fundamentals", 3, catGeneral,
+                        null, null, null, "https://drive.google.com/drive/folders/abc123", "ACTIVE", null));
+        AdminCourseService.CourseDetail clearedByEmpty = controller.update(created.id(),
+                new AdminCourseController.UpdateCourseRequest(
+                        "PRF192", "Programming Fundamentals", 3, catGeneral,
+                        null, null, null, "", "ACTIVE", null));
+        assertNull(clearedByEmpty.materialLink());
+        assertEquals("Real objectives text...", clearedByEmpty.objectives());
+
+        // 5. Invalid link ("not a link") and >500 chars are rejected
+        assertThrows(IllegalArgumentException.class, () -> controller.create(
+                new AdminCourseController.CreateCourseRequest(
+                        "PRO192", "OOP", 3, catGeneral, null, null, null, "not a link", "ACTIVE", List.of())));
+        String longLink = "https://example.com/" + "a".repeat(500);
+        assertThrows(IllegalArgumentException.class, () -> controller.create(
+                new AdminCourseController.CreateCourseRequest(
+                        "PRO192", "OOP", 3, catGeneral, null, null, null, longLink, "ACTIVE", List.of())));
+
+        // 6. Bulk status endpoint
+        var bulkResp = controller.bulkStatus(new AdminCourseController.BulkStatusRequest(List.of(created.id()), "INACTIVE"));
+        assertEquals(HttpStatus.OK, bulkResp.getStatusCode());
+        assertEquals("INACTIVE", courses.detail(created.id()).status());
     }
 
     @Test

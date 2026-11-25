@@ -22,11 +22,18 @@ public final class CourseReadRepository {
     }
 
     public Page list(String search, String status, UUID categoryId, int page, int size, String sort) {
+        return list(search, status, categoryId, null, page, size, sort);
+    }
+
+    public Page list(String search, String status, UUID categoryId, Integer credits, int page, int size, String sort) {
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("page or size is invalid");
         }
         if (status != null && !status.equalsIgnoreCase("ALL") && !List.of("ACTIVE", "INACTIVE").contains(status.toUpperCase())) {
             throw new IllegalArgumentException("status is invalid");
+        }
+        if (credits != null && credits < 0) {
+            throw new IllegalArgumentException("credits must be non-negative");
         }
 
         StringBuilder where = new StringBuilder(" WHERE 1 = 1");
@@ -40,6 +47,11 @@ public final class CourseReadRepository {
         if (categoryId != null) {
             where.append(" AND c.category_id = ?");
             params.add(categoryId.toString());
+        }
+
+        if (credits != null) {
+            where.append(" AND c.credits = ?");
+            params.add(credits);
         }
 
         if (search != null && !search.isBlank()) {
@@ -68,10 +80,20 @@ public final class CourseReadRepository {
             };
         }
 
-        String sql = """
+        String sqlWithMaterialLink = """
                 SELECT c.id, c.code, c.name, c.credits, c.category_id,
                        cat.code AS category_code, cat.name AS category_name,
-                       c.description, c.objectives, c.learning_outcomes,
+                       c.description, c.objectives, c.learning_outcomes, c.material_link,
+                       c.status, c.created_at, c.updated_at,
+                       (SELECT COUNT(*) FROM course_prerequisites cp WHERE cp.course_id = c.id) AS prerequisite_count,
+                       (SELECT COUNT(*) FROM curriculum_courses cc WHERE cc.course_id = c.id) AS curriculum_count
+                FROM courses c
+                LEFT JOIN course_categories cat ON cat.id = c.category_id
+                """ + where + orderBy + " LIMIT ? OFFSET ?";
+        String sqlLegacy = """
+                SELECT c.id, c.code, c.name, c.credits, c.category_id,
+                       cat.code AS category_code, cat.name AS category_name,
+                       c.description, c.objectives, c.learning_outcomes, NULL AS material_link,
                        c.status, c.created_at, c.updated_at,
                        (SELECT COUNT(*) FROM course_prerequisites cp WHERE cp.course_id = c.id) AS prerequisite_count,
                        (SELECT COUNT(*) FROM curriculum_courses cc WHERE cc.course_id = c.id) AS curriculum_count
@@ -82,23 +104,43 @@ public final class CourseReadRepository {
         params.add(size);
         params.add(page * size);
 
-        List<CourseSummary> items = jdbc.query(sql, (rs, rowNum) -> mapSummary(rs), params.toArray());
+        List<CourseSummary> items;
+        try {
+            items = jdbc.query(sqlWithMaterialLink, (rs, rowNum) -> mapSummary(rs), params.toArray());
+        } catch (Exception ex) {
+            items = jdbc.query(sqlLegacy, (rs, rowNum) -> mapSummary(rs), params.toArray());
+        }
         long totalPages = (totalElements + size - 1) / size;
         return new Page(items, page, size, totalElements, totalPages);
     }
 
     public CourseDetail detail(UUID id) {
-        String sql = """
+        String sqlWithMaterialLink = """
                 SELECT c.id, c.code, c.name, c.credits, c.category_id,
                        cat.code AS category_code, cat.name AS category_name,
-                       c.description, c.objectives, c.learning_outcomes,
+                       c.description, c.objectives, c.learning_outcomes, c.material_link,
                        c.status, c.created_at, c.updated_at,
                        (SELECT COUNT(*) FROM curriculum_courses cc WHERE cc.course_id = c.id) AS curriculum_count
                 FROM courses c
                 LEFT JOIN course_categories cat ON cat.id = c.category_id
                 WHERE c.id = ?
                 """;
-        List<CourseDetail> results = jdbc.query(sql, (rs, rowNum) -> mapDetail(rs), id.toString());
+        String sqlLegacy = """
+                SELECT c.id, c.code, c.name, c.credits, c.category_id,
+                       cat.code AS category_code, cat.name AS category_name,
+                       c.description, c.objectives, c.learning_outcomes, NULL AS material_link,
+                       c.status, c.created_at, c.updated_at,
+                       (SELECT COUNT(*) FROM curriculum_courses cc WHERE cc.course_id = c.id) AS curriculum_count
+                FROM courses c
+                LEFT JOIN course_categories cat ON cat.id = c.category_id
+                WHERE c.id = ?
+                """;
+        List<CourseDetail> results;
+        try {
+            results = jdbc.query(sqlWithMaterialLink, (rs, rowNum) -> mapDetail(rs), id.toString());
+        } catch (Exception ex) {
+            results = jdbc.query(sqlLegacy, (rs, rowNum) -> mapDetail(rs), id.toString());
+        }
         if (results.isEmpty()) {
             throw new NotFound();
         }
@@ -135,8 +177,8 @@ public final class CourseReadRepository {
         return new CourseDetail(base.id(), base.code(), base.name(), base.credits(),
                 base.categoryId(), base.categoryCode(), base.categoryName(),
                 base.description(), base.objectives(), base.learningOutcomes(),
-                base.status(), base.createdAt(), base.updatedAt(), prerequisites,
-                referencedBy, base.usedInCurriculumCount());
+                base.materialLink(), base.status(), base.createdAt(), base.updatedAt(),
+                prerequisites, referencedBy, base.usedInCurriculumCount());
     }
 
     private CourseSummary mapSummary(ResultSet rs) throws SQLException {
@@ -149,6 +191,7 @@ public final class CourseReadRepository {
                 rs.getString("category_code"),
                 rs.getString("category_name"),
                 rs.getString("description"),
+                rs.getString("material_link"),
                 rs.getString("status"),
                 rs.getInt("prerequisite_count"),
                 rs.getInt("curriculum_count"),
@@ -169,6 +212,7 @@ public final class CourseReadRepository {
                 rs.getString("description"),
                 rs.getString("objectives"),
                 rs.getString("learning_outcomes"),
+                rs.getString("material_link"),
                 rs.getString("status"),
                 rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null,
                 rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null,
