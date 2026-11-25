@@ -1,6 +1,7 @@
 package vn.edu.fpt.faaps.dashboard.controller;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,9 +20,11 @@ import vn.edu.fpt.faaps.common.dto.ApiError;
 @RequestMapping("/api/admin")
 public class AdminOverviewController {
     private final JdbcTemplate jdbc;
+    private final AdminAppointmentQuery appointmentQuery;
 
     public AdminOverviewController(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.appointmentQuery = new AdminAppointmentQuery(jdbc);
     }
 
     @GetMapping("/majors")
@@ -79,123 +82,12 @@ public class AdminOverviewController {
             @RequestParam(required = false) String toDate,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        if (page < 0 || size < 1 || size > 100) {
-            throw new IllegalArgumentException("page or size is invalid");
-        }
-        if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status)
-                && !List.of("PENDING", "ACCEPTED", "REJECTED", "SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW").contains(status)) {
-            throw new IllegalArgumentException("status is invalid");
-        }
-        StringBuilder where = new StringBuilder(" WHERE 1 = 1");
-        java.util.ArrayList<Object> values = new java.util.ArrayList<>();
-        if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status)) {
-            where.append(" AND session.status = ?");
-            values.add(status);
-        }
-        if (advisorId != null) {
-            where.append(" AND session.advisor_id = ?");
-            values.add(advisorId.toString());
-        }
-        if (fromDate != null && !fromDate.isBlank()) {
-            try {
-                LocalDate from = LocalDate.parse(fromDate.strip());
-                where.append(" AND session.scheduled_at >= ?");
-                values.add(java.sql.Timestamp.valueOf(from.atStartOfDay()));
-            } catch (RuntimeException ex) {
-                throw new IllegalArgumentException("fromDate must use yyyy-MM-dd");
-            }
-        }
-        if (toDate != null && !toDate.isBlank()) {
-            try {
-                LocalDate to = LocalDate.parse(toDate.strip());
-                where.append(" AND session.scheduled_at < ?");
-                values.add(java.sql.Timestamp.valueOf(to.plusDays(1).atStartOfDay()));
-            } catch (RuntimeException ex) {
-                throw new IllegalArgumentException("toDate must use yyyy-MM-dd");
-            }
-        }
-        if (search != null && !search.isBlank()) {
-            where.append(" AND (LOWER(student.full_name) LIKE ? OR LOWER(advisor.full_name) LIKE ? OR LOWER(session.agenda) LIKE ?)");
-            String term = "%" + search.strip().toLowerCase() + "%";
-            values.add(term);
-            values.add(term);
-            values.add(term);
-        }
-        String from = " FROM advising_sessions session JOIN users student ON student.id = session.student_id JOIN users advisor ON advisor.id = session.advisor_id";
-        long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, values.toArray());
-        values.add(size);
-        values.add(page * size);
-        List<Appointment> items;
-        try {
-            items = jdbc.query("""
-                    SELECT session.id, session.student_id, student.full_name AS student_name,
-                           session.advisor_id, advisor.full_name AS advisor_name,
-                           session.scheduled_at, session.ended_at, session.location,
-                           session.agenda, session.summary, session.consultation_summary, session.status
-                    """ + from + where + " ORDER BY session.scheduled_at DESC, session.id DESC LIMIT ? OFFSET ?",
-                    (result, row) -> appointment(result), values.toArray());
-        } catch (Exception ex1) {
-            try {
-                items = jdbc.query("""
-                        SELECT session.id, session.student_id, student.full_name AS student_name,
-                               session.advisor_id, advisor.full_name AS advisor_name,
-                               session.scheduled_at, session.ended_at, session.location,
-                               session.agenda, session.summary, NULL AS consultation_summary, session.status
-                        """ + from + where + " ORDER BY session.scheduled_at DESC, session.id DESC LIMIT ? OFFSET ?",
-                        (result, row) -> appointment(result), values.toArray());
-            } catch (Exception ex2) {
-                items = jdbc.query("""
-                        SELECT session.id, session.student_id, student.full_name AS student_name,
-                               session.advisor_id, advisor.full_name AS advisor_name,
-                               session.scheduled_at, session.ended_at, session.location,
-                               session.agenda, session.status
-                        """ + from + where + " ORDER BY session.scheduled_at DESC, session.id DESC LIMIT ? OFFSET ?",
-                        (result, row) -> appointment(result), values.toArray());
-            }
-        }
-        return new Page<>(items, page, size, total, (total + size - 1) / size);
+        return appointmentQuery.list(status, search, advisorId, fromDate, toDate, page, size);
     }
 
     @GetMapping("/appointments/{id}")
     public Appointment appointment(@PathVariable UUID id) {
-        List<Appointment> rows;
-        try {
-            rows = jdbc.query("""
-                    SELECT session.id, session.student_id, student.full_name AS student_name,
-                           session.advisor_id, advisor.full_name AS advisor_name,
-                           session.scheduled_at, session.ended_at, session.location,
-                           session.agenda, session.summary, session.consultation_summary, session.status
-                    FROM advising_sessions session
-                    JOIN users student ON student.id = session.student_id
-                    JOIN users advisor ON advisor.id = session.advisor_id
-                    WHERE session.id = ?
-                    """, (result, row) -> appointment(result), id.toString());
-        } catch (Exception ex1) {
-            try {
-                rows = jdbc.query("""
-                        SELECT session.id, session.student_id, student.full_name AS student_name,
-                               session.advisor_id, advisor.full_name AS advisor_name,
-                               session.scheduled_at, session.ended_at, session.location,
-                               session.agenda, session.summary, NULL AS consultation_summary, session.status
-                        FROM advising_sessions session
-                        JOIN users student ON student.id = session.student_id
-                        JOIN users advisor ON advisor.id = session.advisor_id
-                        WHERE session.id = ?
-                        """, (result, row) -> appointment(result), id.toString());
-            } catch (Exception ex2) {
-                rows = jdbc.query("""
-                        SELECT session.id, session.student_id, student.full_name AS student_name,
-                               session.advisor_id, advisor.full_name AS advisor_name,
-                               session.scheduled_at, session.ended_at, session.location,
-                               session.agenda, session.status
-                        FROM advising_sessions session
-                        JOIN users student ON student.id = session.student_id
-                        JOIN users advisor ON advisor.id = session.advisor_id
-                        WHERE session.id = ?
-                        """, (result, row) -> appointment(result), id.toString());
-            }
-        }
-        return rows.stream().findFirst().orElseThrow(NotFound::new);
+        return appointmentQuery.findById(id).orElseThrow(NotFound::new);
     }
 
     @GetMapping("/appointments/summary")
@@ -218,32 +110,6 @@ public class AdminOverviewController {
         return jdbc.queryForObject("SELECT COUNT(*) FROM advising_sessions WHERE status = ?", Long.class, status);
     }
 
-    private Appointment appointment(java.sql.ResultSet result) throws java.sql.SQLException {
-        String status = result.getString("status");
-        String summary = null;
-        String dedicatedCs = null;
-        try {
-            summary = result.getString("summary");
-        } catch (Exception ignored) {
-        }
-        try {
-            dedicatedCs = result.getString("consultation_summary");
-        } catch (Exception ignored) {
-        }
-        String consultationSummary = dedicatedCs != null ? dedicatedCs
-                : ("COMPLETED".equalsIgnoreCase(status) ? summary : null);
-        String decisionNote = (dedicatedCs != null && dedicatedCs.equals(summary) && "COMPLETED".equalsIgnoreCase(status))
-                ? null : ("COMPLETED".equalsIgnoreCase(status) && dedicatedCs == null ? null : summary);
-        return new Appointment(result.getString("id"), result.getString("student_id"),
-                result.getString("student_name"), result.getString("advisor_id"),
-                result.getString("advisor_name"), result.getTimestamp("scheduled_at") == null
-                        ? null : result.getTimestamp("scheduled_at").toLocalDateTime(),
-                result.getTimestamp("ended_at") == null
-                        ? null : result.getTimestamp("ended_at").toLocalDateTime(),
-                result.getString("location"), result.getString("agenda"),
-                decisionNote, consultationSummary, status);
-    }
-
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> invalid(IllegalArgumentException exception) {
         return ResponseEntity.badRequest().body(ApiError.of("INVALID_REQUEST", exception.getMessage()));
@@ -251,31 +117,27 @@ public class AdminOverviewController {
 
     @ExceptionHandler(NotFound.class)
     public ResponseEntity<ApiError> notFound() {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiError.of("APPOINTMENT_NOT_FOUND", "Appointment not found"));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiError.of("APPOINTMENT_NOT_FOUND", "Appointment not found"));
     }
 
-    public record MonthlyCount(String month, long students) {
-    }
+    public record MonthlyCount(String month, long students) {}
 
-    public record Major(UUID id, String code, String name) {
-    }
+    public record Major(UUID id, String code, String name) {}
 
     public record Appointment(String id, String studentId, String studentName,
-            String advisorId, String advisorName, java.time.LocalDateTime scheduledAt,
-            java.time.LocalDateTime endedAt, String location, String agenda,
+            String advisorId, String advisorName, LocalDateTime scheduledAt,
+            LocalDateTime endedAt, String location, String agenda,
             String decisionNote, String consultationSummary, String status) {
         public Appointment(String id, String studentId, String studentName,
-                String advisorId, String advisorName, java.time.LocalDateTime scheduledAt,
-                java.time.LocalDateTime endedAt, String location, String agenda, String status) {
+                String advisorId, String advisorName, LocalDateTime scheduledAt,
+                LocalDateTime endedAt, String location, String agenda, String status) {
             this(id, studentId, studentName, advisorId, advisorName, scheduledAt, endedAt,
                     location, agenda, null, null, status);
         }
     }
 
-    public record Page<T>(List<T> items, int page, int size, long totalElements, long totalPages) {
-    }
+    public record Page<T>(List<T> items, int page, int size, long totalElements, long totalPages) {}
 
-    private static class NotFound extends RuntimeException {
-    }
+    private static class NotFound extends RuntimeException {}
 }
-

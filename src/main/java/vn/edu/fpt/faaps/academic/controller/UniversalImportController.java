@@ -4,24 +4,15 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestPart;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import vn.edu.fpt.faaps.academic.service.AdminAttendanceService;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService;
@@ -40,9 +31,7 @@ import vn.edu.fpt.faaps.common.dto.ApiError;
 @RequestMapping("/api/imports")
 public class UniversalImportController {
     private final TranscriptImportService transcriptImports;
-    private final AdminCourseService courseService;
-    private final CurriculumImportService curriculumImports;
-    private final AdminAttendanceService attendanceService;
+    private final UniversalImportDispatcher dispatcher;
 
     public UniversalImportController(
             TranscriptImportService transcriptImports,
@@ -58,9 +47,8 @@ public class UniversalImportController {
             CurriculumImportService curriculumImports,
             AdminAttendanceService attendanceService) {
         this.transcriptImports = transcriptImports;
-        this.courseService = courseService;
-        this.curriculumImports = curriculumImports;
-        this.attendanceService = attendanceService;
+        this.dispatcher = new UniversalImportDispatcher(
+                transcriptImports, courseService, curriculumImports, attendanceService);
     }
 
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -69,136 +57,25 @@ public class UniversalImportController {
             @RequestPart("file") MultipartFile file,
             @RequestParam("type") String type,
             @RequestParam(value = "targetId", required = false) UUID targetId) throws IOException {
-
-        String normalizedType = type == null ? "" : type.trim().toUpperCase();
-        if ("ATTENDANCE".equals(normalizedType)) {
-            validateAttendanceFile(file);
-        } else {
-            validateExcelFile(file);
-        }
-
-        authorize(session, normalizedType);
-
-        return switch (normalizedType) {
-            case "TRANSCRIPT" -> {
-                if (session == null) {
-                    throw new AccessDeniedException("Authentication required for transcript import");
-                }
-                yield ResponseEntity.ok(transcriptImports.preview(session.id(), file));
-            }
-            case "COURSE" -> ResponseEntity.ok(courseService.previewXlsx(file.getInputStream()));
-            case "CURRICULUM" -> {
-                if (targetId == null) {
-                    throw new IllegalArgumentException("targetId (curriculumId) is required for CURRICULUM import");
-                }
-                yield ResponseEntity.ok(curriculumImports.preview(file.getInputStream()));
-            }
-            case "ATTENDANCE" -> {
-                if (attendanceService == null) {
-                    throw new IllegalStateException("Attendance import service is not configured");
-                }
-                yield ResponseEntity.ok(attendanceService.previewImport(file));
-            }
-            default -> throw new IllegalArgumentException("Unsupported import type: " + type + ". Supported: TRANSCRIPT, COURSE, CURRICULUM, ATTENDANCE");
-        };
+        return dispatcher.preview(session, file, type, targetId);
     }
 
     @PostMapping("/confirm")
     public ResponseEntity<?> confirm(
             @AuthenticationPrincipal AuthSession session,
             @Valid @RequestBody UniversalConfirmRequest request) {
-
-        String normalizedType = request.type() == null ? "" : request.type().trim().toUpperCase();
-
-        authorize(session, normalizedType);
-
-        return switch (normalizedType) {
-            case "TRANSCRIPT" -> {
-                if (session == null) {
-                    throw new AccessDeniedException("Authentication required for transcript confirmation");
-                }
-                UUID id = request.importId() != null ? request.importId() : request.targetId();
-                if (id == null) throw new IllegalArgumentException("importId is required for transcript confirmation");
-                yield ResponseEntity.ok(transcriptImports.confirm(session.id(), id));
-            }
-            case "COURSE" -> {
-                if (request.courseItems() == null || request.courseItems().isEmpty()) {
-                    throw new IllegalArgumentException("courseItems is required for course import confirmation");
-                }
-                int count = courseService.confirmImport(request.courseItems());
-                yield ResponseEntity.ok(Map.of("success", true, "importedCount", count, "message", "Successfully imported " + count + " course(s)"));
-            }
-            case "CURRICULUM" -> {
-                if (request.targetId() == null) {
-                    throw new IllegalArgumentException("targetId (curriculumId) is required for curriculum confirmation");
-                }
-                if (request.curriculumItems() == null || request.curriculumItems().isEmpty()) {
-                    throw new IllegalArgumentException("curriculumItems is required for curriculum import confirmation");
-                }
-                int count = curriculumImports.confirm(request.targetId(), request.curriculumItems());
-                yield ResponseEntity.ok(Map.of("success", true, "importedCount", count, "message", "Successfully imported " + count + " curriculum course(s)"));
-            }
-            case "ATTENDANCE" -> {
-                if (attendanceService == null) {
-                    throw new IllegalStateException("Attendance import service is not configured");
-                }
-                UUID id = request.importId() != null ? request.importId() : request.targetId();
-                if (id == null) {
-                    throw new IllegalArgumentException("importId is required for attendance import confirmation");
-                }
-                yield ResponseEntity.ok(attendanceService.confirmImport(id));
-            }
-            default -> throw new IllegalArgumentException("Unsupported import type: " + request.type());
-        };
+        return dispatcher.confirm(session, request);
     }
 
-    @GetMapping(value = "/transcripts/{id}/errors.xlsx", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    @GetMapping(value = "/transcripts/{id}/errors.xlsx",
+            produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     public ResponseEntity<byte[]> transcriptErrors(
             @AuthenticationPrincipal AuthSession session,
             @PathVariable UUID id) {
-        authorize(session, "TRANSCRIPT");
+        dispatcher.authorize(session, "TRANSCRIPT");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=transcript-import-errors.xlsx")
                 .body(transcriptImports.errorWorkbook(session.id(), id));
-    }
-
-    private void validateAttendanceFile(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("Uploaded file is empty");
-        }
-        String filename = file.getOriginalFilename();
-        if (filename == null || (!filename.toLowerCase().endsWith(".xlsx")
-                && !filename.toLowerCase().endsWith(".xls")
-                && !filename.toLowerCase().endsWith(".csv"))) {
-            throw new InvalidFileFormatException("Invalid file format. Please upload an Excel workbook (.xlsx, .xls) or CSV (.csv).");
-        }
-    }
-
-    private void validateExcelFile(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("Uploaded file is empty");
-        }
-        String filename = file.getOriginalFilename();
-        if (filename == null || (!filename.toLowerCase().endsWith(".xlsx") && !filename.toLowerCase().endsWith(".xls"))) {
-            throw new InvalidFileFormatException("Invalid file format. Please upload an Excel workbook (.xlsx or .xls).");
-        }
-        String contentType = file.getContentType();
-        if (contentType != null && !contentType.isBlank()) {
-            boolean isExcelMime = contentType.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                    || contentType.equals("application/vnd.ms-excel")
-                    || contentType.equals("application/octet-stream");
-            if (!isExcelMime) {
-                throw new InvalidFileFormatException("Invalid file format. Please upload an Excel workbook (.xlsx or .xls).");
-            }
-        }
-    }
-
-    private void authorize(AuthSession session, String type) {
-        if (session == null || ("TRANSCRIPT".equals(type)
-                ? !"STUDENT".equalsIgnoreCase(session.role())
-                : !"ADMIN".equalsIgnoreCase(session.role()))) {
-            throw new AccessDeniedException("Not authorized for this import type");
-        }
     }
 
     @ExceptionHandler(InvalidFileFormatException.class)
@@ -224,6 +101,6 @@ public class UniversalImportController {
             UUID targetId,
             UUID importId,
             List<AdminCourseService.ImportConfirmItem> courseItems,
-            List<CurriculumImportService.RowItem> curriculumItems
-    ) {}
+            List<CurriculumImportService.RowItem> curriculumItems) {
+    }
 }

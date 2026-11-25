@@ -1,26 +1,144 @@
 package vn.edu.fpt.faaps.academic.repository;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
 import vn.edu.fpt.faaps.academic.service.AdminCurriculumService;
-import java.time.*;import java.util.*;import org.springframework.jdbc.core.JdbcTemplate;
-public class CurriculumReadRepository{
- private final JdbcTemplate jdbc; public CurriculumReadRepository(JdbcTemplate jdbc){this.jdbc=jdbc;}
- public AdminCurriculumService.Page list(UUID major,String status,Boolean current,String search,int page,int size){
-  if(page<0||size<1||size>100)throw new IllegalArgumentException("page must be non-negative and size must be between 1 and 100");
-  String normalized=normalize(status);StringBuilder where=new StringBuilder(" WHERE 1=1");List<Object> args=new ArrayList<>();
-  if(major!=null){where.append(" AND cv.major_id=?");args.add(major.toString());}if(normalized!=null){where.append(" AND cv.status=?");args.add(normalized);}if(current!=null){where.append(" AND COALESCE(cv.is_current,FALSE)=?");args.add(current);}
-  if(search!=null&&!search.isBlank()){where.append(" AND (LOWER(cv.version) LIKE ? OR LOWER(cv.name) LIKE ? OR LOWER(m.code) LIKE ? OR LOWER(m.name) LIKE ?)");String t="%"+search.strip().toLowerCase()+"%";args.addAll(List.of(t,t,t,t));}
-  long total=jdbc.queryForObject("SELECT COUNT(*) FROM curriculum_versions cv JOIN majors m ON m.id=cv.major_id"+where,Long.class,args.toArray());List<Object> paging=new ArrayList<>(args);paging.add(size);paging.add((long)page*size);
-  var items=jdbc.query(select()+where+" ORDER BY m.code,cv.version,cv.id LIMIT ? OFFSET ?",this::map,paging.toArray());return new AdminCurriculumService.Page(items,page,size,total,(total+size-1)/size);
- }
- public AdminCurriculumService.CurriculumItem detail(UUID id){return jdbc.query(select()+" WHERE cv.id=?",this::map,id.toString()).stream().findFirst().orElseThrow(()->new AdminCurriculumService.NotFound("Curriculum or cohort not found"));}
- public List<AdminCurriculumService.CurriculumCourseItem> courses(UUID id){detail(id);return jdbc.query("""
-  SELECT cc.id,cc.curriculum_version_id,cc.course_id,c.code course_code,c.name course_name,c.credits,c.status course_status,cc.semester_number,COALESCE(cc.is_mandatory,TRUE) is_mandatory,cc.group_name,cc.created_at,cc.updated_at
-  FROM curriculum_courses cc JOIN courses c ON c.id=cc.course_id WHERE cc.curriculum_version_id=? ORDER BY cc.semester_number,c.code,cc.id
-  """,(rs,row)->new AdminCurriculumService.CurriculumCourseItem(UUID.fromString(rs.getString("id")),UUID.fromString(rs.getString("curriculum_version_id")),UUID.fromString(rs.getString("course_id")),rs.getString("course_code"),rs.getString("course_name"),rs.getInt("credits"),rs.getString("course_status"),rs.getInt("semester_number"),rs.getBoolean("is_mandatory"),rs.getString("group_name"),rs.getTimestamp("created_at").toLocalDateTime(),rs.getTimestamp("updated_at").toLocalDateTime()),id.toString());}
- private String normalize(String s){if(s==null||s.isBlank()||"ALL".equalsIgnoreCase(s))return null;String n=s.strip().toUpperCase();if(!List.of("ACTIVE","INACTIVE").contains(n))throw new IllegalArgumentException("status must be ACTIVE or INACTIVE");return n;}
- private String select(){return "SELECT cv.id,cv.major_id,m.code major_code,m.name major_name,cv.version,cv.name,cv.effective_from_semester_id,sf.code effective_from_semester_code,sf.start_date effective_from_date,cv.effective_to_semester_id,st.code effective_to_semester_code,st.end_date effective_to_date,cv.description,COALESCE(cv.is_current,FALSE) is_current,cv.status,(SELECT COUNT(*) FROM curriculum_courses cc WHERE cc.curriculum_version_id=cv.id) course_count,(SELECT COALESCE(SUM(c.credits),0) FROM curriculum_courses cc JOIN courses c ON c.id=cc.course_id WHERE cc.curriculum_version_id=cv.id) total_credits,cv.created_at,cv.updated_at FROM curriculum_versions cv JOIN majors m ON m.id=cv.major_id JOIN semesters sf ON sf.id=cv.effective_from_semester_id LEFT JOIN semesters st ON st.id=cv.effective_to_semester_id";}
- private AdminCurriculumService.CurriculumItem map(java.sql.ResultSet r,int row)throws java.sql.SQLException{return new AdminCurriculumService.CurriculumItem(UUID.fromString(r.getString("id")),UUID.fromString(r.getString("major_id")),r.getString("major_code"),r.getString("major_name"),r.getString("version"),r.getString("name"),UUID.fromString(r.getString("effective_from_semester_id")),r.getString("effective_from_semester_code"),date(r,"effective_from_date"),r.getString("effective_to_semester_id")==null?null:UUID.fromString(r.getString("effective_to_semester_id")),r.getString("effective_to_semester_code"),date(r,"effective_to_date"),r.getString("description"),r.getBoolean("is_current"),r.getString("status"),r.getInt("course_count"),r.getInt("total_credits"),r.getTimestamp("created_at").toLocalDateTime(),r.getTimestamp("updated_at").toLocalDateTime());}
- private LocalDate date(java.sql.ResultSet r,String c)throws java.sql.SQLException{var d=r.getDate(c);return d==null?null:d.toLocalDate();}
+
+public class CurriculumReadRepository {
+    private static final String BASE_SELECT = """
+            SELECT cv.id, cv.major_id, m.code major_code, m.name major_name,
+                   cv.version, cv.name, cv.effective_from_semester_id,
+                   sf.code effective_from_semester_code, sf.start_date effective_from_date,
+                   cv.effective_to_semester_id, st.code effective_to_semester_code,
+                   st.end_date effective_to_date, cv.description,
+                   COALESCE(cv.is_current, FALSE) is_current, cv.status,
+                   (SELECT COUNT(*) FROM curriculum_courses cc WHERE cc.curriculum_version_id = cv.id) course_count,
+                   (SELECT COALESCE(SUM(c.credits), 0)
+                    FROM curriculum_courses cc JOIN courses c ON c.id = cc.course_id
+                    WHERE cc.curriculum_version_id = cv.id) total_credits,
+                   cv.created_at, cv.updated_at
+            FROM curriculum_versions cv
+            JOIN majors m ON m.id = cv.major_id
+            JOIN semesters sf ON sf.id = cv.effective_from_semester_id
+            LEFT JOIN semesters st ON st.id = cv.effective_to_semester_id
+            """;
+
+    private final JdbcTemplate jdbc;
+
+    public CurriculumReadRepository(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    public AdminCurriculumService.Page list(
+            UUID major, String status, Boolean current, String search, int page, int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new IllegalArgumentException("page must be non-negative and size must be between 1 and 100");
+        }
+        String normalized = normalize(status);
+        StringBuilder where = new StringBuilder(" WHERE 1 = 1");
+        List<Object> args = new ArrayList<>();
+        if (major != null) {
+            where.append(" AND cv.major_id = ?");
+            args.add(major.toString());
+        }
+        if (normalized != null) {
+            where.append(" AND cv.status = ?");
+            args.add(normalized);
+        }
+        if (current != null) {
+            where.append(" AND COALESCE(cv.is_current, FALSE) = ?");
+            args.add(current);
+        }
+        if (search != null && !search.isBlank()) {
+            where.append(" AND (LOWER(cv.version) LIKE ? OR LOWER(cv.name) LIKE ?"
+                    + " OR LOWER(m.code) LIKE ? OR LOWER(m.name) LIKE ?)");
+            String term = "%" + search.strip().toLowerCase() + "%";
+            args.addAll(List.of(term, term, term, term));
+        }
+        String countSql = "SELECT COUNT(*) FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id" + where;
+        long total = jdbc.queryForObject(countSql, Long.class, args.toArray());
+        List<Object> paging = new ArrayList<>(args);
+        paging.add(size);
+        paging.add((long) page * size);
+        String querySql = BASE_SELECT + where + " ORDER BY m.code, cv.version, cv.id LIMIT ? OFFSET ?";
+        var items = jdbc.query(querySql, this::map, paging.toArray());
+        return new AdminCurriculumService.Page(items, page, size, total, (total + size - 1) / size);
+    }
+
+    public AdminCurriculumService.CurriculumItem detail(UUID id) {
+        return jdbc.query(BASE_SELECT + " WHERE cv.id = ?", this::map, id.toString())
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new AdminCurriculumService.NotFound("Curriculum or cohort not found"));
+    }
+
+    public List<AdminCurriculumService.CurriculumCourseItem> courses(UUID id) {
+        detail(id);
+        return jdbc.query("""
+                SELECT cc.id, cc.curriculum_version_id, cc.course_id, c.code course_code,
+                       c.name course_name, c.credits, c.status course_status, cc.semester_number,
+                       COALESCE(cc.is_mandatory, TRUE) is_mandatory, cc.group_name, cc.created_at, cc.updated_at
+                FROM curriculum_courses cc
+                JOIN courses c ON c.id = cc.course_id
+                WHERE cc.curriculum_version_id = ?
+                ORDER BY cc.semester_number, c.code, cc.id
+                """, (rs, row) -> new AdminCurriculumService.CurriculumCourseItem(
+                UUID.fromString(rs.getString("id")),
+                UUID.fromString(rs.getString("curriculum_version_id")),
+                UUID.fromString(rs.getString("course_id")),
+                rs.getString("course_code"),
+                rs.getString("course_name"),
+                rs.getInt("credits"),
+                rs.getString("course_status"),
+                rs.getInt("semester_number"),
+                rs.getBoolean("is_mandatory"),
+                rs.getString("group_name"),
+                rs.getTimestamp("created_at").toLocalDateTime(),
+                rs.getTimestamp("updated_at").toLocalDateTime()), id.toString());
+    }
+
+    private String normalize(String status) {
+        if (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status)) {
+            return null;
+        }
+        String normalized = status.strip().toUpperCase();
+        if (!List.of("ACTIVE", "INACTIVE").contains(normalized)) {
+            throw new IllegalArgumentException("status must be ACTIVE or INACTIVE");
+        }
+        return normalized;
+    }
+
+    private AdminCurriculumService.CurriculumItem map(ResultSet rs, int row) throws SQLException {
+        String effectiveToId = rs.getString("effective_to_semester_id");
+        return new AdminCurriculumService.CurriculumItem(
+                UUID.fromString(rs.getString("id")),
+                UUID.fromString(rs.getString("major_id")),
+                rs.getString("major_code"),
+                rs.getString("major_name"),
+                rs.getString("version"),
+                rs.getString("name"),
+                UUID.fromString(rs.getString("effective_from_semester_id")),
+                rs.getString("effective_from_semester_code"),
+                date(rs, "effective_from_date"),
+                effectiveToId == null ? null : UUID.fromString(effectiveToId),
+                rs.getString("effective_to_semester_code"),
+                date(rs, "effective_to_date"),
+                rs.getString("description"),
+                rs.getBoolean("is_current"),
+                rs.getString("status"),
+                rs.getInt("course_count"),
+                rs.getInt("total_credits"),
+                rs.getTimestamp("created_at").toLocalDateTime(),
+                rs.getTimestamp("updated_at").toLocalDateTime());
+    }
+
+    private LocalDate date(ResultSet rs, String column) throws SQLException {
+        var value = rs.getDate(column);
+        return value == null ? null : value.toLocalDate();
+    }
 }
-
-

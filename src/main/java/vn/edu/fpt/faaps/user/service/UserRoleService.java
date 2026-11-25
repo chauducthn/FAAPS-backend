@@ -1,24 +1,27 @@
 package vn.edu.fpt.faaps.user.service;
 
-import vn.edu.fpt.faaps.common.validation.StudentCodeValidator;
-import vn.edu.fpt.faaps.user.dto.AdminUserDtos;
-import vn.edu.fpt.faaps.user.exception.UserExceptions;
-
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.edu.fpt.faaps.common.validation.StudentCodeValidator;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
-import vn.edu.fpt.faaps.user.repository.AdminUserRepository;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
+import vn.edu.fpt.faaps.user.repository.AdminUserRepository;
 
 @Service
 public class UserRoleService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserRoleService.class);
+
     private final JdbcTemplate jdbc;
     private final AdminUserRepository users;
 
@@ -29,49 +32,64 @@ public class UserRoleService {
 
     @Transactional
     public Detail change(UUID userId, ChangeRole input) {
-        if (input == null || !List.of("STUDENT", "ADVISOR").contains(input.role()))
+        if (input == null || !List.of("STUDENT", "ADVISOR").contains(input.role())) {
             throw new IllegalArgumentException("role must be STUDENT or ADVISOR");
+        }
         String current = jdbc.query("""
                 SELECT r.code FROM users u JOIN roles r ON r.id=u.role_id
                 WHERE u.id=? AND r.code IN ('STUDENT','ADVISOR') FOR UPDATE
                 """, (rs, row) -> rs.getString(1), userId.toString()).stream()
                 .findFirst().orElseThrow(NotFound::new);
-        if (current.equals(input.role())) return users.detail(userId);
-        if ("ADVISOR".equals(input.role())) toAdvisor(userId, input.maxAdvisees(), input.advisorCode());
-        else toStudent(userId, input);
+        if (current.equals(input.role())) {
+            return users.detail(userId);
+        }
+        if ("ADVISOR".equals(input.role())) {
+            toAdvisor(userId, input.maxAdvisees(), input.advisorCode());
+        } else {
+            toStudent(userId, input);
+        }
         int updated = jdbc.update("""
                 UPDATE users SET role_id=(SELECT id FROM roles WHERE code=?), updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
                 """, input.role(), userId.toString());
-        if (updated != 1) throw new Conflict("Target role is not configured");
+        if (updated != 1) {
+            throw new Conflict("Target role is not configured");
+        }
         return users.detail(userId);
     }
 
     private void toAdvisor(UUID userId, Integer requestedLimit, String advisorCode) {
         int limit = requestedLimit == null ? 30 : requestedLimit;
-        if (limit < 1) throw new IllegalArgumentException("maxAdvisees must be at least 1");
-        String cleanCode = advisorCode == null || advisorCode.isBlank() ? null : advisorCode.strip().toUpperCase(Locale.ROOT);
+        if (limit < 1) {
+            throw new IllegalArgumentException("maxAdvisees must be at least 1");
+        }
+        String cleanCode = advisorCode == null || advisorCode.isBlank()
+                ? null : advisorCode.strip().toUpperCase(Locale.ROOT);
         boolean insertedWithCode = false;
         if (cleanCode != null) {
             try {
                 jdbc.update("""
                         INSERT INTO advisors (user_id,advisor_code,max_advisees,status,created_at,updated_at)
                         VALUES (?,?,?,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
-                        ON DUPLICATE KEY UPDATE advisor_code=VALUES(advisor_code),max_advisees=VALUES(max_advisees),status='ACTIVE',updated_at=CURRENT_TIMESTAMP
+                        ON DUPLICATE KEY UPDATE advisor_code=VALUES(advisor_code),
+                            max_advisees=VALUES(max_advisees),status='ACTIVE',updated_at=CURRENT_TIMESTAMP
                         """, userId.toString(), cleanCode, limit);
                 insertedWithCode = true;
-            } catch (org.springframework.jdbc.BadSqlGrammarException ignored) {
+            } catch (BadSqlGrammarException ex) {
+                log.debug("Falling back to advisor upsert without advisor_code column: {}", ex.getMessage());
             }
         }
         if (!insertedWithCode) {
             jdbc.update("""
                     INSERT INTO advisors (user_id,max_advisees,status,created_at,updated_at)
                     VALUES (?,?,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
-                    ON DUPLICATE KEY UPDATE max_advisees=VALUES(max_advisees),status='ACTIVE',updated_at=CURRENT_TIMESTAMP
+                    ON DUPLICATE KEY UPDATE max_advisees=VALUES(max_advisees),
+                        status='ACTIVE',updated_at=CURRENT_TIMESTAMP
                     """, userId.toString(), limit);
         }
         jdbc.update("""
-                UPDATE student_advisor_assignments SET status='COMPLETED',end_date=CURRENT_DATE,updated_at=CURRENT_TIMESTAMP
+                UPDATE student_advisor_assignments
+                SET status='COMPLETED',end_date=CURRENT_DATE,updated_at=CURRENT_TIMESTAMP
                 WHERE student_id=? AND status='ACTIVE' AND end_date IS NULL
                 """, userId.toString());
         jdbc.update("UPDATE students SET academic_status='WITHDRAWN',updated_at=CURRENT_TIMESTAMP WHERE user_id=?",
@@ -83,13 +101,17 @@ public class UserRoleService {
                 SELECT COUNT(*) FROM student_advisor_assignments
                 WHERE advisor_id=? AND status='ACTIVE' AND end_date IS NULL
                 """, Integer.class, userId.toString());
-        if (active != null && active > 0)
+        if (active != null && active > 0) {
             throw new Conflict("Reassign active students before changing this Advisor to Student");
+        }
         Integer existing = jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE user_id=?",
                 Integer.class, userId.toString());
-        if (existing == null || existing == 0) createStudentProfile(userId, input);
-        else jdbc.update("UPDATE students SET academic_status='ACTIVE',updated_at=CURRENT_TIMESTAMP WHERE user_id=?",
-                userId.toString());
+        if (existing == null || existing == 0) {
+            createStudentProfile(userId, input);
+        } else {
+            jdbc.update("UPDATE students SET academic_status='ACTIVE',updated_at=CURRENT_TIMESTAMP WHERE user_id=?",
+                    userId.toString());
+        }
         jdbc.update("UPDATE advisors SET status='INACTIVE',updated_at=CURRENT_TIMESTAMP WHERE user_id=?",
                 userId.toString());
         jdbc.update("DELETE FROM cohort_advisors WHERE advisor_id=?", userId.toString());

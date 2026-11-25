@@ -5,6 +5,7 @@ import vn.edu.fpt.faaps.academic.dto.TranscriptDtos;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -18,25 +19,46 @@ import vn.edu.fpt.faaps.academic.service.TranscriptWorkbookParser;
 public class TranscriptImportService {
     private final JdbcTemplate jdbc;
     private final TranscriptWorkbookParser parser;
+    private final TranscriptOcrParser ocrParser;
 
     public TranscriptImportService(JdbcTemplate jdbc, TranscriptWorkbookParser parser) {
+        this(jdbc, parser, null);
+    }
+
+    @Autowired
+    public TranscriptImportService(
+            JdbcTemplate jdbc,
+            TranscriptWorkbookParser parser,
+            TranscriptOcrParser ocrParser) {
         this.jdbc = jdbc;
         this.parser = parser;
+        this.ocrParser = ocrParser;
     }
 
     @Transactional
     public ImportPreview preview(UUID studentId, MultipartFile file) {
+        return storePreview(studentId, file.getOriginalFilename(), parser.parse(file));
+    }
+
+    @Transactional
+    public ImportPreview previewOcr(UUID studentId, MultipartFile file) {
+        if (ocrParser == null) {
+            throw new IllegalStateException("Transcript OCR parser is not available");
+        }
+        return storePreview(studentId, file.getOriginalFilename(), ocrParser.parse(file));
+    }
+
+    private ImportPreview storePreview(UUID studentId, String fileName, List<ImportRow> rows) {
         String importId = UUID.randomUUID().toString();
         Integer studentExists = jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE user_id=?", Integer.class,
                 studentId.toString());
         if (studentExists == null || studentExists == 0)
             throw new IllegalArgumentException("Your academic profile has not been assigned");
-        List<ImportRow> rows = parser.parse(file);
         long errors = rows.stream().filter(row -> row.error() != null).count();
         jdbc.update("""
                 INSERT INTO student_transcript_imports(id,student_id,file_name,status,row_count,error_count)
                 VALUES (?,?,?,'PREVIEW',?,?)
-                """, importId, studentId.toString(), file.getOriginalFilename(), rows.size(), errors);
+                """, importId, studentId.toString(), fileName, rows.size(), errors);
         for (ImportRow row : rows) {
             jdbc.update("""
                     INSERT INTO student_transcript_import_rows

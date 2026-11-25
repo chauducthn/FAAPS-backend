@@ -6,17 +6,15 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
-import vn.edu.fpt.faaps.user.service.ExpectedGraduation;
 
 @Service
 public class StudentAcademicService {
-    private final JdbcTemplate jdbc;
     private final AcademicWarningScheduler warningScheduler;
+    private final StudentAcademicQueryRepository queries;
+    private final StudentProfileUpdater profileUpdater;
 
     public StudentAcademicService(JdbcTemplate jdbc) {
         this(jdbc, new AcademicWarningScheduler(jdbc));
@@ -24,299 +22,59 @@ public class StudentAcademicService {
 
     @Autowired
     public StudentAcademicService(JdbcTemplate jdbc, AcademicWarningScheduler warningScheduler) {
-        this.jdbc = jdbc;
         this.warningScheduler = warningScheduler;
+        this.queries = new StudentAcademicQueryRepository(jdbc);
+        this.profileUpdater = new StudentProfileUpdater(jdbc, queries);
     }
 
     public Profile profile(UUID studentId) {
-        return jdbc.query("""
-                SELECT u.id, u.full_name, u.email, u.phone, u.date_of_birth, u.status AS account_status,
-                       s.student_code, s.major_id, m.code AS major_code, m.name AS major_name,
-                       s.curriculum_version_id, cv.version AS cohort, s.current_semester,
-                       s.current_gpa, s.total_credits_earned, s.academic_status
-                FROM users u LEFT JOIN students s ON s.user_id=u.id
-                LEFT JOIN majors m ON m.id=s.major_id
-                LEFT JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id
-                WHERE u.id=?
-                """, (rs, row) -> new Profile(rs.getString("id"), rs.getString("full_name"),
-                rs.getString("email"),
-                rs.getString("phone") == null ? null : rs.getString("phone").replaceAll("\\s+", ""),
-                rs.getString("account_status"),
-                rs.getString("student_code"), rs.getString("major_id"), rs.getString("major_code"),
-                rs.getString("major_name"), rs.getString("curriculum_version_id"),
-                rs.getString("cohort"), (Integer) rs.getObject("current_semester"),
-                rs.getBigDecimal("current_gpa"), (Integer) rs.getObject("total_credits_earned"),
-                rs.getString("academic_status"), rs.getObject("date_of_birth", LocalDate.class)), studentId.toString())
-                .stream().findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Student account not found"));
+        return queries.profile(studentId);
     }
 
     @Transactional
     public Profile updateProfile(UUID studentId, String fullName, String phone) {
-        if (fullName == null || fullName.isBlank())
-            throw new IllegalArgumentException("fullName is required");
-        // Strip formatting spaces (e.g. "0912 345 678") before validating as a 10-digit
-        // Vietnamese mobile number.
-        String compactPhone = phone == null ? null : phone.strip().replaceAll("\\s+", "");
-        jdbc.update("UPDATE users SET full_name=?, phone=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                fullName.strip(), StudentOnboardingService.normalizePhone(compactPhone), studentId.toString());
-        return profile(studentId);
+        return profileUpdater.updateProfile(studentId, fullName, phone);
     }
 
     @Transactional
     public Profile changeCurriculum(UUID studentId, UUID curriculumVersionId) {
-        if (curriculumVersionId == null) {
-            throw new IllegalArgumentException("curriculumVersionId is required");
-        }
-        var curriculum = jdbc.query("""
-                SELECT cv.major_id, cv.effective_from_semester_id
-                FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id
-                WHERE cv.id = ? AND cv.status = 'ACTIVE' AND m.status = 'ACTIVE'
-                """, (rs, row) -> new String[] { rs.getString("major_id"), rs.getString("effective_from_semester_id") },
-                curriculumVersionId.toString()).stream().findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum is not available"));
-
-        Integer gradesRecorded = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM student_course_records WHERE student_id = ? AND final_score IS NOT NULL",
-                Integer.class, studentId.toString());
-        if (gradesRecorded != null && gradesRecorded > 0) {
-            String currentCurriculum = jdbc.queryForObject(
-                    "SELECT curriculum_version_id FROM students WHERE user_id = ?",
-                    String.class, studentId.toString());
-            if (currentCurriculum != null && !currentCurriculum.equalsIgnoreCase(curriculumVersionId.toString())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Cannot change curriculum once grades have been recorded. Please contact the Academic Office.");
-            }
-        }
-
-        // Determine the enrollment semester (keep existing if already set, or fall back
-        // to curriculum default)
-        List<String> enrollmentList = jdbc.query(
-                "SELECT enrollment_semester_id FROM students WHERE user_id = ?",
-                (rs, rowNum) -> rs.getString("enrollment_semester_id"),
-                studentId.toString());
-        String enrollmentSemesterIdStr = enrollmentList.isEmpty() ? null : enrollmentList.get(0);
-        if (enrollmentSemesterIdStr == null || enrollmentSemesterIdStr.isBlank()) {
-            enrollmentSemesterIdStr = curriculum[1];
-        }
-
-        List<Integer> currentSemesterList = jdbc.query(
-                "SELECT current_semester FROM students WHERE user_id = ?",
-                (rs, rowNum) -> (Integer) rs.getObject("current_semester"),
-                studentId.toString());
-        Integer currentSemesterObj = currentSemesterList.isEmpty() ? null : currentSemesterList.get(0);
-        int currentSemester = currentSemesterObj == null || currentSemesterObj < 1 ? 1 : currentSemesterObj;
-
-        UUID enrollmentSemesterUuid = null;
-        if (enrollmentSemesterIdStr != null && !enrollmentSemesterIdStr.isBlank()) {
-            try {
-                enrollmentSemesterUuid = UUID.fromString(enrollmentSemesterIdStr);
-            } catch (IllegalArgumentException ignored) {
-            }
-        }
-
-        String expectedGraduationId = enrollmentSemesterUuid != null
-                ? ExpectedGraduation.semesterId(jdbc, curriculumVersionId, enrollmentSemesterUuid, currentSemester)
-                : null;
-
-        int updated = jdbc.update("""
-                UPDATE students
-                SET major_id = ?, curriculum_version_id = ?,
-                    enrollment_semester_id = ?,
-                    expected_graduation_semester_id = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE user_id = ?
-                """, curriculum[0], curriculumVersionId.toString(),
-                enrollmentSemesterIdStr, expectedGraduationId, studentId.toString());
-
-        if (updated == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Student profile not found");
-        }
-        return profile(studentId);
+        return profileUpdater.changeCurriculum(studentId, curriculumVersionId);
     }
 
     public List<TranscriptRow> transcript(UUID studentId) {
-        return jdbc.query("""
-                SELECT r.id, c.code AS course_code, c.name AS course_name, c.credits,
-                       sem.code AS semester_code, sem.name AS semester_name,
-                       r.final_score, r.status, r.attempt_number, r.credits_earned
-                FROM student_course_records r JOIN courses c ON c.id=r.course_id
-                JOIN semesters sem ON sem.id=r.semester_id
-                WHERE r.student_id=? ORDER BY sem.start_date DESC, c.code, r.attempt_number DESC
-                """, (rs, row) -> new TranscriptRow(rs.getString("id"), rs.getString("course_code"),
-                rs.getString("course_name"), rs.getInt("credits"), rs.getString("semester_code"),
-                rs.getString("semester_name"), rs.getBigDecimal("final_score"), rs.getString("status"),
-                rs.getInt("attempt_number"), rs.getInt("credits_earned")), studentId.toString());
+        return queries.transcript(studentId);
     }
 
     public Progress progress(UUID studentId) {
-        Profile p = profile(studentId);
-        if (p.curriculumVersionId() == null)
-            return new Progress(0, 0, 0, p.currentGpa(), 0, List.of());
-        Integer required = jdbc.queryForObject("""
-                SELECT COALESCE(SUM(c.credits),0) FROM curriculum_courses cc
-                JOIN courses c ON c.id=cc.course_id WHERE cc.curriculum_version_id=? AND cc.is_mandatory=TRUE
-                """, Integer.class, p.curriculumVersionId());
-        Integer passed = jdbc.queryForObject("""
-                SELECT COUNT(DISTINCT r.course_id) FROM student_course_records r
-                JOIN curriculum_courses cc ON cc.course_id=r.course_id AND cc.curriculum_version_id=?
-                WHERE r.student_id=? AND r.status IN ('PASSED','EXEMPTED')
-                """, Integer.class, p.curriculumVersionId(), studentId.toString());
-        Integer total = jdbc.queryForObject("SELECT COUNT(*) FROM curriculum_courses WHERE curriculum_version_id=?",
-                Integer.class, p.curriculumVersionId());
-        List<SemesterSummary> semesters = jdbc.query("""
-                SELECT sem.code, sem.name, ss.total_credits_enrolled, ss.total_credits_earned,
-                       ss.semester_gpa, ss.cumulative_gpa, ss.academic_standing
-                FROM semester_summaries ss JOIN semesters sem ON sem.id=ss.semester_id
-                WHERE ss.student_id=? ORDER BY sem.start_date
-                """, (rs, row) -> new SemesterSummary(rs.getString("code"), rs.getString("name"),
-                rs.getInt("total_credits_enrolled"), rs.getInt("total_credits_earned"),
-                rs.getBigDecimal("semester_gpa"), rs.getBigDecimal("cumulative_gpa"),
-                rs.getString("academic_standing")), studentId.toString());
-        return new Progress(required == null ? 0 : required,
-                p.totalCreditsEarned() == null ? 0 : p.totalCreditsEarned(),
-                total == null ? 0 : total, p.currentGpa(), passed == null ? 0 : passed, semesters);
+        return queries.progress(studentId);
     }
 
     public List<Course> courses(String search, int page, int size) {
-        if (page < 0 || size < 1 || size > 100)
-            throw new IllegalArgumentException("Invalid pagination");
-        String term = "%" + (search == null ? "" : search.strip().toLowerCase()) + "%";
-        try {
-            return jdbc.query("""
-                    SELECT c.id,c.code,c.name,c.credits,c.description,c.objectives,c.learning_outcomes,c.material_link,
-                           cat.name AS category_name FROM courses c JOIN course_categories cat ON cat.id=c.category_id
-                    WHERE c.status='ACTIVE' AND (LOWER(c.code) LIKE ? OR LOWER(c.name) LIKE ?)
-                    ORDER BY c.code LIMIT ? OFFSET ?
-                    """, (rs, row) -> mapCourse(rs), term, term, size, page * size);
-        } catch (Exception ex) {
-            return jdbc.query(
-                    """
-                            SELECT c.id,c.code,c.name,c.credits,c.description,c.objectives,c.learning_outcomes,NULL AS material_link,
-                                   cat.name AS category_name FROM courses c JOIN course_categories cat ON cat.id=c.category_id
-                            WHERE c.status='ACTIVE' AND (LOWER(c.code) LIKE ? OR LOWER(c.name) LIKE ?)
-                            ORDER BY c.code LIMIT ? OFFSET ?
-                            """,
-                    (rs, row) -> mapCourse(rs), term, term, size, page * size);
-        }
+        return queries.courses(search, page, size);
     }
 
     public CoursePage coursesPaged(String search, int page, int size) {
-        if (page < 0 || size < 1 || size > 100)
-            throw new IllegalArgumentException("Invalid pagination");
-        String term = "%" + (search == null ? "" : search.strip().toLowerCase()) + "%";
-        Long total = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM courses c JOIN course_categories cat ON cat.id=c.category_id
-                WHERE c.status='ACTIVE' AND (LOWER(c.code) LIKE ? OR LOWER(c.name) LIKE ?)
-                """, Long.class, term, term);
-        long totalElements = total == null ? 0 : total;
-        List<Course> items = courses(search, page, size);
-        long totalPages = (totalElements + size - 1) / size;
-        return new CoursePage(items, page, size, totalElements, totalPages);
+        return queries.coursesPaged(search, page, size);
     }
 
     public Course course(UUID id) {
-        try {
-            return jdbc.query("""
-                    SELECT c.id,c.code,c.name,c.credits,c.description,c.objectives,c.learning_outcomes,c.material_link,
-                           cat.name AS category_name FROM courses c JOIN course_categories cat ON cat.id=c.category_id
-                    WHERE c.id=? AND c.status='ACTIVE'
-                    """, (rs, row) -> mapCourse(rs), id.toString()).stream().findFirst()
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        } catch (ResponseStatusException notFound) {
-            throw notFound;
-        } catch (Exception ex) {
-            return jdbc
-                    .query("""
-                            SELECT c.id,c.code,c.name,c.credits,c.description,c.objectives,c.learning_outcomes,NULL AS material_link,
-                                   cat.name AS category_name FROM courses c JOIN course_categories cat ON cat.id=c.category_id
-                            WHERE c.id=? AND c.status='ACTIVE'
-                            """,
-                            (rs, row) -> mapCourse(rs), id.toString())
-                    .stream().findFirst()
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
-        }
+        return queries.course(id);
     }
 
     public List<Prerequisite> prerequisites(UUID courseId) {
-        course(courseId);
-        return jdbc.query("""
-                SELECT p.id, c.code, c.name, p.group_no, p.type, p.minimum_score
-                FROM course_prerequisites p JOIN courses c ON c.id=p.prerequisite_course_id
-                WHERE p.course_id=? ORDER BY p.group_no,c.code
-                """, (rs, row) -> new Prerequisite(rs.getString("id"), rs.getString("code"),
-                rs.getString("name"), rs.getInt("group_no"), rs.getString("type"),
-                rs.getBigDecimal("minimum_score")), courseId.toString());
+        return queries.prerequisites(courseId);
     }
 
     public Curriculum curriculum(UUID studentId) {
-        Profile p = profile(studentId);
-        if (p.curriculumVersionId() == null) {
-            return null;
-        }
-        return jdbc.query("""
-                SELECT cv.id,cv.version,cv.name,cv.description,m.code AS major_code,m.name AS major_name
-                FROM curriculum_versions cv JOIN majors m ON m.id=cv.major_id WHERE cv.id=?
-                """, (rs, row) -> new Curriculum(rs.getString("id"), rs.getString("version"),
-                rs.getString("name"), rs.getString("description"), rs.getString("major_code"),
-                rs.getString("major_name")), p.curriculumVersionId()).stream().findFirst()
-                .orElse(null);
+        return queries.curriculum(studentId);
     }
 
     public List<CurriculumCourse> curriculumCourses(UUID studentId) {
-        Curriculum c = curriculum(studentId);
-        if (c == null) {
-            return List.of();
-        }
-        return jdbc.query("""
-                SELECT cc.course_id,co.code,co.name,co.credits,cc.semester_number,cc.is_mandatory,cc.group_name
-                FROM curriculum_courses cc JOIN courses co ON co.id=cc.course_id
-                WHERE cc.curriculum_version_id=? ORDER BY cc.semester_number,co.code
-                """, (rs, row) -> new CurriculumCourse(rs.getString("course_id"), rs.getString("code"),
-                rs.getString("name"), rs.getInt("credits"), rs.getInt("semester_number"),
-                rs.getBoolean("is_mandatory"), rs.getString("group_name")), c.id());
+        return queries.curriculumCourses(studentId);
     }
 
     public List<AcademicWarning> warnings(UUID studentId) {
-        try {
-            if (warningScheduler != null) {
-                warningScheduler.syncStudentWarnings(studentId);
-            }
-        } catch (Exception ignored) {
-        }
-        try {
-            return jdbc.query("""
-                    SELECT w.id, w.student_id, w.semester_id, sem.code AS semester_code, sem.name AS semester_name,
-                           w.warning_type, w.severity, w.description, w.action_required,
-                           w.acknowledged_at, w.resolved_at, w.created_at
-                    FROM academic_warnings w
-                    LEFT JOIN semesters sem ON sem.id = w.semester_id
-                    WHERE w.student_id = ?
-                    ORDER BY w.created_at DESC, w.id DESC
-                    """, (rs, row) -> new AcademicWarning(
-                    rs.getString("id"),
-                    rs.getString("student_id"),
-                    rs.getString("semester_id"),
-                    rs.getString("semester_code"),
-                    rs.getString("semester_name"),
-                    rs.getString("warning_type"),
-                    rs.getString("severity"),
-                    rs.getString("description"),
-                    rs.getString("action_required"),
-                    rs.getTimestamp("acknowledged_at") != null ? rs.getTimestamp("acknowledged_at").toLocalDateTime()
-                            : null,
-                    rs.getTimestamp("resolved_at") != null ? rs.getTimestamp("resolved_at").toLocalDateTime() : null,
-                    rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null),
-                    studentId.toString());
-        } catch (Exception ignored) {
-            return List.of();
-        }
-    }
-
-    private Course mapCourse(java.sql.ResultSet rs) throws java.sql.SQLException {
-        return new Course(rs.getString("id"), rs.getString("code"), rs.getString("name"),
-                rs.getInt("credits"), rs.getString("category_name"), rs.getString("description"),
-                rs.getString("objectives"), rs.getString("learning_outcomes"), rs.getString("material_link"));
+        return queries.warnings(studentId, warningScheduler);
     }
 
     public record Profile(String id, String fullName, String email, String phone, String accountStatus,

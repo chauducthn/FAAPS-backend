@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.SecurityContextRepository;
@@ -24,14 +25,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import vn.edu.fpt.faaps.common.dto.ApiError;
+import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.auth.dto.AdminLoginRequest;
+import vn.edu.fpt.faaps.auth.exception.AuthUnavailableException;
+import vn.edu.fpt.faaps.auth.model.AuthSession;
 import vn.edu.fpt.faaps.auth.service.AuthPasswordService;
 import vn.edu.fpt.faaps.auth.service.AuthRefreshTokenService;
 import vn.edu.fpt.faaps.auth.service.AuthService;
-import vn.edu.fpt.faaps.auth.model.AuthSession;
-import vn.edu.fpt.faaps.auth.exception.AuthUnavailableException;
-import vn.edu.fpt.faaps.auth.dto.AdminLoginRequest;
+import vn.edu.fpt.faaps.common.dto.ApiError;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -74,21 +75,6 @@ public class AuthController {
         return startSession(authService.login(credentials.email(), credentials.password()), request, response);
     }
 
-    private AuthSession startSession(AuthSession session, HttpServletRequest request, HttpServletResponse response) {
-        if (request.getSession(false) == null) {
-            request.getSession(true);
-        } else {
-            request.changeSessionId();
-        }
-        refreshTokens.issueCookie(session.id(), request, response);
-        SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(authService.authentication(session));
-        SecurityContextHolder.setContext(context);
-        securityContextRepository.saveContext(context, request, response);
-        response.setHeader("Cache-Control", "no-store");
-        return session;
-    }
-
     @PostMapping("/refresh")
     public ResponseEntity<AuthSession> refresh(
             @CookieValue(name = AuthRefreshTokenService.COOKIE_NAME, required = false) String refreshToken,
@@ -97,15 +83,7 @@ public class AuthController {
             UUID userId = refreshTokens.userIdFor(refreshToken);
             AuthSession session = authService.sessionFor(userId);
             String rotatedToken = refreshTokens.rotate(refreshToken, userId, request);
-            if (request.getSession(false) == null) {
-                request.getSession(true);
-            } else {
-                request.changeSessionId();
-            }
-            SecurityContext context = SecurityContextHolder.createEmptyContext();
-            context.setAuthentication(authService.authentication(session));
-            SecurityContextHolder.setContext(context);
-            securityContextRepository.saveContext(context, request, response);
+            establishSecurityContext(session, request, response);
             refreshTokens.writeCookie(response, rotatedToken);
             response.setHeader("Cache-Control", "no-store");
             return ResponseEntity.ok(session);
@@ -122,56 +100,67 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    public Map<String, Object> forgotPassword(
-            @Valid @RequestBody ForgotPasswordRequest body,
+    public Map<String, Object> forgotPassword(@Valid @RequestBody ForgotPasswordRequest body,
             HttpServletRequest request) {
-        if (passwordService == null) {
-            throw new AuthUnavailableException();
-        }
         AuthPasswordService.ForgotPasswordResult result =
-                passwordService.forgotPassword(body.email(), request.getRemoteAddr());
+                requirePasswordService().forgotPassword(body.email(), request.getRemoteAddr());
         return Map.of("success", result.success(), "message", result.message());
     }
 
     @PostMapping("/reset-password")
     public Map<String, Object> resetPassword(@Valid @RequestBody ResetPasswordRequest body) {
-        if (passwordService == null) {
-            throw new AuthUnavailableException();
-        }
-        passwordService.resetPassword(body.token(), body.newPassword());
+        requirePasswordService().resetPassword(body.token(), body.newPassword());
         return Map.of("success", true, "message", "Password has been reset successfully");
     }
 
     @PostMapping("/change-password")
-    public Map<String, Object> changePassword(
-            @AuthenticationPrincipal AuthSession session,
+    public Map<String, Object> changePassword(@AuthenticationPrincipal AuthSession session,
             @Valid @RequestBody ChangePasswordRequest body) {
         if (session == null) {
             throw new BadCredentialsException("Authentication required");
         }
+        requirePasswordService().changePassword(session.id(), body.currentPassword(), body.newPassword());
+        return Map.of("success", true, "message", "Password changed successfully");
+    }
+
+    private AuthSession startSession(AuthSession session, HttpServletRequest request, HttpServletResponse response) {
+        establishSecurityContext(session, request, response);
+        refreshTokens.issueCookie(session.id(), request, response);
+        response.setHeader("Cache-Control", "no-store");
+        return session;
+    }
+
+    private void establishSecurityContext(AuthSession session, HttpServletRequest request,
+            HttpServletResponse response) {
+        if (request.getSession(false) == null) {
+            request.getSession(true);
+        } else {
+            request.changeSessionId();
+        }
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(authService.authentication(session));
+        SecurityContextHolder.setContext(context);
+        securityContextRepository.saveContext(context, request, response);
+    }
+
+    private AuthPasswordService requirePasswordService() {
         if (passwordService == null) {
             throw new AuthUnavailableException();
         }
-        passwordService.changePassword(session.id(), body.currentPassword(), body.newPassword());
-        return Map.of("success", true, "message", "Password changed successfully");
+        return passwordService;
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> invalidArgument(IllegalArgumentException exception) {
-        return ResponseEntity.badRequest()
-                .body(ApiError.of("INVALID_REQUEST", exception.getMessage()));
+        return ResponseEntity.badRequest().body(ApiError.of("INVALID_REQUEST", exception.getMessage()));
     }
 
-    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
-    public ResponseEntity<ApiError> responseStatus(org.springframework.web.server.ResponseStatusException exception) {
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiError> responseStatus(ResponseStatusException exception) {
         String code = exception.getStatusCode().value() == 429 ? "RATE_LIMITED" : "INVALID_REQUEST";
-        return ResponseEntity.status(exception.getStatusCode())
-                .body(ApiError.of(code, exception.getReason() != null ? exception.getReason() : "Request rejected"));
+        String reason = exception.getReason() != null ? exception.getReason() : "Request rejected";
+        return ResponseEntity.status(exception.getStatusCode()).body(ApiError.of(code, reason));
     }
-
-    public record ForgotPasswordRequest(@NotBlank @Email String email) {}
-    public record ResetPasswordRequest(@NotBlank String token, @NotBlank String newPassword) {}
-    public record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {}
 
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiError> invalidCredentials() {
@@ -197,4 +186,7 @@ public class AuthController {
                 .body(ApiError.of("ACCOUNT_STORAGE_UNAVAILABLE", "Account storage is not configured"));
     }
 
+    public record ForgotPasswordRequest(@NotBlank @Email String email) {}
+    public record ResetPasswordRequest(@NotBlank String token, @NotBlank String newPassword) {}
+    public record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {}
 }

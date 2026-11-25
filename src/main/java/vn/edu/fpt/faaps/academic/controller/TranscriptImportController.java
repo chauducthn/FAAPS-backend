@@ -35,6 +35,12 @@ public class TranscriptImportController {
         return imports.preview(student.id(), file);
     }
 
+    @PostMapping(value = "/ocr-preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ImportPreview previewOcr(@AuthenticationPrincipal AuthSession student,
+            @RequestPart("file") MultipartFile file) {
+        return imports.previewOcr(student.id(), file);
+    }
+
     @PostMapping("/{id}/confirm")
     public ImportResult confirm(@AuthenticationPrincipal AuthSession student,
             @PathVariable UUID id) {

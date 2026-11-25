@@ -1,10 +1,7 @@
 package vn.edu.fpt.faaps.academic.service;
 
 import java.math.BigDecimal;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -16,84 +13,21 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AdminMajorService {
     private final JdbcTemplate jdbc;
+    private final AdminMajorQueryHelper queryHelper;
+    private final AdminMajorCohortHelper cohortHelper;
 
     public AdminMajorService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.queryHelper = new AdminMajorQueryHelper(jdbc);
+        this.cohortHelper = new AdminMajorCohortHelper(jdbc);
     }
 
     public Page list(String cohort, String status, String search, int page, int size, String sort) {
-        if (page < 0 || size < 1 || size > 100) {
-            throw new IllegalArgumentException("page or size is invalid");
-        }
-        if (status != null && !status.equalsIgnoreCase("ALL") && !List.of("ACTIVE", "INACTIVE", "DRAFT").contains(status.toUpperCase())) {
-            throw new IllegalArgumentException("status is invalid");
-        }
-
-        StringBuilder where = new StringBuilder(" WHERE 1 = 1");
-        List<Object> params = new ArrayList<>();
-
-        if (status != null && !status.equalsIgnoreCase("ALL")) {
-            where.append(" AND m.status = ?");
-            params.add(status.toUpperCase());
-        }
-
-        if (cohort != null && !cohort.isBlank() && !cohort.equalsIgnoreCase("ALL")) {
-            where.append(" AND EXISTS (SELECT 1 FROM curriculum_versions cv WHERE cv.major_id = m.id AND cv.version = ?)");
-            params.add(cohort.strip());
-        }
-
-        if (search != null && !search.isBlank()) {
-            where.append(" AND (LOWER(m.code) LIKE ? OR LOWER(m.name) LIKE ?)");
-            String term = "%" + search.strip().toLowerCase() + "%";
-            params.add(term);
-            params.add(term);
-        }
-
-        String countSql = "SELECT COUNT(*) FROM majors m" + where;
-        Long total = jdbc.queryForObject(countSql, Long.class, params.toArray());
-        long totalElements = total == null ? 0 : total;
-
-        String orderBy = " ORDER BY m.created_at DESC, m.id DESC";
-        if (sort != null && !sort.isBlank()) {
-            orderBy = switch (sort) {
-                case "code,asc" -> " ORDER BY m.code ASC, m.id ASC";
-                case "code,desc" -> " ORDER BY m.code DESC, m.id DESC";
-                case "name,asc" -> " ORDER BY m.name ASC, m.id ASC";
-                case "name,desc" -> " ORDER BY m.name DESC, m.id DESC";
-                case "createdAt,asc" -> " ORDER BY m.created_at ASC, m.id ASC";
-                default -> " ORDER BY m.created_at DESC, m.id DESC";
-            };
-        }
-
-        String sql = """
-                SELECT m.id, m.code, m.name, m.description, m.total_credits, m.duration_years,
-                       m.status, m.created_at, m.updated_at,
-                       (SELECT cv.version FROM curriculum_versions cv WHERE cv.major_id = m.id ORDER BY cv.updated_at DESC, cv.created_at DESC LIMIT 1) AS latest_cohort
-                FROM majors m
-                """ + where + orderBy + " LIMIT ? OFFSET ?";
-
-        params.add(size);
-        params.add(page * size);
-
-        List<MajorItem> items = jdbc.query(sql, (rs, rowNum) -> mapMajorItem(rs), params.toArray());
-        long totalPages = (totalElements + size - 1) / size;
-        PageData pageData = new PageData(items, page, size, totalElements, totalPages);
-        return new Page(items, page, size, size, totalElements, totalElements, totalPages, pageData, true, "Success");
+        return queryHelper.list(cohort, status, search, page, size, sort);
     }
 
     public MajorItem detail(UUID id) {
-        String sql = """
-                SELECT m.id, m.code, m.name, m.description, m.total_credits, m.duration_years,
-                       m.status, m.created_at, m.updated_at,
-                       (SELECT cv.version FROM curriculum_versions cv WHERE cv.major_id = m.id ORDER BY cv.updated_at DESC, cv.created_at DESC LIMIT 1) AS latest_cohort
-                FROM majors m
-                WHERE m.id = ?
-                """;
-        List<MajorItem> results = jdbc.query(sql, (rs, rowNum) -> mapMajorItem(rs), id.toString());
-        if (results.isEmpty()) {
-            throw new NotFound();
-        }
-        return results.get(0);
+        return queryHelper.detail(id);
     }
 
     @Transactional
@@ -116,47 +50,18 @@ public class AdminMajorService {
         UUID id = UUID.randomUUID();
         try {
             jdbc.update("""
-                    INSERT INTO majors (id, code, name, description, total_credits, duration_years, status, created_at, updated_at)
+                    INSERT INTO majors (id, code, name, description, total_credits, duration_years,
+                        status, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """,
-                    id.toString(), code.strip(), name.strip(), description, totalCredits, durationYears, majorStatus);
+                    """, id.toString(), code.strip(), name.strip(), description,
+                    totalCredits, durationYears, majorStatus);
         } catch (DuplicateKeyException e) {
             throw new Conflict("Major code already exists");
         }
 
         if (cohort != null && !cohort.isBlank()) {
-            String semesterId = null;
-            try {
-                List<String> sems = jdbc.query("SELECT id FROM semesters ORDER BY is_current DESC, start_date DESC LIMIT 1", (rs, r) -> rs.getString(1));
-                if (!sems.isEmpty()) {
-                    semesterId = sems.get(0);
-                }
-            } catch (Exception ignored) {
-            }
-
-            if (semesterId != null) {
-                try {
-                    jdbc.update("""
-                            INSERT INTO curriculum_versions (id, major_id, version, name, effective_from_semester_id, is_current, status, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, true, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                            """,
-                            UUID.randomUUID().toString(), id.toString(), cohort.strip(), name.strip() + " - " + cohort.strip(), semesterId);
-                } catch (Exception e) {
-                    jdbc.update("""
-                            INSERT INTO curriculum_versions (id, major_id, version, name, is_current, status, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, true, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                            """,
-                            UUID.randomUUID().toString(), id.toString(), cohort.strip(), name.strip() + " - " + cohort.strip());
-                }
-            } else {
-                jdbc.update("""
-                        INSERT INTO curriculum_versions (id, major_id, version, name, is_current, status, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, true, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        """,
-                        UUID.randomUUID().toString(), id.toString(), cohort.strip(), name.strip() + " - " + cohort.strip());
-            }
+            cohortHelper.insertInitialCohort(id, name.strip(), cohort.strip());
         }
-
         return detail(id);
     }
 
@@ -187,73 +92,18 @@ public class AdminMajorService {
         try {
             jdbc.update("""
                     UPDATE majors
-                    SET code = ?, name = ?, description = ?, total_credits = ?, duration_years = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                    SET code = ?, name = ?, description = ?, total_credits = ?, duration_years = ?,
+                        status = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                    """,
-                    newCode, newName, newDesc, newCredits, newDuration, newStatus, id.toString());
+                    """, newCode, newName, newDesc, newCredits, newDuration, newStatus, id.toString());
         } catch (DuplicateKeyException e) {
             throw new Conflict("Major code already exists");
         }
 
         if (cohort != null && !cohort.isBlank()) {
-            upsertCohortForMajor(id, newName, cohort.strip());
+            cohortHelper.upsertCohortForMajor(id, newName, cohort.strip());
         }
-
         return detail(id);
-    }
-
-    private void upsertCohortForMajor(UUID majorId, String majorName, String cohortVersion) {
-        List<String> matchingIds = jdbc.query(
-                "SELECT id FROM curriculum_versions WHERE major_id = ? AND version = ?",
-                (rs, r) -> rs.getString(1), majorId.toString(), cohortVersion);
-        if (!matchingIds.isEmpty()) {
-            jdbc.update("UPDATE curriculum_versions SET is_current = true, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    matchingIds.get(0));
-            return;
-        }
-        List<String> existingVersions = jdbc.query(
-                "SELECT id FROM curriculum_versions WHERE major_id = ? ORDER BY updated_at DESC, created_at DESC",
-                (rs, r) -> rs.getString(1), majorId.toString());
-        if (existingVersions.size() == 1) {
-            String onlyId = existingVersions.get(0);
-            Integer studentsUsing = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM students WHERE curriculum_version_id = ?", Integer.class, onlyId);
-            if (studentsUsing == null || studentsUsing == 0) {
-                jdbc.update("""
-                        UPDATE curriculum_versions
-                        SET version = ?, name = ?, is_current = true, updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                        """, cohortVersion, majorName + " - " + cohortVersion, onlyId);
-                return;
-            }
-        }
-        String semesterId = null;
-        try {
-            List<String> sems = jdbc.query("SELECT id FROM semesters ORDER BY is_current DESC, start_date DESC LIMIT 1",
-                    (rs, r) -> rs.getString(1));
-            if (!sems.isEmpty()) {
-                semesterId = sems.get(0);
-            }
-        } catch (Exception ignored) {
-        }
-        if (semesterId != null) {
-            try {
-                jdbc.update("""
-                        INSERT INTO curriculum_versions (id, major_id, version, name, effective_from_semester_id, is_current, status, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, true, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        """,
-                        UUID.randomUUID().toString(), majorId.toString(), cohortVersion,
-                        majorName + " - " + cohortVersion, semesterId);
-                return;
-            } catch (Exception ignored) {
-            }
-        }
-        jdbc.update("""
-                INSERT INTO curriculum_versions (id, major_id, version, name, is_current, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, true, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """,
-                UUID.randomUUID().toString(), majorId.toString(), cohortVersion,
-                majorName + " - " + cohortVersion);
     }
 
     @Transactional
@@ -268,7 +118,8 @@ public class AdminMajorService {
             Integer curriculumCount = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM curriculum_versions WHERE major_id = ?", Integer.class, id.toString());
             if (curriculumCount != null && curriculumCount > 0) {
-                throw new Conflict("Cannot delete major because " + curriculumCount + " curriculum version(s) reference it");
+                throw new Conflict("Cannot delete major because "
+                        + curriculumCount + " curriculum version(s) reference it");
             }
             jdbc.update("DELETE FROM majors WHERE id = ?", id.toString());
         } catch (Conflict c) {
@@ -291,21 +142,6 @@ public class AdminMajorService {
         return deleted;
     }
 
-    private MajorItem mapMajorItem(ResultSet rs) throws SQLException {
-        return new MajorItem(
-                UUID.fromString(rs.getString("id")),
-                rs.getString("code"),
-                rs.getString("name"),
-                rs.getString("description"),
-                rs.getInt("total_credits"),
-                rs.getBigDecimal("duration_years"),
-                rs.getString("status"),
-                rs.getString("latest_cohort") != null ? rs.getString("latest_cohort") : "",
-                rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null,
-                rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null
-        );
-    }
-
     public record MajorItem(UUID id, String code, String name, String description, int totalCredits,
             BigDecimal durationYears, String status, String cohort, LocalDateTime createdAt, LocalDateTime updatedAt) {
     }
@@ -326,4 +162,3 @@ public class AdminMajorService {
         }
     }
 }
-

@@ -87,6 +87,32 @@ public class EmailService {
     }
 
     @Async
+    public void sendAdvisingMessage(
+            String toEmail,
+            String studentName,
+            String advisorName,
+            String subject,
+            String messageBody) {
+        String safeStudent = HtmlUtils.htmlEscape(displayName(studentName));
+        String safeAdvisor = HtmlUtils.htmlEscape(displayName(advisorName));
+        String safeBody = HtmlUtils.htmlEscape(messageBody == null ? "" : messageBody).replace("\n", "<br/>");
+        String mailSubject = (subject == null || subject.isBlank())
+                ? "[FAAPS] Academic Advising Notice"
+                : "[FAAPS] " + subject.strip();
+        String html = """
+                <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1f2937;line-height:1.6">
+                  <h2 style="color:#f26f21;margin-bottom:12px">Academic Advising Message</h2>
+                  <p>Hello <strong>%s</strong>,</p>
+                  <p>Your academic advisor <strong>%s</strong> sent you the following advising note:</p>
+                  <div style="margin:16px 0;padding:14px 16px;background:#f8fafc;border-left:4px solid #f26f21;border-radius:6px">
+                    %s
+                  </div>
+                  <p style="font-size:13px;color:#6b7280">Please sign in to FAAPS to review your study plan or book a follow-up session.</p>
+                </div>
+                """.formatted(safeStudent, safeAdvisor, safeBody);
+        sendHtmlEmail(toEmail, mailSubject, html);
+    }
+
     public void sendHtmlEmail(String toEmail, String subject, String htmlBody) {
         if (toEmail == null || toEmail.isBlank()) {
             return;

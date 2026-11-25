@@ -1,45 +1,40 @@
 package vn.edu.fpt.faaps.auth;
 
-import vn.edu.fpt.faaps.auth.model.AuthAccount;
-import vn.edu.fpt.faaps.auth.model.GoogleIdentity;
-import vn.edu.fpt.faaps.auth.repository.AuthAccountStore;
-import vn.edu.fpt.faaps.auth.service.AuthRefreshTokenService;
-import vn.edu.fpt.faaps.auth.service.AuthPasswordService;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
-import org.mockito.ArgumentCaptor;
+import static org.mockito.Mockito.when;
+import static vn.edu.fpt.faaps.auth.AuthFlowTestSupport.addRefreshCookie;
+import static vn.edu.fpt.faaps.auth.AuthFlowTestSupport.get;
+import static vn.edu.fpt.faaps.auth.AuthFlowTestSupport.getCsrfToken;
+import static vn.edu.fpt.faaps.auth.AuthFlowTestSupport.send;
 
 import java.net.CookieManager;
-import java.net.HttpCookie;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import vn.edu.fpt.faaps.auth.AuthFlowTestSupport.FakeAccountStore;
+import vn.edu.fpt.faaps.auth.model.AuthAccount;
+import vn.edu.fpt.faaps.auth.service.AuthPasswordService;
+import vn.edu.fpt.faaps.auth.service.AuthRefreshTokenService;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
                 + "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration" })
-@Import(AuthFlowApiTest.AccountStoreConfig.class)
+@Import(AuthFlowTestSupport.AccountStoreConfig.class)
 class AuthFlowApiTest {
     @MockitoBean
     private JdbcTemplate jdbcTemplate;
@@ -155,56 +150,5 @@ class AuthFlowApiTest {
                 .header("X-XSRF-TOKEN", invalidCsrf)
                 .POST(HttpRequest.BodyPublishers.noBody()).build();
         assertEquals(401, send(invalidClient, invalidRefresh).statusCode());
-    }
-
-    private void addRefreshCookie(CookieManager cookieManager, URI baseUrl, String value) {
-        HttpCookie cookie = new HttpCookie(AuthRefreshTokenService.COOKIE_NAME, value);
-        cookie.setPath("/api/auth");
-        cookie.setDomain("localhost");
-        cookie.setVersion(0);
-        cookieManager.getCookieStore().add(baseUrl.resolve("/api/auth/refresh"), cookie);
-    }
-
-    private String getCsrfToken(HttpClient client, URI baseUrl) throws Exception {
-        HttpResponse<String> response = get(client, baseUrl.resolve("/api/auth/csrf"));
-        assertEquals(200, response.statusCode());
-        Matcher matcher = Pattern.compile("\"token\":\"([^\"]+)\"").matcher(response.body());
-        assertTrue(matcher.find());
-        return matcher.group(1);
-    }
-
-    private HttpResponse<String> get(HttpClient client, URI url) throws Exception {
-        return send(client, HttpRequest.newBuilder(url).GET().build());
-    }
-
-    private HttpResponse<String> send(HttpClient client, HttpRequest request) throws Exception {
-        return client.send(request, HttpResponse.BodyHandlers.ofString());
-    }
-
-    @TestConfiguration
-    static class AccountStoreConfig {
-        @Bean
-        FakeAccountStore fakeAccountStore() {
-            return new FakeAccountStore();
-        }
-    }
-
-    static class FakeAccountStore implements AuthAccountStore {
-        final AtomicReference<AuthAccount> account = new AtomicReference<>();
-
-        @Override
-        public Optional<AuthAccount> findById(UUID id) {
-            return Optional.ofNullable(account.get()).filter(candidate -> candidate.id().equals(id));
-        }
-
-        @Override
-        public Optional<AuthAccount> findAdminByEmail(String email) {
-            return Optional.ofNullable(account.get()).filter(candidate -> candidate.email().equals(email));
-        }
-
-        @Override
-        public AuthAccount resolveGoogleAccount(GoogleIdentity identity) {
-            return account.get();
-        }
     }
 }

@@ -40,7 +40,9 @@ public class AdvisorStudentService {
                  LEFT JOIN semesters sem ON sem.id=s.enrollment_semester_id
                 """;
         long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, args.toArray());
-        List<Object> paging = new ArrayList<>(args); paging.add(size); paging.add(page * size);
+        List<Object> paging = new ArrayList<>(args);
+        paging.add(size);
+        paging.add(page * size);
         List<Student> items = jdbc.query("""
                 SELECT s.user_id,s.student_code,u.full_name,u.email,m.code major_code,m.name major_name,
                        cv.version curriculum_version,s.current_semester,s.current_gpa,

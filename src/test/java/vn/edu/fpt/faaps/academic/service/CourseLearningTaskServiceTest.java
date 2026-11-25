@@ -32,7 +32,9 @@ class CourseLearningTaskServiceTest {
                 "jdbc:h2:mem:task-progress-" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         jdbc.execute("CREATE TABLE course_learning_plans(id VARCHAR(36),student_id VARCHAR(36))");
         jdbc.execute("CREATE TABLE course_learning_tasks(id VARCHAR(36),plan_id VARCHAR(36),completed BOOLEAN,completed_at TIMESTAMP)");
-        student = UUID.randomUUID(); plan = UUID.randomUUID(); task = UUID.randomUUID();
+        student = UUID.randomUUID();
+        plan = UUID.randomUUID();
+        task = UUID.randomUUID();
         jdbc.update("INSERT INTO course_learning_plans VALUES (?,?)", plan.toString(), student.toString());
         jdbc.update("INSERT INTO course_learning_tasks VALUES (?,?,FALSE,NULL)", task.toString(), plan.toString());
         CourseLearningPlanService plans = mock(CourseLearningPlanService.class);

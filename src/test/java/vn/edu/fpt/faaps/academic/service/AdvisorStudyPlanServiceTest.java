@@ -34,7 +34,9 @@ class AdvisorStudyPlanServiceTest {
         jdbc.execute("CREATE TABLE student_advisor_assignments(student_id VARCHAR(36),advisor_id VARCHAR(36),status VARCHAR(20),end_date DATE)");
         jdbc.execute("CREATE TABLE study_plans(id VARCHAR(36),student_id VARCHAR(36),semester_id VARCHAR(36),version INT,total_credits_planned INT,status VARCHAR(20),is_current BOOLEAN,submitted_at TIMESTAMP,reviewed_by_user_id VARCHAR(36),reviewed_at TIMESTAMP,review_notes CLOB,updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE notifications(id VARCHAR(36),recipient_user_id VARCHAR(36),notification_type VARCHAR(30),title VARCHAR(255),message VARCHAR(500),action_url VARCHAR(255),is_read BOOLEAN)");
-        advisor = UUID.randomUUID(); student = UUID.randomUUID(); plan = UUID.randomUUID();
+        advisor = UUID.randomUUID();
+        student = UUID.randomUUID();
+        plan = UUID.randomUUID();
         String semester = UUID.randomUUID().toString();
         jdbc.update("INSERT INTO users VALUES (?, 'Nguyen Van An')", student.toString());
         jdbc.update("INSERT INTO students VALUES (?, 'SE173012')", student.toString());

@@ -1,11 +1,8 @@
 package vn.edu.fpt.faaps.advising.service;
 
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService;
-import vn.edu.fpt.faaps.advising.service.AssignmentWorkflowService;
-import vn.edu.fpt.faaps.advising.service.CohortAdvisorService;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static vn.edu.fpt.faaps.advising.service.AdminAssignmentTestSupport.addStudent;
 
 import java.util.List;
 import java.util.Map;
@@ -13,9 +10,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
 class AdminAssignmentServiceTest {
     private JdbcTemplate jdbc;
@@ -30,41 +25,16 @@ class AdminAssignmentServiceTest {
 
     @BeforeEach
     void setUp() {
-        DriverManagerDataSource dataSource = new DriverManagerDataSource(
-                "jdbc:h2:mem:admin-assignments-" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
-        jdbc = new JdbcTemplate(dataSource);
-        transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
-        jdbc.execute("CREATE TABLE roles (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20))");
-        jdbc.execute("INSERT INTO roles VALUES ('student-role', 'STUDENT'), ('advisor-role', 'ADVISOR')");
-        jdbc.execute("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY, role_id VARCHAR(36), full_name VARCHAR(255), email VARCHAR(255), status VARCHAR(20))");
-        jdbc.execute("CREATE TABLE advisors (user_id VARCHAR(36) PRIMARY KEY, max_advisees INT, status VARCHAR(20), updated_at TIMESTAMP)");
-        jdbc.execute("CREATE TABLE majors (id VARCHAR(36) PRIMARY KEY, code VARCHAR(20))");
-        jdbc.execute("CREATE TABLE curriculum_versions (id VARCHAR(36) PRIMARY KEY, version VARCHAR(50), major_id VARCHAR(36))");
-        jdbc.execute("CREATE TABLE students (user_id VARCHAR(36) PRIMARY KEY, student_code VARCHAR(50), curriculum_version_id VARCHAR(36))");
-        jdbc.execute("""
-                CREATE TABLE student_advisor_assignments (id VARCHAR(36) PRIMARY KEY,
-                    student_id VARCHAR(36), advisor_id VARCHAR(36), assigned_date DATE,
-                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, assigned_by_user_id VARCHAR(36), notes CLOB,
-                    end_date DATE, is_primary BOOLEAN, status VARCHAR(20),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP)
-                """);
-        jdbc.execute("CREATE TABLE advising_requests (student_id VARCHAR(36), advisor_id VARCHAR(36), status VARCHAR(20), updated_at TIMESTAMP)");
-        jdbc.execute("CREATE TABLE cohort_advisors (cohort_id VARCHAR(36), advisor_id VARCHAR(36), is_active BOOLEAN, PRIMARY KEY (cohort_id, advisor_id))");
-        jdbc.execute("CREATE TABLE advising_sessions (id VARCHAR(36), student_id VARCHAR(36), advisor_id VARCHAR(36), status VARCHAR(20), scheduled_at TIMESTAMP, updated_at TIMESTAMP)");
-        jdbc.execute("CREATE TABLE notifications (id VARCHAR(36), recipient_user_id VARCHAR(36), notification_type VARCHAR(20), title VARCHAR(255), message VARCHAR(500), is_read BOOLEAN, related_student_id VARCHAR(36), resolved_at TIMESTAMP)");
-        firstAdvisor = addAdvisor("A", 3);
-        secondAdvisor = addAdvisor("B", 3);
-        majorId = UUID.randomUUID();
-        jdbc.update("INSERT INTO majors VALUES (?, 'SE')", majorId.toString());
-        String curriculum = UUID.randomUUID().toString();
-        cohortId = UUID.fromString(curriculum);
-        jdbc.update("INSERT INTO curriculum_versions (id, version, major_id) VALUES (?, 'K17', ?)",
-                curriculum, majorId.toString());
-        firstStudent = addStudent("S1", curriculum);
-        secondStudent = addStudent("S2", curriculum);
-        jdbc.update("INSERT INTO cohort_advisors VALUES (?, ?, TRUE)", curriculum, firstAdvisor.toString());
-        jdbc.update("INSERT INTO cohort_advisors VALUES (?, ?, TRUE)", curriculum, secondAdvisor.toString());
-        assignments = new AdminAssignmentService(jdbc, new CohortAdvisorService(jdbc));
+        AdminAssignmentTestSupport.Fixture f = AdminAssignmentTestSupport.createFixture();
+        jdbc = f.jdbc();
+        assignments = f.assignments();
+        transactions = f.transactions();
+        firstAdvisor = f.firstAdvisor();
+        secondAdvisor = f.secondAdvisor();
+        firstStudent = f.firstStudent();
+        secondStudent = f.secondStudent();
+        cohortId = f.cohortId();
+        majorId = f.majorId();
     }
 
     @Test
@@ -84,7 +54,8 @@ class AdminAssignmentServiceTest {
                 .findFirst().orElseThrow().id();
         jdbc.update("INSERT INTO advising_requests (student_id, advisor_id, status) VALUES (?, ?, 'PENDING')",
                 assignedToFirst.toString(), firstAdvisor.toString());
-        jdbc.update("INSERT INTO advising_sessions (id, student_id, advisor_id, status, scheduled_at) VALUES (?, ?, ?, 'SCHEDULED', DATEADD('DAY', 1, CURRENT_TIMESTAMP))",
+        jdbc.update("INSERT INTO advising_sessions (id, student_id, advisor_id, status, scheduled_at) "
+                + "VALUES (?, ?, ?, 'SCHEDULED', DATEADD('DAY', 1, CURRENT_TIMESTAMP))",
                 UUID.randomUUID().toString(), assignedToFirst.toString(), firstAdvisor.toString());
         assertThrows(AdminAssignmentService.AppointmentWarningRequired.class, () ->
                 transactions.execute(status -> assignments.assign(List.of(assignedToFirst), secondAdvisor)));
@@ -116,8 +87,7 @@ class AdminAssignmentServiceTest {
         jdbc.update("UPDATE advisors SET max_advisees = 1 WHERE user_id = ?", firstAdvisor.toString());
         assertEquals(2, transactions.execute(status ->
                 assignments.assign(List.of(firstStudent, secondStudent), firstAdvisor)).intValue());
-        assertEquals(true, assignments.previewCohort(cohortId, List.of(firstAdvisor))
-                .get("warning"));
+        assertEquals(true, assignments.previewCohort(cohortId, List.of(firstAdvisor)).get("warning"));
     }
 
     @Test
@@ -134,7 +104,7 @@ class AdminAssignmentServiceTest {
         assertEquals(2, result.get("assigned"));
         assertEquals(0, assignments.previewCohort(cohortId, List.of(firstAdvisor, secondAdvisor)).get("assigned"));
         jdbc.update("UPDATE advisors SET max_advisees = 1 WHERE user_id = ?", secondAdvisor.toString());
-        addStudent("S3", cohortId.toString());
+        addStudent(jdbc, "S3", cohortId.toString());
         Map<String, Object> excess = assignments.previewCohort(cohortId, List.of(firstAdvisor, secondAdvisor));
         assertEquals(true, excess.get("warning"));
         assertEquals(1, transactions.execute(status ->
@@ -144,8 +114,8 @@ class AdminAssignmentServiceTest {
     @Test
     void autoAssignBalancesExistingUnequalAdvisorLoads() {
         transactions.execute(status -> assignments.assign(List.of(firstStudent, secondStudent), firstAdvisor));
-        addStudent("S3", cohortId.toString());
-        addStudent("S4", cohortId.toString());
+        addStudent(jdbc, "S3", cohortId.toString());
+        addStudent(jdbc, "S4", cohortId.toString());
         Map<String, Object> result = transactions.execute(status ->
                 assignments.confirmCohort(cohortId, List.of(firstAdvisor, secondAdvisor)));
         assertEquals(2, result.get("assigned"));
@@ -154,114 +124,15 @@ class AdminAssignmentServiceTest {
     }
 
     @Test
-    void configuredAdvisorsWorkBeforeStudentsJoinAndReadNotificationsRemainPending() {
-        CohortAdvisorService pools = new CohortAdvisorService(jdbc);
-        AssignmentWorkflowService workflow = new AssignmentWorkflowService(jdbc, assignments, pools);
-        UUID upcomingCohort = UUID.randomUUID();
-        jdbc.update("INSERT INTO curriculum_versions (id, version, major_id) VALUES (?, 'K18', ?)",
-                upcomingCohort.toString(), majorId.toString());
-        assertEquals(2, transactions.execute(status ->
-                pools.replace(upcomingCohort, List.of(firstAdvisor, secondAdvisor))).size());
-        transactions.execute(status -> { pools.include(upcomingCohort, firstAdvisor); return null; });
-        assertEquals(0, pools.list(upcomingCohort).get(0).cohortStudents());
-        assertEquals(2, workflow.advisorsWithCohorts().stream()
-                .filter(item -> upcomingCohort.toString().equals(item.get("cohortId")))
-                .filter(item -> (boolean) item.get("inPool") && (long) item.get("studentCount") == 0)
-                .count());
-        AssignmentWorkflowService.Page<Map<String, Object>> advisorPage =
-                workflow.advisorsWithCohorts(upcomingCohort, "A@", 0, 1);
-        assertEquals(1, advisorPage.totalElements());
-        assertEquals(1, advisorPage.items().size());
-
-        UUID newcomer = addStudent("S3", upcomingCohort.toString());
-        jdbc.update("INSERT INTO notifications (id, recipient_user_id, notification_type, title, message, is_read, related_student_id) VALUES (?, ?, 'ADVISOR_REQUEST', 'Request', 'Assign', TRUE, ?)",
-                UUID.randomUUID().toString(), firstAdvisor.toString(), newcomer.toString());
-        assertEquals(1L, workflow.summary().get("pendingAdvisorRequests"));
-        assertEquals(true, workflow.unassigned(upcomingCohort).get(0).get("hasPendingRequest"));
-        assertEquals(1, transactions.execute(status ->
-                assignments.confirmCohort(upcomingCohort, null)).get("assigned"));
-        assertEquals(0L, workflow.summary().get("pendingAdvisorRequests"));
-    }
-
-    @Test
-    void cohortAssignmentKeepsExistingAdvisorsAndOnlyAssignsNewStudents() {
-        AssignmentWorkflowService workflow = new AssignmentWorkflowService(jdbc, assignments,
-                new CohortAdvisorService(jdbc));
-        transactions.execute(status -> assignments.assign(List.of(firstStudent), firstAdvisor));
-        jdbc.update("UPDATE advisors SET max_advisees = 1 WHERE user_id = ?", secondAdvisor.toString());
-        assertEquals(1, workflow.previewCohortAssignment(cohortId, secondAdvisor).get("unassignedStudents"));
-        Map<String, Object> result = transactions.execute(status -> workflow.assignCohort(cohortId, secondAdvisor));
-        assertEquals(1, result.get("assigned"));
-        assertEquals(firstAdvisor.toString(), assignments.activeAdvisor(firstStudent));
-        assertEquals(secondAdvisor.toString(), assignments.activeAdvisor(secondStudent));
-        assertEquals(0, transactions.execute(status -> workflow.assignCohort(cohortId, secondAdvisor)).get("assigned"));
-        assertEquals(1L, workflow.advisorsWithCohorts().stream()
-                .filter(item -> cohortId.toString().equals(item.get("cohortId")))
-                .filter(item -> firstAdvisor.toString().equals(item.get("advisorId")))
-                .findFirst().orElseThrow().get("studentCount"));
-        AdminAssignmentService.Page<AdminAssignmentService.Student> studentPage =
-                assignments.students(cohortId, null, false, 0, 1, null, null, null);
-        assertEquals(2, studentPage.totalElements());
-        assertEquals(1, studentPage.items().size());
-        assertEquals(cohortId, studentPage.items().get(0).cohortId());
-        assertEquals("SE", studentPage.items().get(0).majorCode());
-    }
-
-    @Test
-    void adminCanLowerLimitWithoutBlockingExistingAssignments() {
-        AssignmentWorkflowService workflow = new AssignmentWorkflowService(jdbc, assignments,
-                new CohortAdvisorService(jdbc));
-        transactions.execute(status -> assignments.assign(List.of(firstStudent, secondStudent), firstAdvisor));
-        Map<String, Object> result = transactions.execute(status -> workflow.updateLimit(firstAdvisor, 1));
-        assertEquals(1L, result.get("overLimitBy"));
-        assertEquals(2L, assignments.advisor(firstAdvisor).advisor().activeStudents());
-    }
-
-    @Test
-    void unassignRequiresAppointmentAcknowledgementAndMakesStudentAssignableAgain() {
-        transactions.execute(status -> assignments.assign(List.of(firstStudent), firstAdvisor));
-        jdbc.update("INSERT INTO advising_requests (student_id, advisor_id, status) VALUES (?, ?, 'PENDING')",
-                firstStudent.toString(), firstAdvisor.toString());
-        jdbc.update("INSERT INTO advising_sessions (id, student_id, advisor_id, status, scheduled_at) VALUES (?, ?, ?, 'SCHEDULED', DATEADD('DAY', 1, CURRENT_TIMESTAMP))",
-                UUID.randomUUID().toString(), firstStudent.toString(), firstAdvisor.toString());
-        assertEquals(1, assignments.appointmentImpacts(List.of(firstStudent), null).size());
-        assertThrows(AdminAssignmentService.AppointmentWarningRequired.class, () ->
-                transactions.execute(status -> assignments.unassign(List.of(firstStudent), false, null, "Schedule changed")));
-        assertEquals(firstAdvisor.toString(), assignments.activeAdvisor(firstStudent));
-        assertEquals(1, transactions.execute(status ->
-                assignments.unassign(List.of(firstStudent), true, null, "Schedule changed")).intValue());
-        assertEquals(null, assignments.activeAdvisor(firstStudent));
-        assertEquals("CANCELLED", jdbc.queryForObject("SELECT status FROM advising_requests WHERE student_id=?",
-                String.class, firstStudent.toString()));
-        assertEquals("CANCELLED", jdbc.queryForObject("SELECT status FROM advising_sessions WHERE student_id=?",
-                String.class, firstStudent.toString()));
-        assertEquals(2, assignments.previewCohort(cohortId, List.of(firstAdvisor)).get("assigned"));
-        assertEquals(1, transactions.execute(status -> assignments.assign(List.of(firstStudent), secondAdvisor)).intValue());
-        assertEquals(2, assignments.history(firstStudent).size());
-    }
-
-    @Test
-    void summaryCountsAccountsWithoutAcademicProfileSeparately() {
-        UUID missingProfile = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, role_id, full_name, email, status) VALUES (?, 'student-role', 'New student', 'new@test.local', 'ACTIVE')",
-                missingProfile.toString());
-        AssignmentWorkflowService workflow = new AssignmentWorkflowService(jdbc, assignments,
-                new CohortAdvisorService(jdbc));
-        assertEquals(3L, workflow.summary().get("total"));
-        assertEquals(1L, workflow.summary().get("missingAcademicProfile"));
-        assertEquals(2L, workflow.summary().get("unassigned"));
-    }
-
-    @Test
     void autoAssignSelectedStudentsBalancesOnlyThoseProvided() {
-        UUID thirdStudent = addStudent("SE003", cohortId.toString());
+        UUID thirdStudent = addStudent(jdbc, "SE003", cohortId.toString());
         var preview = assignments.previewCohort(cohortId, List.of(firstAdvisor, secondAdvisor), List.of(firstStudent, thirdStudent));
         assertEquals(2, preview.get("assigned"));
 
         Map<String, Object> result = transactions.execute(status ->
-                assignments.confirmCohort(cohortId, List.of(firstAdvisor, secondAdvisor), List.of(firstStudent, thirdStudent), null, "Selected batch"));
+                assignments.confirmCohort(cohortId, List.of(firstAdvisor, secondAdvisor),
+                        List.of(firstStudent, thirdStudent), null, "Selected batch"));
         assertEquals(2, result.get("assigned"));
-
         assertEquals(null, assignments.activeAdvisor(secondStudent));
         assertEquals(true, assignments.activeAdvisor(firstStudent) != null);
         assertEquals(true, assignments.activeAdvisor(thirdStudent) != null);
@@ -270,14 +141,12 @@ class AdminAssignmentServiceTest {
     @Test
     void autoAssignRejectsAlreadyAssignedStudent() {
         transactions.execute(status -> assignments.assign(List.of(firstStudent), firstAdvisor));
-
         var ex = assertThrows(AdminAssignmentService.AssignmentError.class, () ->
                 assignments.previewCohort(cohortId, List.of(firstAdvisor, secondAdvisor), List.of(firstStudent, secondStudent)));
         assertEquals("STUDENT_ALREADY_ASSIGNED", ex.code());
-
         var exConfirm = assertThrows(AdminAssignmentService.AssignmentError.class, () ->
-                transactions.execute(status ->
-                        assignments.confirmCohort(cohortId, List.of(firstAdvisor, secondAdvisor), List.of(firstStudent, secondStudent), null, "test")));
+                transactions.execute(status -> assignments.confirmCohort(
+                        cohortId, List.of(firstAdvisor, secondAdvisor), List.of(firstStudent, secondStudent), null, "test")));
         assertEquals("STUDENT_ALREADY_ASSIGNED", exConfirm.code());
     }
 
@@ -286,7 +155,7 @@ class AdminAssignmentServiceTest {
         UUID otherCohort = UUID.randomUUID();
         jdbc.update("INSERT INTO curriculum_versions (id, version, major_id) VALUES (?, 'K18', ?)",
                 otherCohort.toString(), majorId.toString());
-        UUID outsider = addStudent("OUTSIDE", otherCohort.toString());
+        UUID outsider = addStudent(jdbc, "OUTSIDE", otherCohort.toString());
         var previewError = assertThrows(AdminAssignmentService.AssignmentError.class, () ->
                 assignments.previewCohort(cohortId, List.of(firstAdvisor), List.of(outsider)));
         assertEquals("STUDENT_NOT_IN_COHORT", previewError.code());
@@ -296,21 +165,4 @@ class AdminAssignmentServiceTest {
         assertEquals("STUDENT_NOT_IN_COHORT", confirmError.code());
         assertEquals(null, assignments.activeAdvisor(outsider));
     }
-
-    private UUID addAdvisor(String code, int capacity) {
-        UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, role_id, full_name, email, status) VALUES (?, 'advisor-role', ?, ?, 'ACTIVE')", id.toString(), code, code + "@test.local");
-        jdbc.update("INSERT INTO advisors (user_id, max_advisees, status) VALUES (?, ?, 'ACTIVE')",
-                id.toString(), capacity);
-        return id;
-    }
-
-    private UUID addStudent(String code, String curriculum) {
-        UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, role_id, full_name, email, status) VALUES (?, 'student-role', ?, ?, 'ACTIVE')", id.toString(), code, code + "@test.local");
-        jdbc.update("INSERT INTO students (user_id, student_code, curriculum_version_id) VALUES (?, ?, ?)",
-                id.toString(), code, curriculum);
-        return id;
-    }
 }
-

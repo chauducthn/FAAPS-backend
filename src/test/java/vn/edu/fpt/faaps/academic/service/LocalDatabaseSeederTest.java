@@ -1,0 +1,88 @@
+package vn.edu.fpt.faaps.academic.service;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import vn.edu.fpt.faaps.infrastructure.config.LocalDatabaseSeeder;
+
+class LocalDatabaseSeederTest {
+    private JdbcTemplate jdbc;
+
+    @BeforeEach
+    void setUp() {
+        jdbc = ApiReportFixesTestSchema.createJdbc();
+    }
+
+    @Test
+    void localDatabaseSeederTracksEmptyDatabaseAndSeedsIdempotently() {
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS advisors (
+                    user_id VARCHAR(36) PRIMARY KEY, advisor_code VARCHAR(50),
+                    specialization TEXT, max_advisees INT DEFAULT 30, status VARCHAR(20) DEFAULT 'ACTIVE'
+                )
+                """);
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS course_categories (
+                    id VARCHAR(36) PRIMARY KEY, code VARCHAR(50) UNIQUE NOT NULL,
+                    name VARCHAR(100) NOT NULL, description TEXT
+                )
+                """);
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS courses (
+                    id VARCHAR(36) PRIMARY KEY, code VARCHAR(50) UNIQUE NOT NULL, name VARCHAR(255) NOT NULL,
+                    credits INT NOT NULL, category_id VARCHAR(36) NOT NULL, description TEXT,
+                    objectives TEXT, learning_outcomes TEXT, material_link VARCHAR(500),
+                    status VARCHAR(20) DEFAULT 'ACTIVE'
+                )
+                """);
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS course_prerequisites (
+                    id VARCHAR(36) PRIMARY KEY, course_id VARCHAR(36) NOT NULL,
+                    prerequisite_course_id VARCHAR(36) NOT NULL, group_no INT DEFAULT 1,
+                    type VARCHAR(20) DEFAULT 'PREREQUISITE'
+                )
+                """);
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS curriculum_courses (
+                    id VARCHAR(36) PRIMARY KEY, curriculum_version_id VARCHAR(36) NOT NULL,
+                    course_id VARCHAR(36) NOT NULL, semester_number INT NOT NULL,
+                    is_mandatory BOOLEAN DEFAULT TRUE
+                )
+                """);
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS academic_policies (
+                    id VARCHAR(36) PRIMARY KEY, curriculum_version_id VARCHAR(36) NOT NULL,
+                    policy_type VARCHAR(30) NOT NULL, condition_expression TEXT, restriction_expression TEXT,
+                    approval_required BOOLEAN DEFAULT FALSE, priority INT DEFAULT 0, description TEXT,
+                    is_active BOOLEAN DEFAULT TRUE
+                )
+                """);
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS student_advisor_assignments (
+                    id VARCHAR(36) PRIMARY KEY, student_id VARCHAR(36) NOT NULL,
+                    advisor_id VARCHAR(36) NOT NULL, group_name VARCHAR(100), assigned_date DATE,
+                    is_primary BOOLEAN DEFAULT TRUE, status VARCHAR(20) DEFAULT 'ACTIVE'
+                )
+                """);
+
+        var seeder = new LocalDatabaseSeeder(jdbc, true);
+
+        var firstRun = seeder.trackAndSeedIfEmpty(false);
+        assertTrue(firstRun.seeded());
+        assertEquals(0, firstRun.beforeCounts().get("majors"));
+        assertTrue(firstRun.afterCounts().get("majors") >= 3);
+        assertTrue(firstRun.afterCounts().get("courses") >= 10);
+        assertTrue(firstRun.afterCounts().get("academic_policies") >= 3);
+        assertTrue(firstRun.afterCounts().get("advisors") >= 2);
+        assertTrue(firstRun.afterCounts().get("students") >= 4);
+
+        var secondRun = seeder.trackAndSeedIfEmpty(false);
+        assertFalse(secondRun.seeded());
+        assertEquals(firstRun.afterCounts().get("courses"), secondRun.afterCounts().get("courses"));
+        assertEquals(firstRun.afterCounts().get("students"), secondRun.afterCounts().get("students"));
+    }
+}
