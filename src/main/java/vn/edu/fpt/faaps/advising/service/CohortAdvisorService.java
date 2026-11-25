@@ -49,6 +49,35 @@ public class CohortAdvisorService {
     }
 
     @Transactional
+    public List<UUID> replaceForAdvisor(UUID advisorId, List<UUID> cohortIds) {
+        if (cohortIds == null || cohortIds.size() > 1) {
+            throw new IllegalArgumentException("An advisor can only be assigned to 1 major and 1 cohort");
+        }
+        requireActiveAdvisor(advisorId);
+        jdbc.update("UPDATE cohort_advisors SET is_active = FALSE WHERE advisor_id = ?", advisorId.toString());
+        for (UUID cohortId : cohortIds) include(cohortId, advisorId);
+        return cohortIds;
+    }
+
+    @Transactional
+    public int assignCohortsBulk(List<UUID> advisorIds, List<UUID> cohortIds) {
+        if (advisorIds == null || advisorIds.isEmpty() || advisorIds.size() > 100
+                || advisorIds.stream().distinct().count() != advisorIds.size()) {
+            throw new IllegalArgumentException("advisorIds must contain 1 to 100 unique values");
+        }
+        if (cohortIds == null || cohortIds.size() != 1) {
+            throw new IllegalArgumentException("Each advisor can only be assigned to 1 major and 1 cohort");
+        }
+        UUID targetCohort = cohortIds.get(0);
+        for (UUID advisorId : advisorIds) {
+            requireActiveAdvisor(advisorId);
+            jdbc.update("UPDATE cohort_advisors SET is_active = FALSE WHERE advisor_id = ?", advisorId.toString());
+            include(targetCohort, advisorId);
+        }
+        return advisorIds.size();
+    }
+
+    @Transactional
     public void include(UUID cohortId, UUID advisorId) {
         lockCohort(cohortId);
         requireActiveAdvisor(advisorId);

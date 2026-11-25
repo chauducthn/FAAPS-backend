@@ -34,6 +34,9 @@ import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Page;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.PasswordResetResponse;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.BulkResetPassword;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.BulkRoleItem;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.BulkRoleResponse;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.EmailCheckItem;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
 
@@ -82,9 +85,19 @@ public class AdminUserController {
 
     @PatchMapping("/{id}/role")
     public Detail role(@PathVariable UUID id, @Valid @RequestBody ChangeRoleRequest request) {
-        return users.changeRole(id, new ChangeRole(request.role(), request.studentCode(),
+        return users.changeRole(id, new ChangeRole(request.role(), request.email(), request.studentCode(),
                 request.advisorCode(), request.curriculumVersionId(), request.enrollmentSemesterId(),
                 request.maxAdvisees()));
+    }
+
+    @PostMapping("/role")
+    public BulkRoleResponse bulkRole(@Valid @RequestBody BulkRoleRequest request) {
+        return users.bulkChangeRole(request.role(), request.items());
+    }
+
+    @PostMapping("/check-emails")
+    public Map<String, Boolean> checkEmails(@Valid @RequestBody EmailCheckRequest request) {
+        return users.checkEmailAvailability(request.items());
     }
 
     @PostMapping("/status")
@@ -127,9 +140,15 @@ public class AdminUserController {
     public record BulkStatus(@NotEmpty List<UUID> userIds, @NotBlank String status) {
     }
 
-    public record ChangeRoleRequest(@NotBlank String role, @Size(max = 50) String studentCode,
-            @Size(max = 50) String advisorCode,
+    public record ChangeRoleRequest(@NotBlank String role, @Email @Size(max = 255) String email,
+            @Size(max = 50) String studentCode, @Size(max = 50) String advisorCode,
             UUID curriculumVersionId, UUID enrollmentSemesterId, @Positive Integer maxAdvisees) {
+    }
+
+    public record BulkRoleRequest(@NotBlank String role, @NotEmpty List<BulkRoleItem> items) {
+    }
+
+    public record EmailCheckRequest(@NotEmpty List<EmailCheckItem> items) {
     }
 
     public record CreateUserRequest(

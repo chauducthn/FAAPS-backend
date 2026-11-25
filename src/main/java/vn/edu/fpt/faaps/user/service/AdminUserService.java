@@ -1,6 +1,7 @@
 package vn.edu.fpt.faaps.user.service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,9 +11,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.fpt.faaps.infrastructure.mail.EmailService;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.BulkRoleItem;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.BulkRoleResponse;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.CreateAccount;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.EmailCheckItem;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Page;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.PasswordResetResponse;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
@@ -109,6 +113,15 @@ public class AdminUserService {
     @Transactional
     public Detail changeRole(UUID userId, ChangeRole input) {
         return roles.change(userId, input);
+    }
+
+    @Transactional
+    public BulkRoleResponse bulkChangeRole(String targetRole, List<BulkRoleItem> items) {
+        return roles.bulkChange(targetRole, items);
+    }
+
+    public Map<String, Boolean> checkEmailAvailability(List<EmailCheckItem> items) {
+        return roles.checkEmailAvailability(items);
     }
 
     @Transactional

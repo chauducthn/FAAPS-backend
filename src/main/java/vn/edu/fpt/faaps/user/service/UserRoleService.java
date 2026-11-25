@@ -3,6 +3,7 @@ package vn.edu.fpt.faaps.user.service;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,8 +12,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.fpt.faaps.common.validation.StudentCodeValidator;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.BulkRoleItem;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.BulkRoleResponse;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.ChangeRole;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.Detail;
+import vn.edu.fpt.faaps.user.dto.AdminUserDtos.EmailCheckItem;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.Conflict;
 import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
 import vn.edu.fpt.faaps.user.repository.AdminUserRepository;
@@ -24,10 +28,23 @@ public class UserRoleService {
 
     private final JdbcTemplate jdbc;
     private final AdminUserRepository users;
+    private final UserRoleEmailHelper emailHelper;
+    private final UserBulkRoleHelper bulkHelper;
 
     public UserRoleService(JdbcTemplate jdbc, AdminUserRepository users) {
         this.jdbc = jdbc;
         this.users = users;
+        this.emailHelper = new UserRoleEmailHelper(jdbc);
+        this.bulkHelper = new UserBulkRoleHelper(this);
+    }
+
+    public Map<String, Boolean> checkEmailAvailability(List<EmailCheckItem> items) {
+        return emailHelper.checkEmailAvailability(items);
+    }
+
+    @Transactional
+    public BulkRoleResponse bulkChange(String targetRole, List<BulkRoleItem> items) {
+        return bulkHelper.bulkChange(targetRole, items);
     }
 
     @Transactional
@@ -40,18 +57,28 @@ public class UserRoleService {
                 WHERE u.id=? AND r.code IN ('STUDENT','ADVISOR') FOR UPDATE
                 """, (rs, row) -> rs.getString(1), userId.toString()).stream()
                 .findFirst().orElseThrow(NotFound::new);
-        if (current.equals(input.role())) {
+        String newEmail = emailHelper.validateReplacementEmail(userId, input.email(), input.role());
+        if (current.equals(input.role()) && newEmail == null) {
             return users.detail(userId);
         }
-        if ("ADVISOR".equals(input.role())) {
-            toAdvisor(userId, input.maxAdvisees(), input.advisorCode());
-        } else {
-            toStudent(userId, input);
+        if (!current.equals(input.role())) {
+            if ("ADVISOR".equals(input.role())) {
+                toAdvisor(userId, input.maxAdvisees(), input.advisorCode());
+            } else {
+                toStudent(userId, input);
+            }
         }
-        int updated = jdbc.update("""
-                UPDATE users SET role_id=(SELECT id FROM roles WHERE code=?), updated_at=CURRENT_TIMESTAMP
-                WHERE id=?
-                """, input.role(), userId.toString());
+        int updated = newEmail != null
+                ? jdbc.update("""
+                        UPDATE users
+                        SET role_id=(SELECT id FROM roles WHERE code=?), email=?, external_id=NULL,
+                            updated_at=CURRENT_TIMESTAMP
+                        WHERE id=?
+                        """, input.role(), newEmail, userId.toString())
+                : jdbc.update("""
+                        UPDATE users SET role_id=(SELECT id FROM roles WHERE code=?), updated_at=CURRENT_TIMESTAMP
+                        WHERE id=?
+                        """, input.role(), userId.toString());
         if (updated != 1) {
             throw new Conflict("Target role is not configured");
         }

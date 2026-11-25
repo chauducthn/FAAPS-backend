@@ -1,9 +1,11 @@
 package vn.edu.fpt.faaps.advising.controller;
 
 import vn.edu.fpt.faaps.advising.service.AssignmentWorkflowService;
+import vn.edu.fpt.faaps.advising.service.CohortAdvisorService;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -23,9 +26,11 @@ import vn.edu.fpt.faaps.auth.model.AuthSession;
 @RequestMapping("/api/admin/assignments")
 public class AssignmentWorkflowController {
     private final AssignmentWorkflowService workflow;
+    private final CohortAdvisorService cohortAdvisors;
 
-    public AssignmentWorkflowController(AssignmentWorkflowService workflow) {
+    public AssignmentWorkflowController(AssignmentWorkflowService workflow, CohortAdvisorService cohortAdvisors) {
         this.workflow = workflow;
+        this.cohortAdvisors = cohortAdvisors;
     }
 
     @GetMapping("/unassigned")
@@ -65,8 +70,23 @@ public class AssignmentWorkflowController {
         return workflow.previewCohortAssignment(cohortId, request.advisorId());
     }
 
+    @PutMapping("/advisors/{advisorId}/cohorts")
+    public Map<String, Object> replaceAdvisorCohorts(@PathVariable UUID advisorId,
+            @Valid @RequestBody AdvisorCohortsRequest request) {
+        List<UUID> saved = cohortAdvisors.replaceForAdvisor(advisorId, request.cohortIds());
+        return Map.of("advisorId", advisorId, "cohorts", saved.size());
+    }
+
+    @PostMapping("/advisors/cohorts")
+    public Map<String, Object> bulkAssignAdvisorCohorts(@Valid @RequestBody BulkAdvisorCohortsRequest request) {
+        int updated = cohortAdvisors.assignCohortsBulk(request.advisorIds(), request.cohortIds());
+        return Map.of("advisors", updated, "cohorts", request.cohortIds().size());
+    }
+
     public record LimitRequest(@Min(1) int maxAdvisees) {}
     public record CohortRequest(@NotNull UUID advisorId, String notes) {}
+    public record AdvisorCohortsRequest(@NotNull List<UUID> cohortIds) {}
+    public record BulkAdvisorCohortsRequest(@NotEmpty List<UUID> advisorIds, @NotEmpty List<UUID> cohortIds) {}
 }
 
 
