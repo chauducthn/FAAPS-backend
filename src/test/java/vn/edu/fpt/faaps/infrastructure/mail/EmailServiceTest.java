@@ -1,6 +1,9 @@
 package vn.edu.fpt.faaps.infrastructure.mail;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
@@ -74,5 +77,21 @@ class EmailServiceTest {
         EmailService service = new EmailService(sender, true, "smtp.gmail.com",
                 "a@gmail.com", "FAAPS");
         assertDoesNotThrow(() -> service.sendAdminResetPassword("student@fpt.edu.vn", "A", "Faaps@999999"));
+    }
+
+    @Test
+    void sendTestEmailThrowsWhenDisabledOrSmtpFailsAndReportsStatus() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        EmailService disabled = new EmailService(sender, false, "smtp.gmail.com", "a@gmail.com", "FAAPS");
+        assertFalse(disabled.status().configured());
+        assertThrows(IllegalStateException.class, () -> disabled.sendTestEmail("student@fpt.edu.vn"));
+
+        MimeMessage mime = new MimeMessage(Session.getInstance(new Properties()));
+        when(sender.createMimeMessage()).thenReturn(mime);
+        EmailService active = new EmailService(sender, true, "mailpit", "no-reply@faaps.local", "FAAPS");
+        assertTrue(active.status().configured());
+        assertEquals("mailpit", active.status().host());
+        assertDoesNotThrow(() -> active.sendTestEmail("student@fpt.edu.vn"));
+        verify(sender).send(mime);
     }
 }

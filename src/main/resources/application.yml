@@ -39,6 +39,10 @@ spring:
           auth: ${MAIL_SMTP_AUTH:true}
           starttls:
             enable: ${MAIL_SMTP_STARTTLS:true}
+            required: ${MAIL_SMTP_STARTTLS_REQUIRED:false}
+          ssl:
+            enable: ${MAIL_SMTP_SSL_ENABLE:false}
+            trust: ${MAIL_SMTP_SSL_TRUST:*}
           connectiontimeout: 5000
           timeout: 5000
           writetimeout: 5000

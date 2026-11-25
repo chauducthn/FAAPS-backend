@@ -66,6 +66,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/health", "/api/auth/csrf", "/api/auth/admin/login", "/api/auth/login",
                         "/api/auth/register", "/api/auth/register/curriculums", "/api/auth/refresh",
                         "/api/auth/forgot-password", "/api/auth/reset-password",
+                        "/api/auth/reset-password/validate",
                         "/oauth2/**", "/login/oauth2/**",
                         "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/api/admin/**", "/admin/**").hasRole("ADMIN")

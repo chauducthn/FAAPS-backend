@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import vn.edu.fpt.faaps.auth.dto.AdminLoginRequest;
@@ -105,6 +106,12 @@ public class AuthController {
         AuthPasswordService.ForgotPasswordResult result =
                 requirePasswordService().forgotPassword(body.email(), request.getRemoteAddr());
         return Map.of("success", result.success(), "message", result.message());
+    }
+
+    @GetMapping("/reset-password/validate")
+    public Map<String, Object> validateResetToken(@RequestParam(name = "token", defaultValue = "") String token) {
+        boolean valid = requirePasswordService().isResetTokenValid(token);
+        return Map.of("valid", valid);
     }
 
     @PostMapping("/reset-password")

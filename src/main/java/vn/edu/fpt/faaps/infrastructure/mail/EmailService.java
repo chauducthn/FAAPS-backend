@@ -1,5 +1,6 @@
 package vn.edu.fpt.faaps.infrastructure.mail;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.mail.internet.MimeMessage;
 import java.nio.charset.StandardCharsets;
 import org.slf4j.Logger;
@@ -42,6 +43,37 @@ public class EmailService {
         this.mailHost = mailHost == null ? "" : mailHost.strip();
         this.fromAddress = fromAddress == null || fromAddress.isBlank() ? "no-reply@faaps.local" : fromAddress.strip();
         this.fromName = fromName == null || fromName.isBlank() ? "FAAPS Academic Advising" : fromName.strip();
+    }
+
+    @PostConstruct
+    void logMailConfiguration() {
+        log.info("SMTP mail status: enabled={}, hostConfigured={}, host={}, from={}",
+                enabled, isConfigured(), mailHost.isBlank() ? "(none)" : mailHost, fromAddress);
+    }
+
+    public boolean isConfigured() {
+        return enabled && mailSender != null && !mailHost.isBlank();
+    }
+
+    public MailStatus status() {
+        return new MailStatus(enabled, isConfigured(), mailHost.isBlank() ? null : mailHost, fromAddress, fromName);
+    }
+
+    /** Synchronous SMTP verification helper used by admin diagnostics; throws on delivery failure. */
+    public void sendTestEmail(String toEmail) {
+        if (toEmail == null || toEmail.isBlank()) {
+            throw new IllegalArgumentException("Recipient email is required");
+        }
+        if (!isConfigured()) {
+            throw new IllegalStateException("SMTP mail is disabled or MAIL_HOST is not configured");
+        }
+        String html = """
+                <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2937;line-height:1.6">
+                  <h2 style="color:#f26f21;margin-bottom:12px">FAAPS SMTP Verification</h2>
+                  <p>Your FAAPS SMTP configuration is working properly and can deliver password reset emails.</p>
+                </div>
+                """;
+        deliverHtmlEmail(toEmail.strip(), "[FAAPS] SMTP Test Email", html);
     }
 
     @Async
@@ -123,18 +155,28 @@ public class EmailService {
             return;
         }
         try {
+            deliverHtmlEmail(toEmail.strip(), subject, htmlBody);
+        } catch (Exception ex) {
+            log.warn("Failed to send email to {} (subject={}): {}", toEmail, subject, ex.getMessage());
+        }
+    }
+
+    private void deliverHtmlEmail(String toEmail, String subject, String htmlBody) {
+        try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
             helper.setFrom(fromAddress, fromName);
-            helper.setTo(toEmail.strip());
+            helper.setTo(toEmail);
             helper.setSubject(subject);
             helper.setText(htmlBody, true);
             mailSender.send(message);
             log.info("Email sent successfully to {} (subject={})", toEmail, subject);
         } catch (Exception ex) {
-            log.warn("Failed to send email to {} (subject={}): {}", toEmail, subject, ex.getMessage());
+            throw new IllegalStateException("Failed to send SMTP email: " + ex.getMessage(), ex);
         }
     }
+
+    public record MailStatus(boolean enabled, boolean configured, String host, String fromAddress, String fromName) {}
 
     private static String resolveFrom(String fromAddress, String smtpUsername) {
         if (fromAddress != null && !fromAddress.isBlank()) {
