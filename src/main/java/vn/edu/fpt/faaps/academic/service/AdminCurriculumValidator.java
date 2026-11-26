@@ -49,13 +49,21 @@ final class AdminCurriculumValidator {
         if (toId == null) {
             return;
         }
-        List<LocalDate> toDates = jdbc.query("SELECT start_date FROM semesters WHERE id = ?",
-                (rs, rowNum) -> rs.getDate("start_date").toLocalDate(), toId.toString());
+        List<LocalDate[]> toDates = jdbc.query("SELECT start_date, end_date FROM semesters WHERE id = ?",
+                (rs, rowNum) -> new LocalDate[] {
+                    rs.getDate("start_date").toLocalDate(),
+                    rs.getDate("end_date") != null ? rs.getDate("end_date").toLocalDate() : null
+                }, toId.toString());
         if (toDates.isEmpty()) {
             throw new NotFound("Effective-to semester not found");
         }
-        if (toDates.get(0).isBefore(fromDates.get(0))) {
+        LocalDate toStart = toDates.get(0)[0];
+        LocalDate toEnd = toDates.get(0)[1];
+        if (toStart.isBefore(fromDates.get(0))) {
             throw new IllegalArgumentException("effectiveToSemesterId cannot be before effectiveFromSemesterId");
+        }
+        if (toEnd != null && toEnd.isBefore(LocalDate.now())) {
+            throw new IllegalArgumentException("End semester cannot be in the past");
         }
     }
 

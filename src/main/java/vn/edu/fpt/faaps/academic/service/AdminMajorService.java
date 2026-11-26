@@ -23,7 +23,12 @@ public class AdminMajorService {
     }
 
     public Page list(String cohort, String status, String search, int page, int size, String sort) {
-        return queryHelper.list(cohort, status, search, page, size, sort);
+        return queryHelper.list(null, null, cohort, status, search, page, size, sort);
+    }
+
+    public Page list(String code, BigDecimal durationYears, String cohort, String status,
+            String search, int page, int size, String sort) {
+        return queryHelper.list(code, durationYears, cohort, status, search, page, size, sort);
     }
 
     public MajorItem detail(UUID id) {

@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -136,6 +137,32 @@ public class AdminUserService {
     public PasswordResetResponse bulkResetPassword(List<UUID> userIds) {
         validateUserIdBatch(userIds);
         return passwordResetHelper.resetPasswords(userIds);
+    }
+
+    @Transactional
+    public int deleteAccounts(List<UUID> userIds, UUID actorId) {
+        validateUserIdBatch(userIds);
+        if (userIds.contains(actorId)) {
+            throw new Conflict("You cannot delete your own account");
+        }
+        int deleted = 0;
+        for (UUID id : userIds.stream().sorted().toList()) {
+            List<String> role = jdbc.query("""
+                    SELECT r.code FROM users u JOIN roles r ON r.id = u.role_id
+                    WHERE u.id = ? AND r.code IN ('STUDENT', 'ADVISOR') FOR UPDATE
+                    """, (rs, row) -> rs.getString(1), id.toString());
+            if (role.isEmpty()) {
+                throw new NotFound();
+            }
+            try {
+                jdbc.update("DELETE FROM students WHERE user_id = ?", id.toString());
+                jdbc.update("DELETE FROM advisors WHERE user_id = ?", id.toString());
+                deleted += jdbc.update("DELETE FROM users WHERE id = ?", id.toString());
+            } catch (DataIntegrityViolationException ex) {
+                throw new Conflict("Cannot delete account with existing academic or advising records. Suspend it instead.");
+            }
+        }
+        return deleted;
     }
 
     private void validateUserIdBatch(List<UUID> userIds) {

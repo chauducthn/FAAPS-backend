@@ -30,10 +30,11 @@ public class CurriculumController {
 
     @GetMapping
     public AdminCurriculumService.Page list(@RequestParam(required = false) UUID majorId,
-            @RequestParam(required = false) String status, @RequestParam(required = false) Boolean isCurrent,
-            @RequestParam(required = false) String search, @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return curriculums.list(majorId, status, isCurrent, search, page, size);
+            @RequestParam(required = false) String majorCode, @RequestParam(required = false) String version,
+            @RequestParam(required = false) UUID startSemesterId, @RequestParam(required = false) String status,
+            @RequestParam(required = false) Boolean isCurrent, @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return curriculums.list(majorId, majorCode, version, startSemesterId, status, isCurrent, search, page, size);
     }
 
     @GetMapping("/{id}")

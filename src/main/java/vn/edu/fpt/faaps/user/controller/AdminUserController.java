@@ -16,6 +16,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -116,6 +117,17 @@ public class AdminUserController {
         return users.bulkResetPassword(request.userIds());
     }
 
+    @DeleteMapping("/{id}")
+    public Map<String, Integer> delete(@PathVariable UUID id, @AuthenticationPrincipal AuthSession actor) {
+        return Map.of("deleted", users.deleteAccounts(List.of(id), actor.id()));
+    }
+
+    @PostMapping("/bulk-delete")
+    public Map<String, Integer> bulkDelete(@Valid @RequestBody BulkDelete request,
+            @AuthenticationPrincipal AuthSession actor) {
+        return Map.of("deleted", users.deleteAccounts(request.userIds(), actor.id()));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> invalid(IllegalArgumentException exception) {
         return ResponseEntity.badRequest().body(ApiError.of("INVALID_REQUEST", exception.getMessage()));
@@ -138,6 +150,9 @@ public class AdminUserController {
     }
 
     public record BulkStatus(@NotEmpty List<UUID> userIds, @NotBlank String status) {
+    }
+
+    public record BulkDelete(@NotEmpty List<UUID> userIds) {
     }
 
     public record ChangeRoleRequest(@NotBlank String role, @Email @Size(max = 255) String email,

@@ -35,7 +35,8 @@ public class CurriculumReadRepository {
     }
 
     public AdminCurriculumService.Page list(
-            UUID major, String status, Boolean current, String search, int page, int size) {
+            UUID major, String majorCode, String version, UUID startSemesterId,
+            String status, Boolean current, String search, int page, int size) {
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("page must be non-negative and size must be between 1 and 100");
         }
@@ -45,6 +46,18 @@ public class CurriculumReadRepository {
         if (major != null) {
             where.append(" AND cv.major_id = ?");
             args.add(major.toString());
+        }
+        if (majorCode != null && !majorCode.isBlank() && !"ALL".equalsIgnoreCase(majorCode)) {
+            where.append(" AND UPPER(m.code) = ?");
+            args.add(majorCode.strip().toUpperCase());
+        }
+        if (version != null && !version.isBlank() && !"ALL".equalsIgnoreCase(version)) {
+            where.append(" AND UPPER(cv.version) = ?");
+            args.add(version.strip().toUpperCase());
+        }
+        if (startSemesterId != null) {
+            where.append(" AND cv.effective_from_semester_id = ?");
+            args.add(startSemesterId.toString());
         }
         if (normalized != null) {
             where.append(" AND cv.status = ?");
@@ -56,11 +69,17 @@ public class CurriculumReadRepository {
         }
         if (search != null && !search.isBlank()) {
             where.append(" AND (LOWER(cv.version) LIKE ? OR LOWER(cv.name) LIKE ?"
-                    + " OR LOWER(m.code) LIKE ? OR LOWER(m.name) LIKE ?)");
+                    + " OR LOWER(m.code) LIKE ? OR LOWER(m.name) LIKE ?"
+                    + " OR LOWER(sf.code) LIKE ? OR LOWER(COALESCE(st.code, '')) LIKE ?"
+                    + " OR CONCAT(LOWER(m.code), ' ', LOWER(cv.version)) LIKE ?"
+                    + " OR CONCAT(LOWER(m.code), LOWER(SUBSTRING(cv.version, 2))) LIKE ?)");
             String term = "%" + search.strip().toLowerCase() + "%";
-            args.addAll(List.of(term, term, term, term));
+            args.addAll(List.of(term, term, term, term, term, term, term, term));
         }
-        String countSql = "SELECT COUNT(*) FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id" + where;
+        String countSql = "SELECT COUNT(*) FROM curriculum_versions cv"
+                + " JOIN majors m ON m.id = cv.major_id"
+                + " JOIN semesters sf ON sf.id = cv.effective_from_semester_id"
+                + " LEFT JOIN semesters st ON st.id = cv.effective_to_semester_id" + where;
         long total = jdbc.queryForObject(countSql, Long.class, args.toArray());
         List<Object> paging = new ArrayList<>(args);
         paging.add(size);

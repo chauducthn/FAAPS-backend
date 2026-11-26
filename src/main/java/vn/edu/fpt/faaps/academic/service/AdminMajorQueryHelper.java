@@ -1,5 +1,6 @@
 package vn.edu.fpt.faaps.academic.service;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -27,7 +28,8 @@ final class AdminMajorQueryHelper {
         this.jdbc = jdbc;
     }
 
-    Page list(String cohort, String status, String search, int page, int size, String sort) {
+    Page list(String code, BigDecimal durationYears, String cohort, String status,
+            String search, int page, int size, String sort) {
         if (page < 0 || size < 1 || size > 100) {
             throw new IllegalArgumentException("page or size is invalid");
         }
@@ -38,6 +40,14 @@ final class AdminMajorQueryHelper {
 
         StringBuilder where = new StringBuilder(" WHERE 1 = 1");
         List<Object> params = new ArrayList<>();
+        if (code != null && !code.isBlank() && !code.equalsIgnoreCase("ALL")) {
+            where.append(" AND UPPER(m.code) = ?");
+            params.add(code.strip().toUpperCase());
+        }
+        if (durationYears != null) {
+            where.append(" AND m.duration_years = ?");
+            params.add(durationYears);
+        }
         if (status != null && !status.equalsIgnoreCase("ALL")) {
             where.append(" AND m.status = ?");
             params.add(status.toUpperCase());
@@ -48,8 +58,11 @@ final class AdminMajorQueryHelper {
             params.add(cohort.strip());
         }
         if (search != null && !search.isBlank()) {
-            where.append(" AND (LOWER(m.code) LIKE ? OR LOWER(m.name) LIKE ?)");
+            where.append(" AND (LOWER(m.code) LIKE ? OR LOWER(m.name) LIKE ?"
+                    + " OR CAST(m.total_credits AS CHAR) LIKE ? OR CAST(m.duration_years AS CHAR) LIKE ?)");
             String term = "%" + search.strip().toLowerCase() + "%";
+            params.add(term);
+            params.add(term);
             params.add(term);
             params.add(term);
         }

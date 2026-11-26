@@ -26,7 +26,12 @@ public class AdminCurriculumService {
     }
 
     public Page list(UUID majorId, String status, Boolean isCurrent, String search, int page, int size) {
-        return reads.list(majorId, status, isCurrent, search, page, size);
+        return reads.list(majorId, null, null, null, status, isCurrent, search, page, size);
+    }
+
+    public Page list(UUID majorId, String majorCode, String version, UUID startSemesterId,
+            String status, Boolean isCurrent, String search, int page, int size) {
+        return reads.list(majorId, majorCode, version, startSemesterId, status, isCurrent, search, page, size);
     }
 
     public CurriculumItem detail(UUID id) {
