@@ -12,8 +12,8 @@ import vn.edu.fpt.faaps.academic.service.AdminCourseService.CourseDetail;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.PrerequisiteInput;
 
 final class AdminCourseWriteHelper {
-    private static final Pattern COURSE_CODE_PATTERN =
-            Pattern.compile("^([A-Z]{3}\\d{3}[a-z]?|[A-Z]{2,6}([_-][A-Z0-9]+)*(\\*\\d+)?)$");
+    private static final String CODE_PART = "(?:[A-Z]{3}\\d{2}[\\dx][a-z]?\\*?|[A-Z][A-Za-z]{1,5}\\d{0,2}(?:[_-][A-Za-z0-9.*]+)*(?:\\*\\.?\\d+(?:\\.\\d+)?)?\\*?)";
+    private static final Pattern COURSE_CODE_PATTERN = Pattern.compile("^" + CODE_PART + "(?:/" + CODE_PART + ")*$");
     private final JdbcTemplate jdbc;
     private final CourseReadRepository reads;
     private final AdminCoursePrerequisiteHelper prerequisites;

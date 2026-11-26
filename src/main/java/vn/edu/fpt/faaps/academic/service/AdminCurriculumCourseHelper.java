@@ -38,26 +38,34 @@ final class AdminCurriculumCourseHelper {
         }
         int incomingCredits = 0;
         for (UUID courseId : courseIds) {
-            List<Object[]> rows = jdbc.query("SELECT status, credits FROM courses WHERE id = ?",
-                    (rs, rowNum) -> new Object[] { rs.getString("status"), rs.getInt("credits") }, courseId.toString());
+            List<Object[]> rows = jdbc.query("SELECT code, status, credits FROM courses WHERE id = ?",
+                    (rs, rowNum) -> new Object[] { rs.getString("code"), rs.getString("status"), rs.getInt("credits") },
+                    courseId.toString());
             if (rows.isEmpty()) {
                 throw new NotFound("Course not found: " + courseId);
             }
-            if (!"ACTIVE".equalsIgnoreCase((String) rows.get(0)[0])) {
+            if (!"ACTIVE".equalsIgnoreCase((String) rows.get(0)[1])) {
                 throw new Conflict("Only active courses can be added to a curriculum: " + courseId);
             }
-            incomingCredits += (Integer) rows.get(0)[1];
+            String code = ((String) rows.get(0)[0]).strip().toUpperCase();
+            if (!code.matches("^(PHE|VOV|GDQP|OTP|TMI|TPI|PEN|TRS|LUK).*")) {
+                incomingCredits += (Integer) rows.get(0)[2];
+            }
         }
-        Integer majorLimit = jdbc.queryForObject(
-                "SELECT COALESCE(m.total_credits, 0) FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id WHERE cv.id = ?",
-                Integer.class, curriculumId.toString());
-        Integer currentCredits = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(c.credits), 0) FROM curriculum_courses cc JOIN courses c ON c.id = cc.course_id WHERE cc.curriculum_version_id = ?",
-                Integer.class, curriculumId.toString());
-        int nextTotal = (currentCredits != null ? currentCredits : 0) + incomingCredits;
-        if (majorLimit != null && majorLimit > 0 && nextTotal > majorLimit) {
-            throw new Conflict("Total course credits (" + nextTotal
-                    + ") cannot exceed major credit limit (" + majorLimit + ")");
+        if (semesterNumber > 0 && incomingCredits > 0) {
+            Integer majorLimit = jdbc.queryForObject(
+                    "SELECT COALESCE(m.total_credits, 0) FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id WHERE cv.id = ?",
+                    Integer.class, curriculumId.toString());
+            Integer currentCredits = jdbc.queryForObject(
+                    "SELECT COALESCE(SUM(c.credits), 0) FROM curriculum_courses cc JOIN courses c ON c.id = cc.course_id"
+                            + " WHERE cc.curriculum_version_id = ? AND cc.semester_number > 0"
+                            + " AND UPPER(c.code) NOT REGEXP '^(PHE|VOV|GDQP|OTP|TMI|TPI|PEN|TRS|LUK)'",
+                    Integer.class, curriculumId.toString());
+            int nextTotal = (currentCredits != null ? currentCredits : 0) + incomingCredits;
+            if (majorLimit != null && majorLimit > 0 && nextTotal > majorLimit) {
+                throw new Conflict("Total course credits (" + nextTotal
+                        + ") cannot exceed major credit limit (" + majorLimit + ")");
+            }
         }
         try {
             for (UUID courseId : courseIds) {

@@ -75,7 +75,9 @@ public class CurriculumImportService {
                 "SELECT COALESCE(m.total_credits, 0) FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id WHERE cv.id = ?",
                 Integer.class, curriculumId.toString());
         Integer totalAfter = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(c.credits), 0) FROM curriculum_courses cc JOIN courses c ON c.id = cc.course_id WHERE cc.curriculum_version_id = ?",
+                "SELECT COALESCE(SUM(c.credits), 0) FROM curriculum_courses cc JOIN courses c ON c.id = cc.course_id"
+                        + " WHERE cc.curriculum_version_id = ? AND cc.semester_number > 0"
+                        + " AND UPPER(c.code) NOT REGEXP '^(PHE|VOV|GDQP|OTP|TMI|TPI|PEN|TRS|LUK)'",
                 Integer.class, curriculumId.toString());
         if (majorLimit != null && majorLimit > 0 && totalAfter != null && totalAfter > majorLimit) {
             throw new AdminCurriculumService.Conflict("Total course credits (" + totalAfter

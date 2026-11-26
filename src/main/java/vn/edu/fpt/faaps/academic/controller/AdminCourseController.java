@@ -15,8 +15,9 @@ import vn.edu.fpt.faaps.academic.service.ImportErrorWorkbook;
 @RestController
 @RequestMapping("/api/admin/courses")
 public class AdminCourseController {
-    private static final String CODE_REGEX = "^[A-Za-z]{3}[0-9]{3}[A-Za-z]?$";
-    private static final String CODE_MSG = "Course code must consist of 3 letters, 3 digits, and optional 1 letter suffix";
+    private static final String CODE_PART = "(?:[A-Z]{3}\\d{2}[\\dx][a-z]?\\*?|[A-Z][A-Za-z]{1,5}\\d{0,2}(?:[_-][A-Za-z0-9.*]+)*(?:\\*\\.?\\d+(?:\\.\\d+)?)?\\*?)";
+    private static final String CODE_REGEX = "^" + CODE_PART + "(?:/" + CODE_PART + ")*$";
+    private static final String CODE_MSG = "Invalid course code format (e.g. CSD201, SSL101c, IoT_GRA_ELE, NWC203c/NWC204)";
     private static final String LINK_REGEX = "^$|^https?://\\S+$";
     private static final String LINK_MSG = "Enter a full link starting with http:// or https://";
 
@@ -109,7 +110,6 @@ public class AdminCourseController {
         }
         return courses.previewXlsx(file.getInputStream());
     }
-
     @PostMapping(value = "/import/errors.xlsx",
             produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     public ResponseEntity<byte[]> importErrors(@RequestBody ImportErrorRequest request) {
@@ -129,24 +129,16 @@ public class AdminCourseController {
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException exception) {
-        return AcademicErrorResponses.validationWithError(exception);
-    }
+    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException e) { return AcademicErrorResponses.validationWithError(e); }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> invalid(IllegalArgumentException exception) {
-        return AcademicErrorResponses.invalidWithError(exception);
-    }
+    public ResponseEntity<Map<String, Object>> invalid(IllegalArgumentException e) { return AcademicErrorResponses.invalidWithError(e); }
 
     @ExceptionHandler(AdminCourseService.NotFound.class)
-    public ResponseEntity<Map<String, Object>> notFound(AdminCourseService.NotFound exception) {
-        return AcademicErrorResponses.statusWithError(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage());
-    }
+    public ResponseEntity<Map<String, Object>> notFound(AdminCourseService.NotFound e) { return AcademicErrorResponses.statusWithError(HttpStatus.NOT_FOUND, "NOT_FOUND", e.getMessage()); }
 
     @ExceptionHandler(AdminCourseService.Conflict.class)
-    public ResponseEntity<Map<String, Object>> conflict(AdminCourseService.Conflict exception) {
-        return AcademicErrorResponses.statusWithError(HttpStatus.CONFLICT, "CONFLICT", exception.getMessage());
-    }
+    public ResponseEntity<Map<String, Object>> conflict(AdminCourseService.Conflict e) { return AcademicErrorResponses.statusWithError(HttpStatus.CONFLICT, "CONFLICT", e.getMessage()); }
 
     public record CreateCourseRequest(
             @NotBlank @Pattern(regexp = CODE_REGEX, message = CODE_MSG) String code,

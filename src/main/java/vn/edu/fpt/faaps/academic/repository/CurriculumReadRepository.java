@@ -20,7 +20,8 @@ public class CurriculumReadRepository {
                    (SELECT COUNT(*) FROM curriculum_courses cc WHERE cc.curriculum_version_id = cv.id) course_count,
                    (SELECT COALESCE(SUM(c.credits), 0)
                     FROM curriculum_courses cc JOIN courses c ON c.id = cc.course_id
-                    WHERE cc.curriculum_version_id = cv.id) total_credits,
+                    WHERE cc.curriculum_version_id = cv.id AND cc.semester_number > 0
+                      AND UPPER(c.code) NOT REGEXP '^(PHE|VOV|GDQP|OTP|TMI|TPI|PEN|TRS|LUK)') total_credits,
                    COALESCE(m.total_credits, 0) major_total_credits,
                    cv.created_at, cv.updated_at
             FROM curriculum_versions cv

@@ -2,6 +2,7 @@ package vn.edu.fpt.faaps.academic.service;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -12,28 +13,46 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.CategoryItem;
 
 final class CourseImportValidator {
+    private static final String CODE_PART = "(?:[A-Z]{3}\\d{2}[\\dx][a-z]?\\*?|[A-Z][A-Za-z]{1,5}\\d{0,2}(?:[_-][A-Za-z0-9.*]+)*(?:\\*\\.?\\d+(?:\\.\\d+)?)?\\*?)";
+    private static final String CODE_REGEX = "^" + CODE_PART + "(?:/" + CODE_PART + ")*$";
     private final JdbcTemplate jdbc;
 
     CourseImportValidator(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
+    Set<String> loadExistingCourseCodes() {
+        return new HashSet<>(jdbc.query("SELECT UPPER(code) FROM courses", (rs, n) -> rs.getString(1)));
+    }
+
+    Map<String, Set<String>> loadPrerequisiteGraph() {
+        Map<String, Set<String>> graph = new HashMap<>();
+        jdbc.query("SELECT course_id, prerequisite_course_id FROM course_prerequisites", rs -> {
+            String cid = rs.getString(1);
+            String pid = rs.getString(2);
+            if (cid != null && pid != null) {
+                graph.computeIfAbsent(cid, k -> new HashSet<>()).add(pid);
+            }
+        });
+        return graph;
+    }
+
     List<String> validateRow(String code, String name, String creditsStr, String catStr,
             String statusStr, String materialLink,
-            Set<String> seenCodesInFile, List<CategoryItem> cats, Map<String, UUID> catMap) {
+            Set<String> seenCodesInFile, Set<String> existingCodesInDb,
+            List<CategoryItem> cats, Map<String, UUID> catMap) {
         List<String> errors = new ArrayList<>();
-        if (code.isBlank()) {
+        String cleanCode = code == null ? "" : code.replaceAll("\\s+", "");
+        if (cleanCode.isBlank()) {
             errors.add("Course code is required");
-        } else if (code.strip().length() > 20
-                || !code.strip().matches("^([A-Z]{3}\\d{3}[a-z]?|[A-Z]{2,6}([_-][A-Z0-9]+)*(\\*\\d+)?)$")) {
-            errors.add("Invalid course code format (e.g. CSD201, SSL101c, PEN, PHE_COM*1, TMI_ELE)");
-        } else if (!seenCodesInFile.add(code.strip().toUpperCase())) {
-            errors.add("Duplicate course code in uploaded file: " + code);
+        } else if (!cleanCode.matches(CODE_REGEX)) {
+            errors.add("Course code has invalid format (e.g. CSD201, SSL101c, IoT_GRA_ELE, NWC203c/NWC204)");
         } else {
-            Integer countInDb = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM courses WHERE UPPER(code) = ?", Integer.class, code.strip().toUpperCase());
-            if (countInDb != null && countInDb > 0) {
-                errors.add("Course code already exists in database: " + code);
+            String upper = cleanCode.toUpperCase();
+            if (!seenCodesInFile.add(upper)) {
+                errors.add("Duplicate course code in uploaded file: " + cleanCode);
+            } else if (existingCodesInDb.contains(upper)) {
+                errors.add("Course code already exists in database: " + cleanCode);
             }
         }
 
@@ -95,7 +114,7 @@ final class CourseImportValidator {
         return cats.isEmpty() ? null : cats.get(0).id();
     }
 
-    boolean createsCycle(String courseId, String candidatePrerequisiteId) {
+    boolean createsCycleInGraph(Map<String, Set<String>> graph, String courseId, String candidatePrerequisiteId) {
         if (courseId.equalsIgnoreCase(candidatePrerequisiteId)) {
             return true;
         }
@@ -105,13 +124,7 @@ final class CourseImportValidator {
         visited.add(candidatePrerequisiteId);
         while (!queue.isEmpty()) {
             String current = queue.poll();
-            List<String> next = jdbc.query(
-                    "SELECT prerequisite_course_id FROM course_prerequisites WHERE course_id = ?",
-                    (rs, row) -> rs.getString(1), current);
-            for (String dep : next) {
-                if (dep == null) {
-                    continue;
-                }
+            for (String dep : graph.getOrDefault(current, Set.of())) {
                 if (dep.equalsIgnoreCase(courseId)) {
                     return true;
                 }

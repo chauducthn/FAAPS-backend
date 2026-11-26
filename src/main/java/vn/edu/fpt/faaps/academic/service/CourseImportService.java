@@ -10,9 +10,6 @@ import java.util.Set;
 import java.util.UUID;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.CategoryItem;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.ImportConfirmItem;
@@ -21,8 +18,7 @@ import vn.edu.fpt.faaps.academic.service.AdminCourseService.ImportRowItem;
 import vn.edu.fpt.faaps.academic.service.CourseImportSheetParser.RawCourseRow;
 
 final class CourseImportService {
-    private static final Logger log = LoggerFactory.getLogger(CourseImportService.class);
-
+    private static final int BATCH_SIZE = 500;
     private final JdbcTemplate jdbc;
     private final CourseImportValidator validator;
 
@@ -37,7 +33,7 @@ final class CourseImportService {
             catMap.put(cat.code().toUpperCase(), cat.id());
             catMap.put(cat.name().toUpperCase(), cat.id());
         }
-
+        Set<String> existingCodesInDb = validator.loadExistingCourseCodes();
         List<ImportRowItem> rows = new ArrayList<>();
         Set<String> seenCodesInFile = new HashSet<>();
 
@@ -46,7 +42,7 @@ final class CourseImportService {
             for (RawCourseRow raw : parsedRows) {
                 List<String> errors = validator.validateRow(
                         raw.code(), raw.name(), raw.creditsStr(), raw.catStr(),
-                        raw.statusStr(), raw.materialLink(), seenCodesInFile, cats, catMap);
+                        raw.statusStr(), raw.materialLink(), seenCodesInFile, existingCodesInDb, cats, catMap);
                 int credits = validator.parseCredits(raw.creditsStr());
                 UUID categoryId = validator.resolveCategoryId(raw.catStr(), cats, catMap);
                 String courseStatus = validator.normalizeStatus(raw.statusStr());
@@ -69,13 +65,19 @@ final class CourseImportService {
             return 0;
         }
         UUID defaultCatId = cats.isEmpty() ? null : cats.get(0).id();
-        List<PendingCourse> pending = upsertCourses(items, defaultCatId);
-        linkPrerequisites(pending);
+        Map<String, String> codeToId = new HashMap<>();
+        jdbc.query("SELECT UPPER(code), id FROM courses", rs -> {
+            codeToId.put(rs.getString(1), rs.getString(2));
+        });
+        List<PendingCourse> pending = batchUpsertCourses(items, defaultCatId, codeToId);
+        batchLinkPrerequisites(pending, codeToId);
         return pending.size();
     }
 
-    private List<PendingCourse> upsertCourses(List<ImportConfirmItem> items, UUID defaultCatId) {
+    private List<PendingCourse> batchUpsertCourses(
+            List<ImportConfirmItem> items, UUID defaultCatId, Map<String, String> codeToId) {
         List<PendingCourse> pending = new ArrayList<>();
+        List<Object[]> insertArgs = new ArrayList<>();
         for (ImportConfirmItem item : items) {
             if (item.code() == null || item.code().isBlank() || item.name() == null || item.name().isBlank()) {
                 continue;
@@ -85,67 +87,70 @@ final class CourseImportService {
                 continue;
             }
             String code = item.code().strip();
-            List<String> existingIds = jdbc.query(
-                    "SELECT id FROM courses WHERE UPPER(code) = ?", (rs, rowNum) -> rs.getString("id"), code.toUpperCase());
+            String upper = code.toUpperCase();
+            String existingId = codeToId.get(upper);
             UUID courseId;
-            if (existingIds.isEmpty()) {
+            if (existingId == null) {
                 courseId = UUID.randomUUID();
                 String courseStatus = validator.normalizeStatus(item.status());
                 String link = AdminCourseWriteHelper.normalizeAndValidateMaterialLink(item.materialLink());
-                jdbc.update("""
-                        INSERT INTO courses (id, code, name, credits, category_id, description, objectives,
-                            learning_outcomes, material_link, status, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        """, courseId.toString(), code, item.name().strip(),
-                        item.credits() >= 0 ? item.credits() : 3, catId.toString(),
-                        item.description(), item.objectives(), item.learningOutcomes(), link, courseStatus);
+                insertArgs.add(new Object[] {
+                    courseId.toString(), code, item.name().strip(),
+                    item.credits() >= 0 ? item.credits() : 3, catId.toString(),
+                    item.description(), item.objectives(), item.learningOutcomes(), link, courseStatus
+                });
+                codeToId.put(upper, courseId.toString());
             } else {
-                courseId = UUID.fromString(existingIds.get(0));
+                courseId = UUID.fromString(existingId);
             }
             pending.add(new PendingCourse(courseId, item));
+        }
+        String sql = """
+                INSERT INTO courses (id, code, name, credits, category_id, description, objectives,
+                    learning_outcomes, material_link, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """;
+        for (int i = 0; i < insertArgs.size(); i += BATCH_SIZE) {
+            jdbc.batchUpdate(sql, insertArgs.subList(i, Math.min(i + BATCH_SIZE, insertArgs.size())));
         }
         return pending;
     }
 
-    private void linkPrerequisites(List<PendingCourse> pending) {
+    private void batchLinkPrerequisites(List<PendingCourse> pending, Map<String, String> codeToId) {
+        Map<String, Set<String>> graph = validator.loadPrerequisiteGraph();
+        List<Object[]> insertArgs = new ArrayList<>();
         for (PendingCourse pc : pending) {
             String prereqs = pc.item().prerequisites();
             if (prereqs == null || prereqs.isBlank()) {
                 continue;
             }
+            String cid = pc.id().toString();
             for (String part : prereqs.split("[,;]")) {
                 String prereqCode = part.strip().toUpperCase();
-                if (prereqCode.isBlank()) {
+                String prereqId = prereqCode.isBlank() ? null : codeToId.get(prereqCode);
+                if (prereqId == null || prereqId.equals(cid)) {
                     continue;
                 }
-                List<String> prereqIds = jdbc.query(
-                        "SELECT id FROM courses WHERE UPPER(code) = ?", (rs, rowNum) -> rs.getString("id"), prereqCode);
-                if (prereqIds.isEmpty() || prereqIds.get(0).equals(pc.id().toString())) {
+                Set<String> edges = graph.computeIfAbsent(cid, k -> new HashSet<>());
+                if (edges.contains(prereqId)) {
                     continue;
                 }
-                String prereqId = prereqIds.get(0);
-                Integer count = jdbc.queryForObject(
-                        "SELECT COUNT(*) FROM course_prerequisites WHERE course_id = ? AND prerequisite_course_id = ?",
-                        Integer.class, pc.id().toString(), prereqId);
-                if (count != null && count > 0) {
-                    continue;
-                }
-                if (validator.createsCycle(pc.id().toString(), prereqId)) {
+                if (validator.createsCycleInGraph(graph, cid, prereqId)) {
                     throw new AdminCourseService.Conflict("Circular course prerequisite detected");
                 }
-                try {
-                    jdbc.update("""
-                            INSERT INTO course_prerequisites
-                                (id, course_id, prerequisite_course_id, group_no, type, minimum_score, created_at)
-                            VALUES (?, ?, ?, 1, 'PREREQUISITE', 5.00, CURRENT_TIMESTAMP)
-                            """, UUID.randomUUID().toString(), pc.id().toString(), prereqId);
-                } catch (DuplicateKeyException ex) {
-                    log.debug("Prerequisite {} -> {} already inserted concurrently", pc.id(), prereqId);
-                }
+                edges.add(prereqId);
+                insertArgs.add(new Object[] { UUID.randomUUID().toString(), cid, prereqId });
             }
+        }
+        String sql = """
+                INSERT INTO course_prerequisites
+                    (id, course_id, prerequisite_course_id, group_no, type, minimum_score, created_at)
+                VALUES (?, ?, ?, 1, 'PREREQUISITE', 5.00, CURRENT_TIMESTAMP)
+                """;
+        for (int i = 0; i < insertArgs.size(); i += BATCH_SIZE) {
+            jdbc.batchUpdate(sql, insertArgs.subList(i, Math.min(i + BATCH_SIZE, insertArgs.size())));
         }
     }
 
-    private record PendingCourse(UUID id, ImportConfirmItem item) {
-    }
+    private record PendingCourse(UUID id, ImportConfirmItem item) {}
 }

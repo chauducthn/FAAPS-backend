@@ -88,7 +88,7 @@ final class CourseImportSheetParser {
         for (int r = header.rowNum() + 1; r <= lastRow; r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
-            String code = getCellString(row.getCell(header.codeCol()));
+            String code = getCellString(row.getCell(header.codeCol())).replaceAll("\\s+", "");
             String name = cellText(row, nameCol);
             if (code.isBlank() && name.isBlank()) continue;
             rows.add(new RawCourseRow(r, code, name, cellText(row, creditsCol), cellText(row, catCol),
