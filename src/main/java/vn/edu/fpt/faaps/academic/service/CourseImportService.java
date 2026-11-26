@@ -45,13 +45,16 @@ final class CourseImportService {
             List<RawCourseRow> parsedRows = CourseImportSheetParser.parseSheet(workbook.getSheetAt(0));
             for (RawCourseRow raw : parsedRows) {
                 List<String> errors = validator.validateRow(
-                        raw.code(), raw.name(), raw.creditsStr(), raw.catStr(), seenCodesInFile, cats, catMap);
+                        raw.code(), raw.name(), raw.creditsStr(), raw.catStr(),
+                        raw.statusStr(), raw.materialLink(), seenCodesInFile, cats, catMap);
                 int credits = validator.parseCredits(raw.creditsStr());
                 UUID categoryId = validator.resolveCategoryId(raw.catStr(), cats, catMap);
+                String courseStatus = validator.normalizeStatus(raw.statusStr());
+                String link = raw.materialLink() != null && !raw.materialLink().isBlank() ? raw.materialLink().strip() : null;
                 String status = errors.isEmpty() ? "VALID" : "ERROR";
-                rows.add(new ImportRowItem(raw.rowNumber(), raw.code().toUpperCase(), raw.name(), credits,
+                rows.add(new ImportRowItem(raw.rowNumber(), raw.code().strip(), raw.name(), credits,
                         categoryId != null ? categoryId.toString() : null, raw.catStr(), raw.description(),
-                        raw.prerequisites(), raw.objectives(), raw.learningOutcomes(), status, errors));
+                        raw.prerequisites(), raw.objectives(), raw.learningOutcomes(), courseStatus, link, status, errors));
             }
         } catch (Exception e) {
             throw new IllegalArgumentException("Unable to read Excel file: " + e.getMessage());
@@ -81,19 +84,21 @@ final class CourseImportService {
             if (catId == null) {
                 continue;
             }
-            String code = item.code().strip().toUpperCase();
+            String code = item.code().strip();
             List<String> existingIds = jdbc.query(
-                    "SELECT id FROM courses WHERE code = ?", (rs, rowNum) -> rs.getString("id"), code);
+                    "SELECT id FROM courses WHERE UPPER(code) = ?", (rs, rowNum) -> rs.getString("id"), code.toUpperCase());
             UUID courseId;
             if (existingIds.isEmpty()) {
                 courseId = UUID.randomUUID();
+                String courseStatus = validator.normalizeStatus(item.status());
+                String link = AdminCourseWriteHelper.normalizeAndValidateMaterialLink(item.materialLink());
                 jdbc.update("""
                         INSERT INTO courses (id, code, name, credits, category_id, description, objectives,
-                            learning_outcomes, status, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            learning_outcomes, material_link, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         """, courseId.toString(), code, item.name().strip(),
-                        item.credits() > 0 ? item.credits() : 3, catId.toString(),
-                        item.description(), item.objectives(), item.learningOutcomes());
+                        item.credits() >= 0 ? item.credits() : 3, catId.toString(),
+                        item.description(), item.objectives(), item.learningOutcomes(), link, courseStatus);
             } else {
                 courseId = UUID.fromString(existingIds.get(0));
             }
@@ -114,7 +119,7 @@ final class CourseImportService {
                     continue;
                 }
                 List<String> prereqIds = jdbc.query(
-                        "SELECT id FROM courses WHERE code = ?", (rs, rowNum) -> rs.getString("id"), prereqCode);
+                        "SELECT id FROM courses WHERE UPPER(code) = ?", (rs, rowNum) -> rs.getString("id"), prereqCode);
                 if (prereqIds.isEmpty() || prereqIds.get(0).equals(pc.id().toString())) {
                     continue;
                 }

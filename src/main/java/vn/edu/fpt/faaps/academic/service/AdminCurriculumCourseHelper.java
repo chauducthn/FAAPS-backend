@@ -36,15 +36,28 @@ final class AdminCurriculumCourseHelper {
         if (semesterNumber == null || semesterNumber < 0 || semesterNumber > 12) {
             throw new IllegalArgumentException("semesterNumber must be between 0 and 12");
         }
+        int incomingCredits = 0;
         for (UUID courseId : courseIds) {
-            List<String> courseStatuses = jdbc.query("SELECT status FROM courses WHERE id = ?",
-                    (rs, rowNum) -> rs.getString("status"), courseId.toString());
-            if (courseStatuses.isEmpty()) {
+            List<Object[]> rows = jdbc.query("SELECT status, credits FROM courses WHERE id = ?",
+                    (rs, rowNum) -> new Object[] { rs.getString("status"), rs.getInt("credits") }, courseId.toString());
+            if (rows.isEmpty()) {
                 throw new NotFound("Course not found: " + courseId);
             }
-            if (!"ACTIVE".equalsIgnoreCase(courseStatuses.get(0))) {
+            if (!"ACTIVE".equalsIgnoreCase((String) rows.get(0)[0])) {
                 throw new Conflict("Only active courses can be added to a curriculum: " + courseId);
             }
+            incomingCredits += (Integer) rows.get(0)[1];
+        }
+        Integer majorLimit = jdbc.queryForObject(
+                "SELECT COALESCE(m.total_credits, 0) FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id WHERE cv.id = ?",
+                Integer.class, curriculumId.toString());
+        Integer currentCredits = jdbc.queryForObject(
+                "SELECT COALESCE(SUM(c.credits), 0) FROM curriculum_courses cc JOIN courses c ON c.id = cc.course_id WHERE cc.curriculum_version_id = ?",
+                Integer.class, curriculumId.toString());
+        int nextTotal = (currentCredits != null ? currentCredits : 0) + incomingCredits;
+        if (majorLimit != null && majorLimit > 0 && nextTotal > majorLimit) {
+            throw new Conflict("Total course credits (" + nextTotal
+                    + ") cannot exceed major credit limit (" + majorLimit + ")");
         }
         try {
             for (UUID courseId : courseIds) {

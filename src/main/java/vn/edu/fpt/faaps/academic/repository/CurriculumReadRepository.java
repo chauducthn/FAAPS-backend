@@ -21,6 +21,7 @@ public class CurriculumReadRepository {
                    (SELECT COALESCE(SUM(c.credits), 0)
                     FROM curriculum_courses cc JOIN courses c ON c.id = cc.course_id
                     WHERE cc.curriculum_version_id = cv.id) total_credits,
+                   COALESCE(m.total_credits, 0) major_total_credits,
                    cv.created_at, cv.updated_at
             FROM curriculum_versions cv
             JOIN majors m ON m.id = cv.major_id
@@ -152,6 +153,7 @@ public class CurriculumReadRepository {
                 rs.getString("status"),
                 rs.getInt("course_count"),
                 rs.getInt("total_credits"),
+                rs.getInt("major_total_credits"),
                 rs.getTimestamp("created_at").toLocalDateTime(),
                 rs.getTimestamp("updated_at").toLocalDateTime());
     }

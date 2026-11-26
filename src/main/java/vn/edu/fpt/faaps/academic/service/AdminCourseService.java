@@ -166,22 +166,26 @@ public class AdminCourseService {
     public record CategoryItem(UUID id, String code, String name, String description) {}
     public record ImportRowItem(int rowNumber, String code, String name, int credits, String categoryId,
             String categoryName, String description, String prerequisites, String objectives, String learningOutcomes,
-            String status, List<String> errors) {
+            String courseStatus, String materialLink, String status, List<String> errors) {
         public ImportRowItem(int rowNumber, String code, String name, int credits, String categoryId,
                 String categoryName, String description, String prerequisites, String status, List<String> errors) {
             this(rowNumber, code, name, credits, categoryId, categoryName, description, prerequisites,
-                    null, null, status, errors);
+                    null, null, "ACTIVE", null, status, errors);
         }
     }
     public record ImportPreviewResult(int totalRows, int validRows, int errorRows, List<ImportRowItem> items) {}
     public record ImportConfirmItem(String code, String name, int credits, UUID categoryId, String description,
-            String prerequisites, String objectives, String learningOutcomes) {
+            String prerequisites, String objectives, String learningOutcomes, String status, String materialLink) {
         public ImportConfirmItem(String code, String name, int credits, UUID categoryId, String description) {
-            this(code, name, credits, categoryId, description, null, null, null);
+            this(code, name, credits, categoryId, description, null, null, null, "ACTIVE", null);
         }
         public ImportConfirmItem(String code, String name, int credits, UUID categoryId,
                 String description, String prerequisites) {
-            this(code, name, credits, categoryId, description, prerequisites, null, null);
+            this(code, name, credits, categoryId, description, prerequisites, null, null, "ACTIVE", null);
+        }
+        public ImportConfirmItem(String code, String name, int credits, UUID categoryId, String description,
+                String prerequisites, String objectives, String learningOutcomes) {
+            this(code, name, credits, categoryId, description, prerequisites, objectives, learningOutcomes, "ACTIVE", null);
         }
     }
     public record Page(List<CourseSummary> items, int page, int size, long totalElements, long totalPages) {}

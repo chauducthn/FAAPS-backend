@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import vn.edu.fpt.faaps.academic.repository.CourseReadRepository;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.CategoryItem;
@@ -13,7 +12,8 @@ import vn.edu.fpt.faaps.academic.service.AdminCourseService.CourseDetail;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.PrerequisiteInput;
 
 final class AdminCourseWriteHelper {
-    private static final Pattern COURSE_CODE_PATTERN = Pattern.compile("^[A-Z]{2}(0[1-9]|[1-9]\\d)(0[1-9]|[1-9]\\d)$");
+    private static final Pattern COURSE_CODE_PATTERN =
+            Pattern.compile("^([A-Z]{3}\\d{3}[a-z]?|[A-Z]{2,6}([_-][A-Z0-9]+)*(\\*\\d+)?)$");
     private final JdbcTemplate jdbc;
     private final CourseReadRepository reads;
     private final AdminCoursePrerequisiteHelper prerequisites;
@@ -67,8 +67,8 @@ final class AdminCourseWriteHelper {
             String status, List<PrerequisiteInput> prereqs) {
         CourseDetail current = reads.detail(id);
         prerequisites.validate(id, prereqs);
-        String newCode = (code != null && !code.isBlank()) ? code.strip().toUpperCase() : current.code();
-        if (!newCode.equalsIgnoreCase(current.code())) {
+        String newCode = (code != null && !code.isBlank()) ? code.strip() : current.code();
+        if (!newCode.equals(current.code())) {
             newCode = validateCourseCode(newCode);
         }
         String newName = (name != null && !name.isBlank()) ? name.strip() : current.name();
@@ -142,38 +142,10 @@ final class AdminCourseWriteHelper {
     }
 
     private String validateCourseCode(String rawCode) {
-        String clean = rawCode.strip().toUpperCase();
+        String clean = rawCode.strip();
         if (!COURSE_CODE_PATTERN.matcher(clean).matches()) {
             throw new IllegalArgumentException(
-                    "Course code must combine major code, cohort digits, and 01-99 (e.g. SE1803)");
-        }
-        String majorCode = clean.substring(0, 2);
-        String cohortVersion = "K" + clean.substring(2, 4);
-        try {
-            Integer activeMajors = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM majors WHERE status = 'ACTIVE'", Integer.class);
-            if (activeMajors != null && activeMajors > 0) {
-                Integer matchedMajor = jdbc.queryForObject(
-                        "SELECT COUNT(*) FROM majors WHERE status = 'ACTIVE' AND UPPER(code) = ?",
-                        Integer.class, majorCode);
-                if (matchedMajor == null || matchedMajor == 0) {
-                    throw new IllegalArgumentException(
-                            "Major code " + majorCode + " does not match any active major");
-                }
-            }
-            Integer activeCohorts = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM curriculum_versions WHERE status = 'ACTIVE'", Integer.class);
-            if (activeCohorts != null && activeCohorts > 0) {
-                Integer matchedCohort = jdbc.queryForObject(
-                        "SELECT COUNT(*) FROM curriculum_versions WHERE status = 'ACTIVE' AND UPPER(version) = ?",
-                        Integer.class, cohortVersion);
-                if (matchedCohort == null || matchedCohort == 0) {
-                    throw new IllegalArgumentException(
-                            "Cohort " + cohortVersion + " does not match any active cohort");
-                }
-            }
-        } catch (BadSqlGrammarException ignored) {
-            // Minimal test schemas without majors/curriculum_versions tables validate format only.
+                    "Invalid course code format (e.g. CSD201, SSL101c, PEN, PHE_COM*1, TMI_ELE)");
         }
         return clean;
     }

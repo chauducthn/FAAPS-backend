@@ -23,6 +23,10 @@ final class CourseImportSheetParser {
             "category", "category code", "course category", "khối kiến thức", "department", "chuyên ngành"
     };
     private static final String[] DESC_KEYS = { "description", "mô tả", "course description" };
+    private static final String[] STATUS_KEYS = { "status", "course status", "active", "trạng thái" };
+    private static final String[] LINK_KEYS = {
+            "material link", "materiallink", "material_link", "materials", "link", "tài liệu"
+    };
     private static final String[] PREREQ_KEYS = {
             "pre-requisite", "prerequisite", "prerequisites", "pre-requisites",
             "pre requisite", "tiên quyết", "môn tiên quyết"
@@ -74,6 +78,8 @@ final class CourseImportSheetParser {
         int creditsCol = findCol(colMap, CREDITS_KEYS);
         int catCol = findCol(colMap, CATEGORY_KEYS);
         int descCol = findCol(colMap, DESC_KEYS);
+        int statusCol = findCol(colMap, STATUS_KEYS);
+        int linkCol = findCol(colMap, LINK_KEYS);
         int prereqCol = findCol(colMap, PREREQ_KEYS);
         int objCol = findCol(colMap, OBJ_KEYS);
         int loCol = findCol(colMap, LO_KEYS);
@@ -81,16 +87,13 @@ final class CourseImportSheetParser {
         List<RawCourseRow> rows = new ArrayList<>();
         for (int r = header.rowNum() + 1; r <= lastRow; r++) {
             Row row = sheet.getRow(r);
-            if (row == null) {
-                continue;
-            }
+            if (row == null) continue;
             String code = getCellString(row.getCell(header.codeCol()));
             String name = cellText(row, nameCol);
-            if (code.isBlank() && name.isBlank()) {
-                continue;
-            }
+            if (code.isBlank() && name.isBlank()) continue;
             rows.add(new RawCourseRow(r, code, name, cellText(row, creditsCol), cellText(row, catCol),
-                    cellText(row, descCol), cellText(row, prereqCol), cellText(row, objCol), cellText(row, loCol)));
+                    cellText(row, descCol), cellText(row, prereqCol), cellText(row, objCol), cellText(row, loCol),
+                    cellText(row, statusCol), cellText(row, linkCol)));
         }
         return rows;
     }
@@ -139,58 +142,41 @@ final class CourseImportSheetParser {
             }
             rows.add(new RawCourseRow(blockIndex++, code, name, findVal(block, CREDITS_KEYS),
                     findVal(block, CATEGORY_KEYS), findVal(block, DESC_KEYS),
-                    findVal(block, PREREQ_KEYS), findVal(block, OBJ_KEYS), findVal(block, LO_KEYS)));
+                    findVal(block, PREREQ_KEYS), findVal(block, OBJ_KEYS), findVal(block, LO_KEYS),
+                    findVal(block, STATUS_KEYS), findVal(block, LINK_KEYS)));
         }
         return rows;
     }
 
-    private static String cellText(Row row, int col) {
-        return col != -1 ? getCellString(row.getCell(col)) : "";
-    }
-
-    private static String cleanKey(String str) {
-        return str == null ? "" : str.trim().toLowerCase().replaceAll("[:：]+$", "").trim();
-    }
+    private static String cellText(Row row, int col) { return col != -1 ? getCellString(row.getCell(col)) : ""; }
+    private static String cleanKey(String str) { return str == null ? "" : str.trim().toLowerCase().replaceAll("[:：]+$", "").trim(); }
 
     private static String findVal(Map<String, String> map, String... names) {
         for (String name : names) {
             String cleaned = cleanKey(name);
-            if (map.containsKey(cleaned)) {
-                return map.get(cleaned).trim();
-            }
+            if (map.containsKey(cleaned)) return map.get(cleaned).trim();
         }
         return "";
     }
 
     private static int findCol(Map<String, Integer> map, String... names) {
         for (String name : names) {
-            if (map.containsKey(name.toLowerCase())) {
-                return map.get(name.toLowerCase());
-            }
+            if (map.containsKey(name.toLowerCase())) return map.get(name.toLowerCase());
         }
         return -1;
     }
 
     private static String getCellString(Cell cell) {
-        if (cell == null) {
-            return "";
-        }
-        if (cell.getCellType() == CellType.STRING) {
-            return cell.getStringCellValue().trim();
-        }
-        if (cell.getCellType() == CellType.NUMERIC) {
-            return String.valueOf((long) cell.getNumericCellValue());
-        }
-        if (cell.getCellType() == CellType.BOOLEAN) {
-            return String.valueOf(cell.getBooleanCellValue());
-        }
+        if (cell == null) return "";
+        if (cell.getCellType() == CellType.STRING) return cell.getStringCellValue().trim();
+        if (cell.getCellType() == CellType.NUMERIC) return String.valueOf((long) cell.getNumericCellValue());
+        if (cell.getCellType() == CellType.BOOLEAN) return String.valueOf(cell.getBooleanCellValue());
         return "";
     }
 
-    private record HeaderMatch(int rowNum, int codeCol, Map<String, Integer> colMap) {
-    }
+    private record HeaderMatch(int rowNum, int codeCol, Map<String, Integer> colMap) {}
 
     record RawCourseRow(int rowNumber, String code, String name, String creditsStr, String catStr,
-            String description, String prerequisites, String objectives, String learningOutcomes) {
-    }
+            String description, String prerequisites, String objectives, String learningOutcomes,
+            String statusStr, String materialLink) {}
 }

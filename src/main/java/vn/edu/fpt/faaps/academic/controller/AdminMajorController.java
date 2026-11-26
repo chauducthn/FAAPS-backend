@@ -83,6 +83,12 @@ public class AdminMajorController {
         return ResponseEntity.ok(Map.of("success", true, "deletedCount", deleted, "message", "Deleted " + deleted + " major(s)"));
     }
 
+    @PostMapping("/bulk-status")
+    public ResponseEntity<Map<String, Object>> bulkStatus(@Valid @RequestBody BulkStatusRequest request) {
+        int updated = majors.bulkUpdateStatus(request.ids(), request.status());
+        return ResponseEntity.ok(Map.of("success", true, "updatedCount", updated, "message", "Updated " + updated + " major(s)"));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException exception) {
         Map<String, String> fieldErrors = new java.util.HashMap<>();
@@ -150,6 +156,9 @@ public class AdminMajorController {
     }
 
     public record BulkDeleteRequest(@NotEmpty List<UUID> ids) {
+    }
+
+    public record BulkStatusRequest(@NotEmpty List<UUID> ids, @NotBlank String status) {
     }
 }
 

@@ -165,7 +165,17 @@ public class AdminCurriculumService {
             String name, UUID effectiveFromSemesterId, String effectiveFromSemesterCode, LocalDate effectiveFromDate,
             UUID effectiveToSemesterId, String effectiveToSemesterCode, LocalDate effectiveToDate,
             String description, boolean isCurrent, String status, int courseCount,
-            int totalCredits, LocalDateTime createdAt, LocalDateTime updatedAt) {}
+            int totalCredits, int majorTotalCredits, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        public CurriculumItem(UUID id, UUID majorId, String majorCode, String majorName, String version,
+                String name, UUID effectiveFromSemesterId, String effectiveFromSemesterCode, LocalDate effectiveFromDate,
+                UUID effectiveToSemesterId, String effectiveToSemesterCode, LocalDate effectiveToDate,
+                String description, boolean isCurrent, String status, int courseCount,
+                int totalCredits, LocalDateTime createdAt, LocalDateTime updatedAt) {
+            this(id, majorId, majorCode, majorName, version, name, effectiveFromSemesterId, effectiveFromSemesterCode,
+                    effectiveFromDate, effectiveToSemesterId, effectiveToSemesterCode, effectiveToDate, description,
+                    isCurrent, status, courseCount, totalCredits, 0, createdAt, updatedAt);
+        }
+    }
 
     public record CurriculumCourseItem(UUID id, UUID curriculumId, UUID courseId, String courseCode,
             String courseName, int credits, String courseStatus, int semesterNumber,

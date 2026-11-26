@@ -147,6 +147,29 @@ public class AdminMajorService {
         return deleted;
     }
 
+    @Transactional
+    public int bulkUpdateStatus(List<UUID> ids, String status) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("status is required");
+        }
+        String normalized = status.strip().toUpperCase();
+        if (!List.of("ACTIVE", "INACTIVE", "DRAFT").contains(normalized)) {
+            throw new IllegalArgumentException("status is invalid");
+        }
+        int updated = 0;
+        for (UUID id : ids) {
+            if (id != null) {
+                updated += jdbc.update(
+                        "UPDATE majors SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        normalized, id.toString());
+            }
+        }
+        return updated;
+    }
+
     public record MajorItem(UUID id, String code, String name, String description, int totalCredits,
             BigDecimal durationYears, String status, String cohort, LocalDateTime createdAt, LocalDateTime updatedAt) {
     }

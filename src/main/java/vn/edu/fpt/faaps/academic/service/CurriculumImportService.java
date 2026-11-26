@@ -55,8 +55,8 @@ public class CurriculumImportService {
             throw new IllegalArgumentException("Only a non-empty validated preview can be imported");
         int imported = 0;
         for (RowItem item : items) {
-            if (item.semesterNumber() < 1 || item.semesterNumber() > 9)
-                throw new IllegalArgumentException("Semester must be between 1 and 9");
+            if (item.semesterNumber() < 0 || item.semesterNumber() > 9)
+                throw new IllegalArgumentException("Semester must be between 0 and 9");
             Integer activeCourse = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM courses WHERE id=? AND UPPER(code)=? AND status='ACTIVE'",
                     Integer.class, item.courseId(), item.courseCode().strip().toUpperCase(Locale.ROOT));
@@ -70,6 +70,16 @@ public class CurriculumImportService {
                         is_mandatory=VALUES(is_mandatory), group_name=VALUES(group_name), updated_at=CURRENT_TIMESTAMP
                     """, UUID.randomUUID().toString(), curriculumId.toString(), item.courseId(),
                     item.semesterNumber(), item.mandatory(), item.groupName());
+        }
+        Integer majorLimit = jdbc.queryForObject(
+                "SELECT COALESCE(m.total_credits, 0) FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id WHERE cv.id = ?",
+                Integer.class, curriculumId.toString());
+        Integer totalAfter = jdbc.queryForObject(
+                "SELECT COALESCE(SUM(c.credits), 0) FROM curriculum_courses cc JOIN courses c ON c.id = cc.course_id WHERE cc.curriculum_version_id = ?",
+                Integer.class, curriculumId.toString());
+        if (majorLimit != null && majorLimit > 0 && totalAfter != null && totalAfter > majorLimit) {
+            throw new AdminCurriculumService.Conflict("Total course credits (" + totalAfter
+                    + ") cannot exceed major credit limit (" + majorLimit + ")");
         }
         return imported;
     }

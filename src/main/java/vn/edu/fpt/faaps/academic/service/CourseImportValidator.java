@@ -19,17 +19,19 @@ final class CourseImportValidator {
     }
 
     List<String> validateRow(String code, String name, String creditsStr, String catStr,
+            String statusStr, String materialLink,
             Set<String> seenCodesInFile, List<CategoryItem> cats, Map<String, UUID> catMap) {
         List<String> errors = new ArrayList<>();
         if (code.isBlank()) {
             errors.add("Course code is required");
-        } else if (!code.matches("^[A-Za-z0-9_-]{2,20}$")) {
-            errors.add("Course code format is invalid (2-20 alphanumeric characters)");
-        } else if (!seenCodesInFile.add(code.toUpperCase())) {
+        } else if (code.strip().length() > 20
+                || !code.strip().matches("^([A-Z]{3}\\d{3}[a-z]?|[A-Z]{2,6}([_-][A-Z0-9]+)*(\\*\\d+)?)$")) {
+            errors.add("Invalid course code format (e.g. CSD201, SSL101c, PEN, PHE_COM*1, TMI_ELE)");
+        } else if (!seenCodesInFile.add(code.strip().toUpperCase())) {
             errors.add("Duplicate course code in uploaded file: " + code);
         } else {
             Integer countInDb = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM courses WHERE code = ?", Integer.class, code.toUpperCase());
+                    "SELECT COUNT(*) FROM courses WHERE UPPER(code) = ?", Integer.class, code.strip().toUpperCase());
             if (countInDb != null && countInDb > 0) {
                 errors.add("Course code already exists in database: " + code);
             }
@@ -40,8 +42,8 @@ final class CourseImportValidator {
         }
         try {
             int credits = (int) Double.parseDouble(creditsStr.trim());
-            if (credits <= 0 || credits > 30) {
-                errors.add("Credits must be between 1 and 30");
+            if (credits < 0 || credits > 30) {
+                errors.add("Credits must be between 0 and 30");
             }
         } catch (Exception e) {
             errors.add("Credits must be a valid number");
@@ -54,7 +56,25 @@ final class CourseImportValidator {
         } else if (cats.isEmpty()) {
             errors.add("Course category is required");
         }
+        if (statusStr != null && !statusStr.isBlank()
+                && !List.of("ACTIVE", "INACTIVE").contains(statusStr.strip().toUpperCase())) {
+            errors.add("Status must be ACTIVE or INACTIVE");
+        }
+        if (materialLink != null && !materialLink.isBlank()) {
+            String link = materialLink.strip();
+            if (link.length() > 500 || !link.matches("(?i)^https?://\\S+\\.\\S+$")) {
+                errors.add("Material link must be a valid http(s) URL");
+            }
+        }
         return errors;
+    }
+
+    String normalizeStatus(String statusStr) {
+        if (statusStr == null || statusStr.isBlank()) {
+            return "ACTIVE";
+        }
+        String upper = statusStr.strip().toUpperCase();
+        return List.of("ACTIVE", "INACTIVE").contains(upper) ? upper : "ACTIVE";
     }
 
     int parseCredits(String creditsStr) {
