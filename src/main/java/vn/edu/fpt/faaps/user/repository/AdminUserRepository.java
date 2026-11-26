@@ -62,20 +62,28 @@ public class AdminUserRepository {
     public Detail detail(UUID id) {
         return jdbc.query("""
                 SELECT u.id, CASE WHEN r.code='STUDENT' THEN COALESCE(s.student_code,u.email) ELSE u.email END user_code,
-                       u.full_name,u.email,r.code role,u.status,u.created_at,u.updated_at,s.major_id,m.name major_name,
-                       s.curriculum_version_id,cv.version curriculum_code,s.enrollment_semester_id,
-                       s.expected_graduation_semester_id,s.current_semester,s.academic_status
+                       u.full_name, u.email, r.code role, u.status, u.created_at, u.updated_at,
+                       COALESCE(s.major_id, cv.major_id) major_id, m.code major_code, m.name major_name,
+                       s.curriculum_version_id, cv.version curriculum_code, cv.name curriculum_name,
+                       s.enrollment_semester_id, es.code enrollment_semester_code,
+                       s.expected_graduation_semester_id, gs.code expected_graduation_semester_code,
+                       s.current_semester, s.academic_status
                 FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN students s ON s.user_id=u.id
-                LEFT JOIN majors m ON m.id=s.major_id LEFT JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id
+                LEFT JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id
+                LEFT JOIN majors m ON m.id=COALESCE(s.major_id, cv.major_id)
+                LEFT JOIN semesters es ON es.id=s.enrollment_semester_id
+                LEFT JOIN semesters gs ON gs.id=s.expected_graduation_semester_id
                 WHERE u.id=? AND r.code IN ('STUDENT','ADVISOR')
                 """, (rs, row) -> new Detail(UUID.fromString(rs.getString("id")),
                 resolveIdentifier(rs.getString("role"), rs.getString("user_code"), rs.getString("email")),
                 rs.getString("full_name"), rs.getString("email"), rs.getString("role"), rs.getString("status"),
                 rs.getTimestamp("created_at").toLocalDateTime(), rs.getTimestamp("updated_at").toLocalDateTime(),
-                rs.getString("major_id"), rs.getString("major_name"), rs.getString("curriculum_version_id"),
-                rs.getString("curriculum_code"), rs.getString("enrollment_semester_id"),
-                rs.getString("expected_graduation_semester_id"), (Integer) rs.getObject("current_semester"),
-                rs.getString("academic_status")), id.toString()).stream().findFirst().orElseThrow(NotFound::new);
+                rs.getString("major_id"), rs.getString("major_code"), rs.getString("major_name"),
+                rs.getString("curriculum_version_id"), rs.getString("curriculum_code"), rs.getString("curriculum_name"),
+                rs.getString("enrollment_semester_id"), rs.getString("enrollment_semester_code"),
+                rs.getString("expected_graduation_semester_id"), rs.getString("expected_graduation_semester_code"),
+                (Integer) rs.getObject("current_semester"), rs.getString("academic_status")),
+                id.toString()).stream().findFirst().orElseThrow(NotFound::new);
     }
 
     private void addFilter(StringBuilder where, List<Object> values, String sql, Object value) {

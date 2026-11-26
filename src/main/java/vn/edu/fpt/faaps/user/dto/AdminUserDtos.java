@@ -13,9 +13,21 @@ public final class AdminUserDtos {
 
     public record Detail(UUID id, String userId, String fullName, String email,
             String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
-            String majorId, String majorName, String curriculumVersionId, String curriculumCode,
-            String enrollmentSemesterId, String expectedGraduationSemesterId,
-            Integer currentSemester, String academicStatus) {}
+            String majorId, String majorCode, String majorName, String curriculumVersionId,
+            String curriculumCode, String curriculumName, String enrollmentSemesterId,
+            String enrollmentSemesterCode, String expectedGraduationSemesterId,
+            String expectedGraduationSemesterCode, Integer currentSemester, String academicStatus) {
+        public Detail(UUID id, String userId, String fullName, String email,
+                String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
+                String majorId, String majorName, String curriculumVersionId, String curriculumCode,
+                String enrollmentSemesterId, String expectedGraduationSemesterId,
+                Integer currentSemester, String academicStatus) {
+            this(id, userId, fullName, email, role, status, createdAt, updatedAt,
+                    majorId, null, majorName, curriculumVersionId, curriculumCode, null,
+                    enrollmentSemesterId, null, expectedGraduationSemesterId, null,
+                    currentSemester, academicStatus);
+        }
+    }
 
     public record CreateAccount(String role, String email, String fullName, String phone,
             String studentCode, String advisorCode, UUID curriculumVersionId, UUID enrollmentSemesterId,

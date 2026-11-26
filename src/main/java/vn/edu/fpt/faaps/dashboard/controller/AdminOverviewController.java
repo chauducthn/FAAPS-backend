@@ -10,7 +10,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -89,6 +91,26 @@ public class AdminOverviewController {
     public Appointment appointment(@PathVariable UUID id) {
         return appointmentQuery.findById(id).orElseThrow(NotFound::new);
     }
+
+    @PatchMapping("/appointments/{id}/status")
+    public Appointment updateAppointmentStatus(@PathVariable UUID id, @RequestBody UpdateAppointmentStatus body) {
+        String next = body == null || body.status() == null ? "" : body.status().strip().toUpperCase();
+        if (!List.of("SCHEDULED", "COMPLETED", "CANCELLED", "NO_SHOW").contains(next)) {
+            throw new IllegalArgumentException("status must be SCHEDULED, COMPLETED, CANCELLED, or NO_SHOW");
+        }
+        String note = body.note() == null || body.note().isBlank() ? null : body.note().strip();
+        int updated = jdbc.update("""
+                UPDATE advising_sessions
+                SET status = ?, summary = COALESCE(?, summary), updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, next, note, id.toString());
+        if (updated == 0) {
+            throw new NotFound();
+        }
+        return appointmentQuery.findById(id).orElseThrow(NotFound::new);
+    }
+
+    public record UpdateAppointmentStatus(String status, String note) {}
 
     @GetMapping("/appointments/summary")
     public Map<String, Long> appointmentSummary() {

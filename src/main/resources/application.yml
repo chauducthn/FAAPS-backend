@@ -56,6 +56,7 @@ faaps:
     from-name: ${MAIL_FROM_NAME:FAAPS Academic Advising}
   ai:
     gemini-api-key: ${FAAPS_GEMINI_API_KEY:}
+    openrouter-api-key: ${FAAPS_OPENROUTER_API_KEY:}
   auth:
     refresh-token-lifetime: ${FAAPS_REFRESH_TOKEN_LIFETIME:14d}
     cookie-secure: ${FAAPS_AUTH_COOKIE_SECURE:false}

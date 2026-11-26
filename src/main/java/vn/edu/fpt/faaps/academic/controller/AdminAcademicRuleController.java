@@ -49,6 +49,17 @@ public class AdminAcademicRuleController {
         return rules.types();
     }
 
+    @GetMapping("/summary")
+    public AdminAcademicRuleService.StatusCounts summary() {
+        return rules.summary();
+    }
+
+    @PostMapping("/seed-flm")
+    public ResponseEntity<Map<String, Integer>> seedFlmDefaults() {
+        var result = rules.seedFlmDefaults();
+        return ResponseEntity.ok(Map.of("created", result.created(), "skipped", result.skipped()));
+    }
+
     @GetMapping("/{id}")
     public AdminAcademicRuleService.RuleSummary detail(@PathVariable UUID id) {
         return rules.detail(id);

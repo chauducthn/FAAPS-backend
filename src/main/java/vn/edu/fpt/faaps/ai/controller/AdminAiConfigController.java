@@ -24,6 +24,7 @@ import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiConfigPageDto;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiConfigSecretDto;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiPerformanceResultDto;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiPresetDto;
+import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiTestResultDto;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.ApiResponse;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.CreateAiConfigDto;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.UpdateAiConfigDto;
@@ -90,6 +91,13 @@ public class AdminAiConfigController {
             @AuthenticationPrincipal AuthSession actor) {
         service.setSecret(id, secretDto, actor != null ? actor.id() : null);
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{id}/test")
+    public ApiResponse<AiTestResultDto> testConnection(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthSession actor) {
+        return ApiResponse.success(service.testConnection(id, actor != null ? actor.id() : null));
     }
 
     @GetMapping("/performance")

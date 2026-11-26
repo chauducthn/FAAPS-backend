@@ -35,13 +35,19 @@ public class AdminDatabaseController {
                     "success", false,
                     "message", "Type RESET to confirm database reset"));
         }
-        AdminDatabaseService.ResetResult result = databaseService.resetDatabase(session.id());
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Database reset complete. Only admin account " + result.preservedAdminEmail() + " was kept.",
-                "data", result));
+        String scope = request != null && request.scope() != null && !request.scope().isBlank()
+                ? request.scope().strip() : "ALL";
+        try {
+            AdminDatabaseService.ResetResult result = databaseService.resetScope(session.id(), scope);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Reset complete (" + result.scope() + "): " + result.deletedRows() + " rows cleared.",
+                    "data", result));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", ex.getMessage()));
+        }
     }
 
-    public record ResetRequest(String confirmation) {
+    public record ResetRequest(String confirmation, String scope) {
     }
 }

@@ -40,15 +40,9 @@ final class StudentAiChatSupport {
                 ? rs.getBigDecimal("confidence_score").doubleValue()
                 : null;
         return new AiChatMessageDto(
-                rs.getString("id"),
-                rs.getString("conversation_id"),
-                rs.getString("sender"),
-                rs.getString("content"),
-                rs.getString("question_category"),
-                rs.getBoolean("is_unsupported"),
-                rs.getBoolean("is_fallback"),
-                conf,
-                rs.getString("ai_configuration_id"),
+                rs.getString("id"), rs.getString("conversation_id"), rs.getString("sender"),
+                rs.getString("content"), rs.getString("question_category"), rs.getBoolean("is_unsupported"),
+                rs.getBoolean("is_fallback"), conf, rs.getString("ai_configuration_id"),
                 new ArrayList<>(),
                 rs.getObject("was_helpful") != null ? rs.getBoolean("was_helpful") : null,
                 rs.getString("feedback"),
@@ -111,20 +105,36 @@ final class StudentAiChatSupport {
         return "OTHER";
     }
 
-    AiConfigModel getActiveChatConfig() {
-        return jdbc.query("""
-                SELECT id, name, model_name, system_prompt, fallback_message
-                FROM ai_configurations
-                WHERE purpose = 'CHAT' AND is_active = TRUE
-                ORDER BY created_at DESC LIMIT 1
-                """, (rs, rowNum) -> new AiConfigModel(
-                rs.getString("id"),
-                rs.getString("name"),
-                rs.getString("model_name"),
-                rs.getString("system_prompt"),
-                rs.getString("fallback_message"))).stream().findFirst().orElse(null);
+    List<AiConfigModel> getActiveChatConfigs() {
+        try {
+            return jdbc.query("""
+                    SELECT id, name, provider, model_name, temperature, max_tokens, retrieval_top_k,
+                           timeout_seconds, system_prompt, fallback_message
+                    FROM ai_configurations
+                    WHERE purpose = 'CHAT' AND is_active = TRUE
+                    ORDER BY updated_at DESC, created_at DESC
+                    LIMIT 5
+                    """, (rs, rowNum) -> new AiConfigModel(
+                    rs.getString("id"), rs.getString("name"), rs.getString("provider"),
+                    rs.getString("model_name"),
+                    rs.getObject("temperature") != null ? rs.getBigDecimal("temperature").doubleValue() : 0.5,
+                    (Integer) rs.getObject("max_tokens"), (Integer) rs.getObject("retrieval_top_k"),
+                    (Integer) rs.getObject("timeout_seconds"),
+                    rs.getString("system_prompt"), rs.getString("fallback_message")));
+        } catch (Exception ex) {
+            return jdbc.query("""
+                    SELECT id, name, model_name, system_prompt, fallback_message
+                    FROM ai_configurations
+                    WHERE purpose = 'CHAT' AND is_active = TRUE
+                    ORDER BY created_at DESC LIMIT 5
+                    """, (rs, rowNum) -> new AiConfigModel(
+                    rs.getString("id"), rs.getString("name"), "GEMINI", rs.getString("model_name"),
+                    0.5, 4096, 12, 30, rs.getString("system_prompt"), rs.getString("fallback_message")));
+        }
     }
 
-    record AiConfigModel(String id, String name, String modelName, String systemPrompt, String fallbackMessage) {
+    record AiConfigModel(String id, String name, String provider, String modelName, Double temperature,
+            Integer maxTokens, Integer retrievalTopK, Integer timeoutSeconds,
+            String systemPrompt, String fallbackMessage) {
     }
 }

@@ -16,27 +16,36 @@ final class AdminAiPerformanceQuery {
 
     static AiPerformanceResultDto query(JdbcTemplate jdbc, UUID configId, String purpose,
             String startDate, String endDate) {
-        List<AiUsageSummaryDto> summaryList = querySummary(jdbc, configId, purpose);
-        List<AiUsageByDayDto> dailyList = queryDaily(jdbc, configId, startDate, endDate);
+        List<AiUsageSummaryDto> summaryList = querySummary(jdbc, configId, purpose, startDate, endDate);
+        List<AiUsageByDayDto> dailyList = queryDaily(jdbc, configId, purpose, startDate, endDate);
         return new AiPerformanceResultDto(summaryList, dailyList);
     }
 
-    private static List<AiUsageSummaryDto> querySummary(JdbcTemplate jdbc, UUID configId, String purpose) {
+    private static List<AiUsageSummaryDto> querySummary(JdbcTemplate jdbc, UUID configId, String purpose,
+            String startDate, String endDate) {
         StringBuilder sql = new StringBuilder("""
                 SELECT c.id AS config_id, c.name AS config_name, c.purpose,
                        COUNT(l.id) AS total_requests,
-                       SUM(CASE WHEN l.status = 'SUCCESS' THEN 1 ELSE 0 END) AS success_requests,
-                       SUM(CASE WHEN l.status IN ('ERROR', 'TIMEOUT', 'RATE_LIMITED') THEN 1 ELSE 0 END)
+                       COALESCE(SUM(CASE WHEN l.status = 'SUCCESS' THEN 1 ELSE 0 END), 0) AS success_requests,
+                       COALESCE(SUM(CASE WHEN l.status IN ('ERROR', 'TIMEOUT', 'RATE_LIMITED') THEN 1 ELSE 0 END), 0)
                            AS failed_requests,
-                       SUM(CASE WHEN l.status = 'FALLBACK' THEN 1 ELSE 0 END) AS fallback_requests,
-                       AVG(COALESCE(l.latency_ms, 0)) AS avg_latency_ms,
-                       SUM(COALESCE(l.prompt_tokens, 0)) AS total_prompt_tokens,
-                       SUM(COALESCE(l.completion_tokens, 0)) AS total_completion_tokens
+                       COALESCE(SUM(CASE WHEN l.status = 'FALLBACK' THEN 1 ELSE 0 END), 0) AS fallback_requests,
+                       COALESCE(AVG(l.latency_ms), 0) AS avg_latency_ms,
+                       COALESCE(SUM(l.prompt_tokens), 0) AS total_prompt_tokens,
+                       COALESCE(SUM(l.completion_tokens), 0) AS total_completion_tokens
                 FROM ai_configurations c
                 LEFT JOIN ai_usage_logs l ON l.ai_configuration_id = c.id
-                WHERE 1 = 1
                 """);
         List<Object> args = new ArrayList<>();
+        if (startDate != null && !startDate.isBlank()) {
+            sql.append(" AND DATE(l.created_at) >= ?");
+            args.add(startDate.strip());
+        }
+        if (endDate != null && !endDate.isBlank()) {
+            sql.append(" AND DATE(l.created_at) <= ?");
+            args.add(endDate.strip());
+        }
+        sql.append(" WHERE 1 = 1");
         if (configId != null) {
             sql.append(" AND c.id = ?");
             args.add(configId.toString());
@@ -60,32 +69,37 @@ final class AdminAiPerformanceQuery {
                 rs.getLong("total_completion_tokens")), args.toArray());
     }
 
-    private static List<AiUsageByDayDto> queryDaily(JdbcTemplate jdbc, UUID configId,
+    private static List<AiUsageByDayDto> queryDaily(JdbcTemplate jdbc, UUID configId, String purpose,
             String startDate, String endDate) {
         StringBuilder sql = new StringBuilder("""
-                SELECT DATE(created_at) AS log_date,
-                       COUNT(id) AS requests,
-                       SUM(CASE WHEN status IN ('ERROR', 'TIMEOUT', 'RATE_LIMITED') THEN 1 ELSE 0 END) AS failed,
-                       AVG(COALESCE(latency_ms, 0)) AS avg_latency_ms,
-                       SUM(COALESCE(prompt_tokens, 0)) AS prompt_tokens,
-                       SUM(COALESCE(completion_tokens, 0)) AS completion_tokens
-                FROM ai_usage_logs
+                SELECT DATE(l.created_at) AS log_date,
+                       COUNT(l.id) AS requests,
+                       COALESCE(SUM(CASE WHEN l.status IN ('ERROR', 'TIMEOUT', 'RATE_LIMITED') THEN 1 ELSE 0 END), 0) AS failed,
+                       COALESCE(AVG(l.latency_ms), 0) AS avg_latency_ms,
+                       COALESCE(SUM(l.prompt_tokens), 0) AS prompt_tokens,
+                       COALESCE(SUM(l.completion_tokens), 0) AS completion_tokens
+                FROM ai_usage_logs l
+                LEFT JOIN ai_configurations c ON c.id = l.ai_configuration_id
                 WHERE 1 = 1
                 """);
         List<Object> args = new ArrayList<>();
         if (configId != null) {
-            sql.append(" AND ai_configuration_id = ?");
+            sql.append(" AND l.ai_configuration_id = ?");
             args.add(configId.toString());
         }
+        if (purpose != null && !purpose.isBlank() && !"ALL".equalsIgnoreCase(purpose)) {
+            sql.append(" AND c.purpose = ?");
+            args.add(purpose.toUpperCase());
+        }
         if (startDate != null && !startDate.isBlank()) {
-            sql.append(" AND created_at >= ?");
-            args.add(startDate);
+            sql.append(" AND DATE(l.created_at) >= ?");
+            args.add(startDate.strip());
         }
         if (endDate != null && !endDate.isBlank()) {
-            sql.append(" AND created_at <= ?");
-            args.add(endDate);
+            sql.append(" AND DATE(l.created_at) <= ?");
+            args.add(endDate.strip());
         }
-        sql.append(" GROUP BY DATE(created_at) ORDER BY log_date ASC");
+        sql.append(" GROUP BY DATE(l.created_at) ORDER BY log_date ASC");
 
         return jdbc.query(sql.toString(), (rs, rowNum) -> {
             java.sql.Date d = rs.getDate("log_date");

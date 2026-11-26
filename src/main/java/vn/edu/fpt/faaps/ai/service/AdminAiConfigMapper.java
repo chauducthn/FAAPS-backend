@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos.AiConfigDto;
 
 final class AdminAiConfigMapper {
@@ -43,16 +44,22 @@ final class AdminAiConfigMapper {
         }
     }
 
-    static AiConfigDto mapConfig(ResultSet rs) throws SQLException {
+    static AiConfigDto mapConfig(ResultSet rs, Map<String, String> maskedKeys, GeminiGateway gateway)
+            throws SQLException {
+        String id = rs.getString("id");
+        String provider = rs.getString("provider");
+        String storedMasked = maskedKeys == null ? null : maskedKeys.get(id);
+        boolean hasEnv = gateway != null && gateway.hasEnvKey(provider);
+        boolean hasKey = storedMasked != null || hasEnv;
+        String displayMask = storedMasked != null ? storedMasked : (hasEnv ? "ENV key" : null);
         Timestamp updatedTs = rs.getTimestamp("updated_at");
         Double temp = rs.getObject("temperature") != null ? rs.getBigDecimal("temperature").doubleValue() : null;
         return new AiConfigDto(
-                rs.getString("id"), rs.getString("name"), rs.getString("provider"),
-                rs.getString("model_name"), rs.getString("purpose"), temp,
-                (Integer) rs.getObject("max_tokens"), (Integer) rs.getObject("retrieval_top_k"),
+                id, rs.getString("name"), provider, rs.getString("model_name"), rs.getString("purpose"),
+                temp, (Integer) rs.getObject("max_tokens"), (Integer) rs.getObject("retrieval_top_k"),
                 rs.getBigDecimal("similarity_threshold"), (Integer) rs.getObject("timeout_seconds"),
                 (Integer) rs.getObject("daily_request_limit"), rs.getString("system_prompt"),
-                rs.getString("fallback_message"), rs.getBoolean("is_active"),
+                rs.getString("fallback_message"), rs.getBoolean("is_active"), hasKey, displayMask,
                 rs.getString("updated_by_user_id"),
                 updatedTs != null ? updatedTs.toLocalDateTime().format(ISO_DT) : null);
     }

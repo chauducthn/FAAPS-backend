@@ -140,6 +140,23 @@ public class AdminAcademicRuleService {
         return POLICY_TYPES;
     }
 
+    public StatusCounts summary() {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*) AS total,
+                       COALESCE(SUM(CASE WHEN is_active = TRUE THEN 1 ELSE 0 END), 0) AS active_count,
+                       COALESCE(SUM(CASE WHEN is_active IS NULL THEN 1 ELSE 0 END), 0) AS draft_count,
+                       COALESCE(SUM(CASE WHEN is_active = FALSE THEN 1 ELSE 0 END), 0) AS inactive_count
+                FROM academic_policies
+                """, (rs, rowNum) -> new StatusCounts(
+                rs.getLong("total"), rs.getLong("active_count"),
+                rs.getLong("draft_count"), rs.getLong("inactive_count")));
+    }
+
+    @Transactional
+    public FptuFlmRulePresets.SeedResult seedFlmDefaults() {
+        return FptuFlmRulePresets.seedDefaults(jdbc, query.resolveDefaultCurriculumVersionId());
+    }
+
     private Boolean resolveActiveFlag(String status, Boolean isActive, Boolean fallback) {
         if (status != null && !status.isBlank()) {
             return switch (status.strip().toUpperCase()) {
@@ -167,6 +184,9 @@ public class AdminAcademicRuleService {
     }
 
     public record Page(List<RuleSummary> items, int page, int size, long totalElements, long totalPages) {
+    }
+
+    public record StatusCounts(long total, long active, long draft, long inactive) {
     }
 
     public static class NotFound extends RuntimeException {

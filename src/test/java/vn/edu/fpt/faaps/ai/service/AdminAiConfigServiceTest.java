@@ -73,7 +73,7 @@ class AdminAiConfigServiceTest {
 
     @Test
     void testAiConfigCrudAndPresets() {
-        assertEquals(3, service.getPresets().size());
+        assertEquals(6, service.getPresets().size());
 
         CreateAiConfigDto createDto = new CreateAiConfigDto(
                 "Custom Gemini Chat", "GEMINI", "gemini-1.5-flash", "CHAT",

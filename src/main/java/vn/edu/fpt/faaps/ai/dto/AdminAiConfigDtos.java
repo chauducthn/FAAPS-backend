@@ -22,6 +22,8 @@ public class AdminAiConfigDtos {
             String systemPrompt,
             String fallbackMessage,
             boolean isActive,
+            boolean hasApiKey,
+            String apiKeyMasked,
             String updatedByUserId,
             String updatedAt
     ) {}
@@ -58,8 +60,15 @@ public class AdminAiConfigDtos {
             Boolean isActive
     ) {}
 
-    public record AiConfigSecretDto(
-            @NotBlank String apiKey
+    public record AiConfigSecretDto(@NotBlank String apiKey) {}
+
+    public record AiTestResultDto(
+            boolean ok,
+            int latencyMs,
+            String provider,
+            String modelName,
+            String replyPreview,
+            String error
     ) {}
 
     public record AiPresetDto(
@@ -109,14 +118,9 @@ public class AdminAiConfigDtos {
             long totalPages
     ) {}
 
-    public record ApiResponse<T>(
-            boolean success,
-            String message,
-            T data
-    ) {
+    public record ApiResponse<T>(boolean success, String message, T data) {
         public static <T> ApiResponse<T> success(T data) {
             return new ApiResponse<>(true, "Success", data);
         }
     }
 }
-
