@@ -63,7 +63,9 @@ public class UserRoleService {
         }
         if (!current.equals(input.role())) {
             if ("ADVISOR".equals(input.role())) {
-                toAdvisor(userId, input.maxAdvisees(), input.advisorCode());
+                String advisorEmail = newEmail != null ? newEmail
+                        : jdbc.queryForObject("SELECT email FROM users WHERE id=?", String.class, userId.toString());
+                toAdvisor(userId, input.maxAdvisees(), input.advisorCode(), advisorEmail);
             } else {
                 toStudent(userId, input);
             }
@@ -85,13 +87,14 @@ public class UserRoleService {
         return users.detail(userId);
     }
 
-    private void toAdvisor(UUID userId, Integer requestedLimit, String advisorCode) {
+    private void toAdvisor(UUID userId, Integer requestedLimit, String advisorCode, String email) {
         int limit = requestedLimit == null ? 30 : requestedLimit;
         if (limit < 1) {
             throw new IllegalArgumentException("maxAdvisees must be at least 1");
         }
-        String cleanCode = advisorCode == null || advisorCode.isBlank()
-                ? null : advisorCode.strip().toUpperCase(Locale.ROOT);
+        int at = email == null ? -1 : email.indexOf('@');
+        String derived = at > 0 ? email.substring(0, at).strip() : null;
+        String cleanCode = advisorCode == null || advisorCode.isBlank() ? derived : advisorCode.strip();
         boolean insertedWithCode = false;
         if (cleanCode != null) {
             try {
@@ -148,9 +151,14 @@ public class UserRoleService {
         String code = StudentCodeValidator.validateAndNormalize(input.studentCode());
         String majorId = null;
         if (input.curriculumVersionId() != null) {
-            majorId = jdbc.query("SELECT major_id FROM curriculum_versions WHERE id=? AND status='ACTIVE'",
-                    (rs, row) -> rs.getString(1), input.curriculumVersionId().toString()).stream()
+            var cohortMajor = jdbc.query(
+                    "SELECT cv.major_id, m.code AS major_code, cv.version FROM curriculum_versions cv "
+                            + "JOIN majors m ON m.id = cv.major_id WHERE cv.id=? AND cv.status='ACTIVE'",
+                    (rs, row) -> new String[] {rs.getString(1), rs.getString(2), rs.getString(3)},
+                    input.curriculumVersionId().toString()).stream()
                     .findFirst().orElseThrow(() -> new NotFound("Active curriculum not found"));
+            majorId = cohortMajor[0];
+            StudentCodeValidator.validateMajorAndCohortMatch(code, cohortMajor[1], cohortMajor[2]);
         }
         String expectedGraduationId = null;
         if (input.enrollmentSemesterId() != null) {

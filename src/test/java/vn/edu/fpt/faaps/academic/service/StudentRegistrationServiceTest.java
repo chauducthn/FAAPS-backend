@@ -66,7 +66,7 @@ class StudentRegistrationServiceTest {
 
     @Test
     void createsAnActiveStudentWithAHashedPasswordAndTheProfile() {
-        UUID id = register(" Student@FPT.edu.vn ", PASSWORD, "se173012");
+        UUID id = register(" Student@FPT.edu.vn ", PASSWORD, "se193012");
 
         var user = jdbc.queryForMap("SELECT * FROM users WHERE id = ?", id.toString());
         assertEquals("student@fpt.edu.vn", user.get("EMAIL"));
@@ -78,20 +78,20 @@ class StudentRegistrationServiceTest {
         assertTrue(encoder.matches(PASSWORD, (String) user.get("PASSWORD_HASH")));
         assertEquals(java.sql.Date.valueOf(DOB), user.get("DATE_OF_BIRTH"));
         var student = jdbc.queryForMap("SELECT * FROM students WHERE user_id = ?", id.toString());
-        assertEquals("SE173012", student.get("STUDENT_CODE"));
+        assertEquals("SE193012", student.get("STUDENT_CODE"));
         assertEquals("m1", student.get("MAJOR_ID"));
     }
 
     @Test
-    void withoutACurriculumAccountAndStudentProfileAreCreatedAndMajorIsChosenLater() {
+    void withoutACurriculumAccountAndStudentProfileResolveFromValidMajorCohortPair() {
         UUID id = registerWithoutMajor("a@fpt.edu.vn", PASSWORD, "SE190001");
 
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE id = ?", Integer.class, id.toString()));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE user_id = ?", Integer.class, id.toString()));
         var student = jdbc.queryForMap("SELECT * FROM students WHERE user_id = ?", id.toString());
         assertEquals("SE190001", student.get("STUDENT_CODE"));
-        assertNull(student.get("MAJOR_ID"));
-        assertNull(student.get("CURRICULUM_VERSION_ID"));
+        assertEquals("m1", student.get("MAJOR_ID"));
+        assertEquals(CURRICULUM.toString(), student.get("CURRICULUM_VERSION_ID"));
     }
 
     @Test
@@ -105,15 +105,15 @@ class StudentRegistrationServiceTest {
 
     @Test
     void rejectsADuplicateEmailEvenWithDifferentCase() {
-        register("a@fpt.edu.vn", PASSWORD, "SE173012");
-        var error = assertThrows(ResponseStatusException.class, () -> register("A@FPT.EDU.VN", PASSWORD, "SE173013"));
+        register("a@fpt.edu.vn", PASSWORD, "SE193012");
+        var error = assertThrows(ResponseStatusException.class, () -> register("A@FPT.EDU.VN", PASSWORD, "SE193013"));
         assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
     }
 
     @Test
     void rejectsAStudentIdThatIsAlreadyRegistered() {
-        register("a@fpt.edu.vn", PASSWORD, "SE173012");
-        var error = assertThrows(ResponseStatusException.class, () -> register("b@fpt.edu.vn", PASSWORD, "SE173012"));
+        register("a@fpt.edu.vn", PASSWORD, "SE193012");
+        var error = assertThrows(ResponseStatusException.class, () -> register("b@fpt.edu.vn", PASSWORD, "SE193012"));
         assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
     }
 

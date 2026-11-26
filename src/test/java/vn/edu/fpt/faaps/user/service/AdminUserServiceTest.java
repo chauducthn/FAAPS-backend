@@ -96,7 +96,7 @@ class AdminUserServiceTest {
 
         Detail changed = users.changeRole(studentId, new ChangeRole("ADVISOR", null, null, null, 25));
         assertEquals("ADVISOR", changed.role());
-        assertEquals("student@example.com", changed.userId());
+        assertEquals("student", changed.userId());
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM advisors WHERE user_id=?", Integer.class, studentId.toString()));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE user_id=?", Integer.class, studentId.toString()));
     }

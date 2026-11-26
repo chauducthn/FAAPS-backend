@@ -57,7 +57,7 @@ final class AdminUserCreationHelper {
             if ("STUDENT".equals(role)) {
                 addStudentProfile(userId, input);
             } else {
-                saveAdvisorProfile(userId, input.maxAdvisees(), input.advisorCode());
+                saveAdvisorProfile(userId, input.maxAdvisees(), input.advisorCode(), email);
             }
         } catch (DuplicateKeyException exception) {
             throw new Conflict("Email or student code already exists");
@@ -97,13 +97,15 @@ final class AdminUserCreationHelper {
         }
     }
 
-    private void saveAdvisorProfile(UUID userId, Integer requestedMaxAdvisees, String advisorCode) {
+    private void saveAdvisorProfile(UUID userId, Integer requestedMaxAdvisees, String advisorCode, String email) {
         int maxAdvisees = requestedMaxAdvisees == null ? 30 : requestedMaxAdvisees;
-        String cleanCode = advisorCode == null || advisorCode.isBlank()
-                ? null : advisorCode.strip().toUpperCase(Locale.ROOT);
+        String cleanCode = extractEmailLocalPart(email);
+        if (advisorCode != null && !advisorCode.isBlank() && !advisorCode.strip().equals(cleanCode)) {
+            throw new IllegalArgumentException("Advisor identifier must match the email prefix before @");
+        }
         if (cleanCode != null) {
             if (cleanCode.length() > 50) {
-                throw new IllegalArgumentException("advisorCode must be at most 50 characters");
+                throw new IllegalArgumentException("Advisor identifier must be at most 50 characters");
             }
             try {
                 jdbc.update("""
@@ -123,13 +125,29 @@ final class AdminUserCreationHelper {
                 """, userId.toString(), maxAdvisees);
     }
 
+    private static String extractEmailLocalPart(String email) {
+        if (email == null) return null;
+        int at = email.indexOf('@');
+        if (at <= 0) {
+            throw new IllegalArgumentException("Advisor email must have a valid identifier before '@'");
+        }
+        return email.substring(0, at).strip();
+    }
+
     private void addStudentProfile(UUID userId, CreateAccount input) {
         String normalizedCode = StudentCodeValidator.validateAndNormalize(input.studentCode());
         String majorId = null;
         if (input.curriculumVersionId() != null) {
-            majorId = jdbc.query("SELECT major_id FROM curriculum_versions WHERE id = ?",
-                    (rs, rowNum) -> rs.getString("major_id"), input.curriculumVersionId().toString())
+            var cohortMajor = jdbc.query(
+                    "SELECT cv.major_id, m.code AS major_code, cv.version FROM curriculum_versions cv "
+                            + "JOIN majors m ON m.id = cv.major_id WHERE cv.id = ?",
+                    (rs, rowNum) -> new String[] {
+                            rs.getString("major_id"), rs.getString("major_code"), rs.getString("version")
+                    },
+                    input.curriculumVersionId().toString())
                     .stream().findFirst().orElseThrow(() -> new NotFound("Curriculum not found"));
+            majorId = cohortMajor[0];
+            StudentCodeValidator.validateMajorAndCohortMatch(normalizedCode, cohortMajor[1], cohortMajor[2]);
         }
         int currentSemester = input.currentSemester() == null ? 1 : input.currentSemester();
         String expectedGraduationId = input.expectedGraduationSemesterId() != null

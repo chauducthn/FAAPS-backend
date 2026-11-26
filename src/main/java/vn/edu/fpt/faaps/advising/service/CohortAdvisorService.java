@@ -54,8 +54,10 @@ public class CohortAdvisorService {
             throw new IllegalArgumentException("An advisor can only be assigned to 1 major and 1 cohort");
         }
         requireActiveAdvisor(advisorId);
+        UUID targetCohort = cohortIds.isEmpty() ? null : cohortIds.get(0);
         jdbc.update("UPDATE cohort_advisors SET is_active = FALSE WHERE advisor_id = ?", advisorId.toString());
-        for (UUID cohortId : cohortIds) include(cohortId, advisorId);
+        if (targetCohort != null) include(targetCohort, advisorId);
+        unassignStudentsOutsideCohort(advisorId, targetCohort);
         return cohortIds;
     }
 
@@ -73,6 +75,7 @@ public class CohortAdvisorService {
             requireActiveAdvisor(advisorId);
             jdbc.update("UPDATE cohort_advisors SET is_active = FALSE WHERE advisor_id = ?", advisorId.toString());
             include(targetCohort, advisorId);
+            unassignStudentsOutsideCohort(advisorId, targetCohort);
         }
         return advisorIds.size();
     }
@@ -81,6 +84,10 @@ public class CohortAdvisorService {
     public void include(UUID cohortId, UUID advisorId) {
         lockCohort(cohortId);
         requireActiveAdvisor(advisorId);
+        jdbc.update("""
+                UPDATE cohort_advisors SET is_active = FALSE
+                WHERE advisor_id = ? AND cohort_id <> ?
+                """, advisorId.toString(), cohortId.toString());
         Integer existing = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM cohort_advisors WHERE cohort_id = ? AND advisor_id = ?
                 """, Integer.class, cohortId.toString(), advisorId.toString());
@@ -95,6 +102,27 @@ public class CohortAdvisorService {
                     WHERE cohort_id = ? AND advisor_id = ?
                     """, cohortId.toString(), advisorId.toString());
         }
+    }
+
+    private void unassignStudentsOutsideCohort(UUID advisorId, UUID targetCohortId) {
+        if (targetCohortId == null) {
+            jdbc.update("""
+                    UPDATE student_advisor_assignments
+                    SET status = 'COMPLETED', end_date = CURRENT_DATE,
+                        updated_at = CURRENT_TIMESTAMP, notes = 'Advisor cohort cleared'
+                    WHERE advisor_id = ? AND status = 'ACTIVE' AND end_date IS NULL
+                    """, advisorId.toString());
+            return;
+        }
+        jdbc.update("""
+                UPDATE student_advisor_assignments
+                SET status = 'COMPLETED', end_date = CURRENT_DATE,
+                    updated_at = CURRENT_TIMESTAMP, notes = 'Advisor reassigned to another cohort'
+                WHERE advisor_id = ? AND status = 'ACTIVE' AND end_date IS NULL
+                  AND student_id IN (
+                      SELECT user_id FROM students WHERE curriculum_version_id <> ?
+                  )
+                """, advisorId.toString(), targetCohortId.toString());
     }
 
     public List<UUID> activeIds(UUID cohortId) {

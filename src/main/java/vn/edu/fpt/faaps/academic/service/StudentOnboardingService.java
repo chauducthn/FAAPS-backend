@@ -71,34 +71,50 @@ public class StudentOnboardingService {
 
     /** Inserts the students row for an existing user. The caller has already validated and normalized the input. */
     void addStudentProfile(UUID userId, String code, UUID curriculumVersionId) {
+        String majorPrefix = code.substring(0, 2);
+        String cohortVersion = "K" + code.substring(2, 4);
+        String[] curriculum;
+        String resolvedCohortId;
         if (curriculumVersionId == null) {
+            curriculum = jdbc.query("""
+                    SELECT cv.id, cv.major_id, cv.effective_from_semester_id
+                    FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id
+                    WHERE cv.status = 'ACTIVE' AND m.status = 'ACTIVE'
+                      AND UPPER(m.code) = ? AND UPPER(cv.version) = ?
+                    LIMIT 1
+                    """, (rs, row) -> new String[] {
+                            rs.getString("id"), rs.getString("major_id"), rs.getString("effective_from_semester_id")
+                    }, majorPrefix, cohortVersion).stream().findFirst()
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Student ID '" + code + "' does not match any active Major and Cohort ("
+                                    + majorPrefix + " " + cohortVersion + ")"));
+            resolvedCohortId = curriculum[0];
+        } else {
+            var found = jdbc.query("""
+                    SELECT cv.major_id, cv.effective_from_semester_id, m.code AS major_code, cv.version
+                    FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id
+                    WHERE cv.id = ? AND cv.status = 'ACTIVE' AND m.status = 'ACTIVE'
+                    """, (rs, row) -> new String[] {
+                            rs.getString("major_id"), rs.getString("effective_from_semester_id"),
+                            rs.getString("major_code"), rs.getString("version")
+                    }, curriculumVersionId.toString()).stream().findFirst()
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "This curriculum is not available"));
             try {
-                jdbc.update("""
-                        INSERT INTO students (user_id, student_code, major_id, curriculum_version_id,
-                                              enrollment_semester_id, current_semester, current_gpa,
-                                              total_credits_earned, academic_status, created_at, updated_at)
-                        VALUES (?, ?, NULL, NULL, NULL, 1, 0, 0, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        """, userId.toString(), code);
-                return;
-            } catch (DuplicateKeyException exception) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "This Student ID is already registered");
+                StudentCodeValidator.validateMajorAndCohortMatch(code, found[2], found[3]);
+            } catch (IllegalArgumentException ex) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
             }
+            resolvedCohortId = curriculumVersionId.toString();
+            curriculum = new String[] {resolvedCohortId, found[0], found[1]};
         }
-        var curriculum = jdbc.query("""
-                SELECT cv.major_id, cv.effective_from_semester_id
-                FROM curriculum_versions cv JOIN majors m ON m.id = cv.major_id
-                WHERE cv.id = ? AND cv.status = 'ACTIVE' AND m.status = 'ACTIVE'
-                """, (rs, row) -> new String[] {rs.getString("major_id"), rs.getString("effective_from_semester_id")},
-                curriculumVersionId.toString()).stream().findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "This curriculum is not available"));
         try {
             jdbc.update("""
                     INSERT INTO students (user_id, student_code, major_id, curriculum_version_id,
                                           enrollment_semester_id, current_semester, current_gpa,
                                           total_credits_earned, academic_status, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, 1, 0, 0, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """, userId.toString(), code, curriculum[0], curriculumVersionId.toString(), curriculum[1]);
+                    """, userId.toString(), code, curriculum[1], resolvedCohortId, curriculum[2]);
         } catch (DuplicateKeyException exception) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This Student ID is already registered");
         }

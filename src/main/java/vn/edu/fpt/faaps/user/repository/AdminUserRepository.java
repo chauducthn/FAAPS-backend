@@ -68,7 +68,8 @@ public class AdminUserRepository {
                 FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN students s ON s.user_id=u.id
                 LEFT JOIN majors m ON m.id=s.major_id LEFT JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id
                 WHERE u.id=? AND r.code IN ('STUDENT','ADVISOR')
-                """, (rs, row) -> new Detail(UUID.fromString(rs.getString("id")), rs.getString("user_code"),
+                """, (rs, row) -> new Detail(UUID.fromString(rs.getString("id")),
+                resolveIdentifier(rs.getString("role"), rs.getString("user_code"), rs.getString("email")),
                 rs.getString("full_name"), rs.getString("email"), rs.getString("role"), rs.getString("status"),
                 rs.getTimestamp("created_at").toLocalDateTime(), rs.getTimestamp("updated_at").toLocalDateTime(),
                 rs.getString("major_id"), rs.getString("major_name"), rs.getString("curriculum_version_id"),
@@ -82,9 +83,18 @@ public class AdminUserRepository {
     }
 
     private Summary summary(ResultSet rs, int row) throws SQLException {
-        return new Summary(UUID.fromString(rs.getString("id")), rs.getString("user_code"),
+        return new Summary(UUID.fromString(rs.getString("id")),
+                resolveIdentifier(rs.getString("role"), rs.getString("user_code"), rs.getString("email")),
                 rs.getString("full_name"), rs.getString("email"), rs.getString("role"),
                 rs.getString("status"), rs.getTimestamp("created_at").toLocalDateTime(),
                 rs.getString("major_code"), rs.getString("cohort"));
+    }
+
+    private static String resolveIdentifier(String role, String userCode, String email) {
+        if ("ADVISOR".equals(role) && email != null) {
+            int at = email.indexOf('@');
+            if (at > 0) return email.substring(0, at);
+        }
+        return userCode;
     }
 }

@@ -61,10 +61,10 @@ class StudentOnboardingServiceTest {
 
     @Test
     void createsTheStudentProfileFromTheChosenCurriculum() {
-        service.complete(userId, " se173012 ", UUID.fromString(ACTIVE_CURRICULUM), DOB, "0901234567");
+        service.complete(userId, " se193012 ", UUID.fromString(ACTIVE_CURRICULUM), DOB, "0901234567");
 
         var row = jdbc.queryForMap("SELECT * FROM students WHERE user_id = ?", userId.toString());
-        assertEquals("SE173012", row.get("STUDENT_CODE"));
+        assertEquals("SE193012", row.get("STUDENT_CODE"));
         assertEquals("m1", row.get("MAJOR_ID"));
         assertEquals(SEMESTER, row.get("ENROLLMENT_SEMESTER_ID"));
         assertEquals(1, row.get("CURRENT_SEMESTER"));
@@ -75,12 +75,12 @@ class StudentOnboardingServiceTest {
     @Test
     void aPhoneIsRequiredUnlessOneIsAlreadyOnFile() {
         var error = assertThrows(ResponseStatusException.class,
-                () -> service.complete(userId, "SE173012", UUID.fromString(ACTIVE_CURRICULUM), DOB, "  "));
+                () -> service.complete(userId, "SE193012", UUID.fromString(ACTIVE_CURRICULUM), DOB, "  "));
         assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode());
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM students", Integer.class));
 
         jdbc.update("UPDATE users SET phone = '0901234567' WHERE id = ?", userId.toString());
-        service.complete(userId, "SE173012", UUID.fromString(ACTIVE_CURRICULUM), DOB, null);
+        service.complete(userId, "SE193012", UUID.fromString(ACTIVE_CURRICULUM), DOB, null);
         assertEquals("0901234567", jdbc.queryForObject("SELECT phone FROM users WHERE id = ?", String.class,
                 userId.toString()));
     }
@@ -89,27 +89,34 @@ class StudentOnboardingServiceTest {
     void rejectsAPhoneThatIsNotAVietnameseMobileNumber() {
         for (String phone : new String[] {"+84901234567", "0123456789", "090123456", "0901 234 567"}) {
             var error = assertThrows(ResponseStatusException.class,
-                    () -> service.complete(userId, "SE173012", UUID.fromString(ACTIVE_CURRICULUM), DOB, phone), phone);
+                    () -> service.complete(userId, "SE193012", UUID.fromString(ACTIVE_CURRICULUM), DOB, phone), phone);
             assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode(), phone);
         }
     }
 
     @Test
     void rejectsAStudentTooYoungForUniversity() {
-        var error = assertThrows(ResponseStatusException.class, () -> service.complete(userId, "SE173012",
+        var error = assertThrows(ResponseStatusException.class, () -> service.complete(userId, "SE193012",
                 UUID.fromString(ACTIVE_CURRICULUM), java.time.LocalDate.now().minusYears(12), "0901234567"));
         assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode());
     }
 
     @Test
-    void completesOnboardingWithoutCurriculumVersion() {
-        service.complete(userId, "SE173012", null, DOB, "0901234567");
+    void completesOnboardingWithoutCurriculumVersionWhenMajorAndCohortMatch() {
+        service.complete(userId, "SE193012", null, DOB, "0901234567");
 
         var row = jdbc.queryForMap("SELECT * FROM students WHERE user_id = ?", userId.toString());
-        assertEquals("SE173012", row.get("STUDENT_CODE"));
-        assertNull(row.get("MAJOR_ID"));
-        assertNull(row.get("CURRICULUM_VERSION_ID"));
-        assertNull(row.get("ENROLLMENT_SEMESTER_ID"));
+        assertEquals("SE193012", row.get("STUDENT_CODE"));
+        assertEquals("m1", row.get("MAJOR_ID"));
+        assertEquals(ACTIVE_CURRICULUM, row.get("CURRICULUM_VERSION_ID"));
+        assertEquals(SEMESTER, row.get("ENROLLMENT_SEMESTER_ID"));
+    }
+
+    @Test
+    void rejectsStudentIdWithUnknownMajorAndCohortCombination() {
+        var error = assertThrows(ResponseStatusException.class,
+                () -> service.complete(userId, "SE173012", null, DOB, "0901234567"));
+        assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode());
     }
 
     @Test
@@ -125,23 +132,23 @@ class StudentOnboardingServiceTest {
     void rejectsAnUnavailableCurriculum() {
         for (String id : new String[] {INACTIVE_CURRICULUM, UUID.randomUUID().toString()}) {
             var error = assertThrows(ResponseStatusException.class,
-                    () -> service.complete(userId, "SE173012", UUID.fromString(id), DOB, "0901234567"));
+                    () -> service.complete(userId, "SE193012", UUID.fromString(id), DOB, "0901234567"));
             assertEquals(HttpStatus.NOT_FOUND, error.getStatusCode());
         }
     }
 
     @Test
     void rejectsASecondRegistrationAndADuplicateStudentId() {
-        service.complete(userId, "SE173012", UUID.fromString(ACTIVE_CURRICULUM), DOB, "0901234567");
+        service.complete(userId, "SE193012", UUID.fromString(ACTIVE_CURRICULUM), DOB, "0901234567");
 
         var again = assertThrows(ResponseStatusException.class,
-                () -> service.complete(userId, "SE173013", UUID.fromString(ACTIVE_CURRICULUM), DOB, "0901234567"));
+                () -> service.complete(userId, "SE193013", UUID.fromString(ACTIVE_CURRICULUM), DOB, "0901234567"));
         assertEquals(HttpStatus.CONFLICT, again.getStatusCode());
 
         UUID other = UUID.randomUUID();
         jdbc.update("INSERT INTO users (id) VALUES (?)", other.toString());
         var duplicate = assertThrows(ResponseStatusException.class,
-                () -> service.complete(other, "SE173012", UUID.fromString(ACTIVE_CURRICULUM), DOB, "0901234567"));
+                () -> service.complete(other, "SE193012", UUID.fromString(ACTIVE_CURRICULUM), DOB, "0901234567"));
         assertEquals(HttpStatus.CONFLICT, duplicate.getStatusCode());
     }
 }

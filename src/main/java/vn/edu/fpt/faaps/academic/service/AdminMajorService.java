@@ -53,10 +53,10 @@ public class AdminMajorService {
                     INSERT INTO majors (id, code, name, description, total_credits, duration_years,
                         status, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """, id.toString(), code.strip(), name.strip(), description,
+                    """, id.toString(), code.strip().toUpperCase(), name.strip(), description,
                     totalCredits, durationYears, majorStatus);
         } catch (DuplicateKeyException e) {
-            throw new Conflict("Major code already exists");
+            throw new Conflict("Major with this code and name already exists");
         }
 
         if (cohort != null && !cohort.isBlank()) {
@@ -75,7 +75,7 @@ public class AdminMajorService {
     public MajorItem update(UUID id, String code, String name, String description,
             Integer totalCredits, BigDecimal durationYears, String status, String cohort) {
         MajorItem current = detail(id);
-        String newCode = (code != null && !code.isBlank()) ? code.strip() : current.code();
+        String newCode = (code != null && !code.isBlank()) ? code.strip().toUpperCase() : current.code();
         String newName = (name != null && !name.isBlank()) ? name.strip() : current.name();
         String newDesc = description != null ? description : current.description();
         int newCredits = (totalCredits != null && totalCredits > 0) ? totalCredits : current.totalCredits();
@@ -97,7 +97,7 @@ public class AdminMajorService {
                     WHERE id = ?
                     """, newCode, newName, newDesc, newCredits, newDuration, newStatus, id.toString());
         } catch (DuplicateKeyException e) {
-            throw new Conflict("Major code already exists");
+            throw new Conflict("Major with this code and name already exists");
         }
 
         if (cohort != null && !cohort.isBlank()) {

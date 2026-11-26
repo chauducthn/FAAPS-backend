@@ -32,16 +32,32 @@ public final class StudentCodeValidator {
                     "studentCode must be 2 letters, a cohort from 01 to 22 and 4 digits (e.g. SE190001)");
         }
 
-        // =========================================================================================
-        // [EMPTY REGION / EXTENSION HOOK]: Stricter Cohort & Major Database Check
-        // -----------------------------------------------------------------------------------------
-        // Reserved for future DB verification:
-        // e.g. validating cohort digits (digits 3-4 like '16' in 'SE160343') against active intake
-        // cohorts in the database, major code prefix mapping (e.g. 'SE' -> Software Engineering),
-        // or blacklist / reservation rules.
-        // =========================================================================================
-
         return normalized;
+    }
+
+    /**
+     * Ensures the first two letters and next two digits of the student code match the cohort's major and version.
+     */
+    public static void validateMajorAndCohortMatch(String normalizedStudentCode, String majorCode, String cohortVersion) {
+        if (normalizedStudentCode == null || normalizedStudentCode.length() < 4) {
+            return;
+        }
+        String prefix = normalizedStudentCode.substring(0, 2).toUpperCase(Locale.ROOT);
+        String studentCohort = "K" + normalizedStudentCode.substring(2, 4);
+        if (majorCode != null && !majorCode.isBlank()) {
+            String expectedMajor = majorCode.strip().toUpperCase(Locale.ROOT);
+            if (!prefix.equals(expectedMajor)) {
+                throw new IllegalArgumentException(
+                        "Student ID prefix '" + prefix + "' must match cohort major code '" + expectedMajor + "'");
+            }
+        }
+        if (cohortVersion != null && !cohortVersion.isBlank()) {
+            String expectedCohort = cohortVersion.strip().toUpperCase(Locale.ROOT);
+            if (!studentCohort.equals(expectedCohort)) {
+                throw new IllegalArgumentException(
+                        "Student ID cohort '" + studentCohort + "' must match cohort '" + expectedCohort + "'");
+            }
+        }
     }
 
     /**

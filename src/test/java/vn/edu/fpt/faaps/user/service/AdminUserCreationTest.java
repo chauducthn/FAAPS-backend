@@ -112,7 +112,7 @@ class AdminUserCreationTest {
                 null, null, null, null, null, null));
 
         assertEquals("ADVISOR", created.role());
-        assertEquals("new.advisor@example.com", created.userId());
+        assertEquals("new.advisor", created.userId());
         assertEquals("new.advisor@example.com", created.email());
         assertEquals(30, jdbc.queryForObject("SELECT max_advisees FROM advisors WHERE user_id = ?",
                 Integer.class, created.id().toString()));

@@ -26,14 +26,15 @@ class AdminMajorServiceTest {
         jdbc.execute("""
                 CREATE TABLE majors (
                     id VARCHAR(36) PRIMARY KEY,
-                    code VARCHAR(50) UNIQUE NOT NULL,
+                    code VARCHAR(50) NOT NULL,
                     name VARCHAR(255) NOT NULL,
                     description TEXT,
                     total_credits INT NOT NULL,
                     duration_years DECIMAL(3,1) NOT NULL,
                     status VARCHAR(20) DEFAULT 'ACTIVE',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (code, name)
                 )
                 """);
         jdbc.execute("""
@@ -98,9 +99,12 @@ class AdminMajorServiceTest {
     }
 
     @Test
-    void updatesMajorAndRejectsDuplicateCode() {
+    void allowsMultipleNamesPerCodeAndRejectsDuplicateCodeAndName() {
         AdminMajorService.MajorItem se = majors.create("SE", "Software Engineering", "SE desc", 140, new BigDecimal("4.0"), "ACTIVE", null);
-        majors.create("IA", "Information Assurance", "IA desc", 130, new BigDecimal("4.0"), "ACTIVE", null);
+        AdminMajorService.MajorItem ssIb = majors.create("SS", "International Business", "IB desc", 140, new BigDecimal("4.0"), "ACTIVE", null);
+        AdminMajorService.MajorItem ssDm = majors.create("SS", "Digital Marketing", "DM desc", 140, new BigDecimal("4.0"), "ACTIVE", null);
+        assertEquals("SS", ssIb.code());
+        assertEquals("SS", ssDm.code());
 
         majors.update(se.id(), "SE", "Software Engineering (Updated)", "Updated desc", 145, new BigDecimal("4.5"), "DRAFT");
         AdminMajorService.MajorItem updated = majors.detail(se.id());
@@ -109,7 +113,9 @@ class AdminMajorServiceTest {
         assertEquals("DRAFT", updated.status());
 
         assertThrows(AdminMajorService.Conflict.class, () ->
-                majors.update(se.id(), "IA", "Duplicate", "desc", 140, new BigDecimal("4.0"), "ACTIVE"));
+                majors.create("SS", "Digital Marketing", "dup", 140, new BigDecimal("4.0"), "ACTIVE", null));
+        assertThrows(AdminMajorService.Conflict.class, () ->
+                majors.update(se.id(), "SS", "International Business", "desc", 140, new BigDecimal("4.0"), "ACTIVE"));
     }
 
     @Test
