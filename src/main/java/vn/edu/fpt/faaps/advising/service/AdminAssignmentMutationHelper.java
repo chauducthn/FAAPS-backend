@@ -4,9 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.AppointmentImpact;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.AppointmentWarningRequired;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.AssignmentError;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.AppointmentImpact;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.AppointmentWarningRequired;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.AssignmentError;
 
 class AdminAssignmentMutationHelper {
     private final JdbcTemplate jdbc;

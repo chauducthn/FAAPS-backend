@@ -9,9 +9,9 @@ import java.util.Objects;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import vn.edu.fpt.faaps.advising.repository.AssignmentReadRepository;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Advisor;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.AssignmentError;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Conflict;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.Advisor;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.AssignmentError;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.Conflict;
 import vn.edu.fpt.faaps.advising.service.SmartAutoAssignPlanner.StudentCandidate;
 
 class AdminAssignmentSupport {

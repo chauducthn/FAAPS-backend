@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Advisor;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.Advisor;
 
 /**
  * One-click batch auto-assignment across multiple cohorts.

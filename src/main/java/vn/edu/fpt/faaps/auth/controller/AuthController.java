@@ -69,6 +69,10 @@ public class AuthController {
         return startSession(authService.loginAdmin(credentials.email(), credentials.password()), request, response);
     }
 
+    /**
+     * Email + password sign-in for Admin and for students who registered with a
+     * password.
+     */
     @PostMapping("/login")
     public AuthSession login(@Valid @RequestBody AdminLoginRequest credentials,
             HttpServletRequest request, HttpServletResponse response) {
@@ -158,7 +162,12 @@ public class AuthController {
         return passwordService;
     }
 
-    public record ForgotPasswordRequest(@NotBlank @Email String email) {}
-    public record ResetPasswordRequest(@NotBlank String token, @NotBlank String newPassword) {}
-    public record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {}
+    public record ForgotPasswordRequest(@NotBlank @Email String email) {
+    }
+
+    public record ResetPasswordRequest(@NotBlank String token, @NotBlank String newPassword) {
+    }
+
+    public record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {
+    }
 }

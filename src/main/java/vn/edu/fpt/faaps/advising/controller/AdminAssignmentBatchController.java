@@ -3,6 +3,8 @@ package vn.edu.fpt.faaps.advising.controller;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -12,6 +14,7 @@ import vn.edu.fpt.faaps.advising.service.AdminAssignmentSmartBatchService;
 import vn.edu.fpt.faaps.auth.model.AuthSession;
 
 @RestController
+@ConditionalOnBean(JdbcTemplate.class)
 @RequestMapping("/api/admin/assignments")
 public class AdminAssignmentBatchController {
     private final AdminAssignmentSmartBatchService smartBatch;

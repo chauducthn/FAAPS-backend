@@ -2,14 +2,12 @@ package vn.edu.fpt.faaps.user.service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import vn.edu.fpt.faaps.academic.service.StudentOnboardingService;
 import vn.edu.fpt.faaps.auth.service.AuthService;
 import vn.edu.fpt.faaps.common.validation.IdentityInput;
 import vn.edu.fpt.faaps.common.validation.StudentCodeValidator;

@@ -8,13 +8,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Advisor;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.AdvisorDetail;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Cohort;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.History;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.NotFound;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Page;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Student;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.Advisor;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.AdvisorDetail;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.Cohort;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.History;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.NotFound;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.Page;
+import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.Student;
 
 public final class AssignmentReadRepository {
     private final JdbcTemplate jdbc;

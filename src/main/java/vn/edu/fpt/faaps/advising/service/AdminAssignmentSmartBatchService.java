@@ -3,12 +3,14 @@ package vn.edu.fpt.faaps.advising.service;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.fpt.faaps.advising.repository.AssignmentReadRepository;
 
 @Service
+@ConditionalOnBean(JdbcTemplate.class)
 public class AdminAssignmentSmartBatchService {
     private final AdminSmartBatchAssignHelper smartBatch;
 

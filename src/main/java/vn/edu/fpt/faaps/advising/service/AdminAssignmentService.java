@@ -14,14 +14,12 @@ public class AdminAssignmentService implements AdminAssignmentModels {
     private final AdminAssignmentSupport support;
     private final AdminAssignmentMutationHelper mutations;
     private final AdminAssignmentBatchHelper batch;
-    private final AdminSmartBatchAssignHelper smartBatch;
 
     public AdminAssignmentService(JdbcTemplate jdbc, CohortAdvisorService cohorts) {
         this.reads = new AssignmentReadRepository(jdbc);
         this.support = new AdminAssignmentSupport(jdbc, this.reads, cohorts);
         this.mutations = new AdminAssignmentMutationHelper(jdbc, cohorts, this.support);
         this.batch = new AdminAssignmentBatchHelper(this.reads, cohorts, this.support);
-        this.smartBatch = new AdminSmartBatchAssignHelper(jdbc, cohorts, this.batch);
     }
 
     public List<Advisor> advisors() { return reads.advisors(); }
@@ -90,15 +88,6 @@ public class AdminAssignmentService implements AdminAssignmentModels {
     public Map<String, Object> confirmCohort(UUID cohortId, List<UUID> advisorIds, List<UUID> studentIds,
             boolean allowOverLimit, UUID actorId, String notes) {
         return batch.confirmCohort(cohortId, advisorIds, studentIds, allowOverLimit, actorId, notes);
-    }
-    @Transactional
-    public Map<String, Object> smartAutoAssignAll(List<UUID> cohortIds, boolean autoConfigurePools,
-            boolean allowOverLimit, UUID actorId, String notes) {
-        return smartBatch.runSmartBatch(cohortIds, autoConfigurePools, allowOverLimit, actorId, notes);
-    }
-    @Transactional
-    public Map<String, Object> unassignAll(List<UUID> advisorIds, boolean clearPools, String notes) {
-        return smartBatch.unassignAll(advisorIds, clearPools, notes);
     }
     @Transactional
     public Result confirm(String cohort, List<UUID> advisorIds) { return confirm(cohort, advisorIds, null, null, null); }
