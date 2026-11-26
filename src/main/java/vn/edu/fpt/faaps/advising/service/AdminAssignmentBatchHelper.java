@@ -29,7 +29,7 @@ class AdminAssignmentBatchHelper {
 
     Preview preview(String cohort, List<UUID> advisorIds, List<UUID> studentIds) {
         List<Advisor> selected = support.selectedAdvisors(advisorIds);
-        List<UUID> available = reads.students(cohort, true).stream().map(Student::id).toList();
+        List<UUID> available = reads.students(cohort, true).stream().map(student -> student.id()).toList();
         List<UUID> targets = (studentIds != null && !studentIds.isEmpty())
                 ? support.selectedTargets(studentIds, available)
                 : available;
@@ -48,7 +48,7 @@ class AdminAssignmentBatchHelper {
             boolean allowOverLimit, UUID actorId, String notes) {
         cohorts.lockCohort(cohortId);
         List<Advisor> initial = support.selectedAdvisorsForCohort(cohortId, advisorIds);
-        for (UUID advisorId : initial.stream().map(Advisor::id).sorted().toList()) {
+        for (UUID advisorId : initial.stream().map(advisor -> advisor.id()).sorted().toList()) {
             support.lockAdvisor(advisorId);
         }
         List<Advisor> selected = support.selectedAdvisorsForCohort(cohortId, advisorIds);
@@ -75,9 +75,9 @@ class AdminAssignmentBatchHelper {
             support.lockStudent(studentId);
         }
         if (studentIds != null && !studentIds.isEmpty()) {
-            support.selectedTargets(studentIds, reads.students(cohort, true).stream().map(Student::id).toList());
+            support.selectedTargets(studentIds, reads.students(cohort, true).stream().map(student -> student.id()).toList());
         } else {
-            targetIds = reads.students(cohort, true).stream().map(Student::id).sorted().toList();
+            targetIds = reads.students(cohort, true).stream().map(student -> student.id()).sorted().toList();
         }
         Plan plan = buildPlan(selected, targetIds.stream().map(id -> new StudentCandidate(id, false)).toList(), true);
         for (AssignmentPair pair : plan.pairs()) {
@@ -91,13 +91,13 @@ class AdminAssignmentBatchHelper {
         if (studentIds == null || studentIds.isEmpty()) {
             return available;
         }
-        List<UUID> validated = support.selectedTargets(studentIds, available.stream().map(StudentCandidate::id).toList());
+        List<UUID> validated = support.selectedTargets(studentIds, available.stream().map(candidate -> candidate.id()).toList());
         Set<UUID> allowed = Set.copyOf(validated);
         return available.stream().filter(c -> allowed.contains(c.id())).toList();
     }
 
     private List<UUID> resolveLegacyTargets(String cohort, List<UUID> studentIds) {
-        List<UUID> available = reads.students(cohort, true).stream().map(Student::id).toList();
+        List<UUID> available = reads.students(cohort, true).stream().map(student -> student.id()).toList();
         if (studentIds != null && !studentIds.isEmpty()) {
             return support.selectedTargets(studentIds, available);
         }
@@ -105,7 +105,7 @@ class AdminAssignmentBatchHelper {
     }
 
     private Plan buildPlan(List<Advisor> advisors, List<StudentCandidate> targets, boolean allowOverLimit) {
-        Map<UUID, Long> riskCounts = support.activeAtRiskCounts(advisors.stream().map(Advisor::id).toList());
+        Map<UUID, Long> riskCounts = support.activeAtRiskCounts(advisors.stream().map(advisor -> advisor.id()).toList());
         List<AdvisorSlot> slots = advisors.stream()
                 .map(a -> new AdvisorSlot(a.id(), a.maxAdvisees(), a.activeStudents(), riskCounts.getOrDefault(a.id(), 0L)))
                 .toList();

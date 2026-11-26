@@ -1,7 +1,5 @@
 package vn.edu.fpt.faaps.user.controller;
 
-import vn.edu.fpt.faaps.user.dto.AdminUserDtos;
-import vn.edu.fpt.faaps.user.exception.UserExceptions;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;

@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.academic.service;
 
-import vn.edu.fpt.faaps.academic.dto.TranscriptDtos;
 
 import java.util.List;
 import java.util.Set;
@@ -13,7 +12,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import vn.edu.fpt.faaps.academic.dto.TranscriptDtos.*;
-import vn.edu.fpt.faaps.academic.service.TranscriptWorkbookParser;
 
 @Service
 public class TranscriptImportService {

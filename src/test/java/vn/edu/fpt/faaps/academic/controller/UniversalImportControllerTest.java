@@ -3,8 +3,6 @@ package vn.edu.fpt.faaps.academic.controller;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;

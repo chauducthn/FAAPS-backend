@@ -2,7 +2,6 @@ package vn.edu.fpt.faaps.academic.service;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.dao.DuplicateKeyException;

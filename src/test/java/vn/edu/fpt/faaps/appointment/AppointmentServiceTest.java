@@ -1,13 +1,11 @@
 package vn.edu.fpt.faaps.appointment;
 
-import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos;
 import vn.edu.fpt.faaps.appointment.service.AppointmentService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.sql.Timestamp;
 import java.time.LocalDate;

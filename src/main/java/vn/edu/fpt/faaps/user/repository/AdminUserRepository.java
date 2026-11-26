@@ -1,7 +1,5 @@
 package vn.edu.fpt.faaps.user.repository;
 
-import vn.edu.fpt.faaps.user.dto.AdminUserDtos;
-import vn.edu.fpt.faaps.user.exception.UserExceptions;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;

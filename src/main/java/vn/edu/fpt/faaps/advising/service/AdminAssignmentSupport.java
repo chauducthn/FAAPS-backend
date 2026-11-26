@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.advising.service;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -26,7 +25,7 @@ class AdminAssignmentSupport {
     }
 
     List<UUID> unassignedIds(UUID cohortId) {
-        return unassignedCandidates(cohortId).stream().map(StudentCandidate::id).toList();
+        return unassignedCandidates(cohortId).stream().map(candidate -> candidate.id()).toList();
     }
 
     List<StudentCandidate> unassignedCandidates(UUID cohortId) {
@@ -61,7 +60,7 @@ class AdminAssignmentSupport {
         Map<UUID, Long> counts = new HashMap<>();
         if (advisorIds == null || advisorIds.isEmpty()) return counts;
         String placeholders = String.join(",", advisorIds.stream().map(id -> "?").toList());
-        Object[] args = advisorIds.stream().map(UUID::toString).toArray();
+        Object[] args = advisorIds.stream().map(id -> id.toString()).toArray();
         try {
             jdbc.query("""
                     SELECT sa.advisor_id, COUNT(*) AS cnt

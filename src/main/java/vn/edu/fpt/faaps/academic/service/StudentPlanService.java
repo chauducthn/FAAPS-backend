@@ -63,7 +63,7 @@ public class StudentPlanService {
                 """, (rs, row) -> new PlanCourse(rs.getString("id"), rs.getString("code"), rs.getString("name"),
                 rs.getInt("planned_credits"), rs.getString("priority"), rs.getString("notes")), planId.toString());
         List<String> issues = prerequisiteValidator.validateCourses(
-                studentId, courses.stream().map(PlanCourse::id).toList());
+                studentId, courses.stream().map(course -> course.id()).toList());
         return new CurriculumPlan(h, courses, issues);
     }
 

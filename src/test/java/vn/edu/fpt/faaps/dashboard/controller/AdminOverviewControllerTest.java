@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.dashboard.controller;
 
-import vn.edu.fpt.faaps.dashboard.controller.AdminOverviewController;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;

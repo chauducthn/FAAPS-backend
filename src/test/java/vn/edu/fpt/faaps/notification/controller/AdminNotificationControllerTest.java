@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.notification.controller;
 
-import vn.edu.fpt.faaps.notification.controller.AdminNotificationController;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;

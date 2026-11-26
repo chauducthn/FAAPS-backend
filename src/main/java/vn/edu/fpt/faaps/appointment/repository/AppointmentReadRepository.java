@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.appointment.repository;
 
-import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;

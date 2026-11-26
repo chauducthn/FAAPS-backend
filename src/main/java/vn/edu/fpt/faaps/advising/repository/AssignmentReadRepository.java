@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.advising.repository;
 
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;

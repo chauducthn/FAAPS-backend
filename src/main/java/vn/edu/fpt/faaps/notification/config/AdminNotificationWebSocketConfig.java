@@ -78,7 +78,7 @@ public class AdminNotificationWebSocketConfig implements WebSocketMessageBrokerC
 
     private void requireRole(Principal principal, String requiredRole) {
         if (!(principal instanceof Authentication authentication)
-                || authentication.getAuthorities().stream().map(GrantedAuthority::getAuthority)
+                || authentication.getAuthorities().stream().map(authority -> authority.getAuthority())
                         .noneMatch(requiredRole::equals)) {
             throw new IllegalArgumentException(requiredRole + " authentication required");
         }

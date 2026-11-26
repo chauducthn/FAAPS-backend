@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.academic.service;
 
-import vn.edu.fpt.faaps.academic.service.AdminAcademicRuleService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

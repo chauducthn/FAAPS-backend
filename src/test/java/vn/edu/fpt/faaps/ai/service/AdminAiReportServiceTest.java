@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.ai.service;
 
-import vn.edu.fpt.faaps.ai.service.AdminAiReportService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;

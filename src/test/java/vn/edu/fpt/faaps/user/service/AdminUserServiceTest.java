@@ -1,10 +1,8 @@
 package vn.edu.fpt.faaps.user.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
 import java.util.List;
@@ -60,7 +58,7 @@ class AdminUserServiceTest {
                 aiStudent.toString(), aiMajor.toString());
 
         List<AdminOverviewController.Major> majors = new AdminOverviewController(jdbc).majors();
-        assertEquals(List.of("AI", "SE"), majors.stream().map(AdminOverviewController.Major::code).toList());
+        assertEquals(List.of("AI", "SE"), majors.stream().map(major -> major.code()).toList());
         assertEquals(softwareMajor, majors.get(1).id());
 
         Page filtered = users.list("STUDENT", null, null, softwareMajor, 0, 20, "userId,asc");

@@ -42,7 +42,7 @@ final class SmartAutoAssignPlanner {
         }
 
         List<StudentCandidate> ordered = students.stream()
-                .sorted(Comparator.comparing(StudentCandidate::atRisk).reversed()
+                .sorted(Comparator.comparing((StudentCandidate candidate) -> candidate.atRisk()).reversed()
                         .thenComparing(s -> s.id().toString()))
                 .toList();
 

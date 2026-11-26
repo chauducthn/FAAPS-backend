@@ -73,7 +73,7 @@ final class StudentRoadmapStore {
         String curriculumId = jdbc.queryForList(
                 "SELECT curriculum_version_id FROM students WHERE user_id = ?", studentId.toString())
                 .stream().map(row -> row.get("curriculum_version_id")).filter(Objects::nonNull)
-                .map(Object::toString).findFirst().orElse(null);
+                .map(value -> value.toString()).findFirst().orElse(null);
         List<Map<String, Object>> courses = curriculumId == null ? List.of() : jdbc.queryForList("""
                 SELECT c.id, c.code, c.name, c.credits, cat.name AS category_name,
                        cc.semester_number, cc.is_mandatory
@@ -179,7 +179,7 @@ final class StudentRoadmapStore {
                 """, (rs, row) -> new RoadmapCourseDto(rs.getString("id"), rs.getString("code"),
                 rs.getString("name"), rs.getInt("planned_credits"), rs.getString("category_name"), true,
                 rs.getString("priority"), "PLANNED", rs.getString("notes"), List.of()), planId);
-        int credits = courses.stream().mapToInt(RoadmapCourseDto::credits).sum();
+        int credits = courses.stream().mapToInt(course -> course.credits()).sum();
         var semester = new RoadmapSemesterDto(1, "FA2026", "Semester 1", credits,
                 "IN_PROGRESS", courses, "Generated plan");
         return new StudyRoadmapDto(planId, studentId.toString(), "Active Study Roadmap",

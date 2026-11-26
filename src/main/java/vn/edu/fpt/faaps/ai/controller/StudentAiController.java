@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.ai.controller;
 
-import vn.edu.fpt.faaps.ai.dto.StudentAiDtos;
 import vn.edu.fpt.faaps.ai.service.StudentAiService;
 
 import jakarta.validation.Valid;

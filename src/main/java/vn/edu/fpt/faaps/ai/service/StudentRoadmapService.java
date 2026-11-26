@@ -39,7 +39,7 @@ class StudentRoadmapService {
                 && input.maxCreditsPerSemester() > 0 ? input.maxCreditsPerSemester() : 20;
         Map<Integer, List<RoadmapCourseDto>> grouped = groupCourses(courses, maxCredits, input);
         List<RoadmapSemesterDto> semesters = semesters(grouped, maxCredits);
-        int totalCredits = semesters.stream().mapToInt(RoadmapSemesterDto::totalCredits).sum();
+        int totalCredits = semesters.stream().mapToInt(semester -> semester.totalCredits()).sum();
         String planId = UUID.randomUUID().toString();
         store.save(studentId, planId, semesters, totalCredits);
         String description = buildDescription(input);
@@ -143,7 +143,7 @@ class StudentRoadmapService {
         List<RoadmapSemesterDto> result = new ArrayList<>();
         for (int number = 1; number <= grouped.size(); number++) {
             List<RoadmapCourseDto> courses = grouped.getOrDefault(number, List.of());
-            int credits = courses.stream().mapToInt(RoadmapCourseDto::credits).sum();
+            int credits = courses.stream().mapToInt(course -> course.credits()).sum();
             result.add(new RoadmapSemesterDto(number, "SEM" + number, "Semester " + number, credits,
                     number == 1 ? "IN_PROGRESS" : "PLANNED", courses,
                     "Target maximum: " + maxCredits + " credits"));

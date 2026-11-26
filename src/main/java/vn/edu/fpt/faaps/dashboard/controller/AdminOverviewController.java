@@ -94,7 +94,10 @@ public class AdminOverviewController {
 
     @PatchMapping("/appointments/{id}/status")
     public Appointment updateAppointmentStatus(@PathVariable UUID id, @RequestBody UpdateAppointmentStatus body) {
-        String next = body == null || body.status() == null ? "" : body.status().strip().toUpperCase();
+        if (body == null) {
+            throw new IllegalArgumentException("request body is required");
+        }
+        String next = body.status() == null ? "" : body.status().strip().toUpperCase();
         if (!List.of("SCHEDULED", "COMPLETED", "CANCELLED", "NO_SHOW").contains(next)) {
             throw new IllegalArgumentException("status must be SCHEDULED, COMPLETED, CANCELLED, or NO_SHOW");
         }

@@ -68,7 +68,7 @@ final class AdminCurriculumValidator {
     }
 
     void lockMajors(List<UUID> majorIds) {
-        majorIds.stream().distinct().sorted(Comparator.comparing(UUID::toString)).forEach(id -> {
+        majorIds.stream().distinct().sorted(Comparator.comparing(id -> id.toString())).forEach(id -> {
             List<String> found = jdbc.query("SELECT id FROM majors WHERE id = ? FOR UPDATE",
                     (rs, rowNum) -> rs.getString("id"), id.toString());
             if (found.isEmpty()) {

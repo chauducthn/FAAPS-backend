@@ -53,7 +53,7 @@ final class AdminUserCreationHelper {
         } else {
             validator.validateAdvisorInput(input);
         }
-        UUID userId = completeGoogleStudent ? existing.id() : UUID.randomUUID();
+        UUID userId = completeGoogleStudent && existing != null ? existing.id() : UUID.randomUUID();
         try {
             saveUser(userId, email, role, input, phone, completeGoogleStudent);
             if ("STUDENT".equals(role)) {

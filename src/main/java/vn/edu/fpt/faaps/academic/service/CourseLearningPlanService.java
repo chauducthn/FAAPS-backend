@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.academic.service;
 
-import vn.edu.fpt.faaps.academic.dto.StudentPlanDtos;
 
 import java.util.List;
 import java.util.UUID;

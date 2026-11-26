@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.academic.controller;
 
-import vn.edu.fpt.faaps.academic.dto.StudentPlanDtos;
 import vn.edu.fpt.faaps.academic.service.StudentPlanService;
 import vn.edu.fpt.faaps.academic.service.CourseLearningTaskService;
 

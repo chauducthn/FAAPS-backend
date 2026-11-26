@@ -102,9 +102,11 @@ final class AdminSmartBatchAssignHelper {
 
     Map<String, Object> unassignAll(List<UUID> advisorIds, boolean clearPools, String notes) {
         String noteText = (notes == null || notes.isBlank()) ? "Bulk unassign by admin" : notes.strip();
-        boolean scoped = advisorIds != null && !advisorIds.isEmpty();
-        String inClause = scoped ? "advisor_id IN (" + String.join(",", advisorIds.stream().map(id -> "?").toList()) + ") AND " : "";
-        Object[] idArgs = scoped ? advisorIds.stream().map(UUID::toString).toArray() : new Object[0];
+        List<UUID> scopedAdvisorIds = advisorIds == null ? List.of() : advisorIds;
+        boolean scoped = !scopedAdvisorIds.isEmpty();
+        String inClause = scoped ? "advisor_id IN ("
+                + String.join(",", scopedAdvisorIds.stream().map(id -> "?").toList()) + ") AND " : "";
+        Object[] idArgs = scoped ? scopedAdvisorIds.stream().map(id -> id.toString()).toArray() : new Object[0];
         Object[] assignArgs = new Object[idArgs.length + 1];
         assignArgs[0] = noteText;
         System.arraycopy(idArgs, 0, assignArgs, 1, idArgs.length);
@@ -171,7 +173,7 @@ final class AdminSmartBatchAssignHelper {
                 .stream()
                 .sorted(Comparator.comparingInt((Advisor a) -> a.maxAdvisees() == null ? DEFAULT_ADVISOR_CAPACITY : a.maxAdvisees())
                         .reversed()
-                        .thenComparingLong(Advisor::activeStudents)
+                        .thenComparingLong(advisor -> advisor.activeStudents())
                         .thenComparing(a -> a.id().toString()))
                 .toList();
     }

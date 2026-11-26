@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.academic.controller;
 
-import vn.edu.fpt.faaps.academic.dto.TranscriptDtos;
 import vn.edu.fpt.faaps.academic.service.TranscriptImportService;
 
 import java.io.IOException;

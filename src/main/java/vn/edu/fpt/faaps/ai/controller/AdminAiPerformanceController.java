@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.ai.controller;
 
-import vn.edu.fpt.faaps.ai.dto.AdminAiConfigDtos;
 import vn.edu.fpt.faaps.ai.service.AdminAiConfigService;
 
 import java.util.UUID;

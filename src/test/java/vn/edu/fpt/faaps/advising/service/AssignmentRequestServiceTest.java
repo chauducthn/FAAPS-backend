@@ -1,7 +1,5 @@
 package vn.edu.fpt.faaps.advising.service;
 
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService;
-import vn.edu.fpt.faaps.advising.service.AssignmentRequestService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;

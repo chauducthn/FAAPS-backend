@@ -36,7 +36,7 @@ public class AdvisorReportController {
         LocalDateTime toTs = queries.parseBoundary(to, true);
 
         Map<String, Integer> dist = statusDistribution(advisor);
-        int totalStudents = dist.values().stream().mapToInt(Integer::intValue).sum();
+        int totalStudents = dist.values().stream().mapToInt(value -> value.intValue()).sum();
         int activeStudents = dist.getOrDefault("ACTIVE", 0);
         int probationCount = dist.getOrDefault("PROBATION", 0);
         int suspendedCount = dist.getOrDefault("SUSPENDED", 0);

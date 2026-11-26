@@ -2,7 +2,6 @@ package vn.edu.fpt.faaps.user.service;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -93,7 +92,7 @@ public class UserRoleService {
             throw new IllegalArgumentException("maxAdvisees must be at least 1");
         }
         int at = email == null ? -1 : email.indexOf('@');
-        String derived = at > 0 ? email.substring(0, at).strip() : null;
+        String derived = email != null && at > 0 ? email.substring(0, at).strip() : null;
         String cleanCode = advisorCode == null || advisorCode.isBlank() ? derived : advisorCode.strip();
         boolean insertedWithCode = false;
         if (cleanCode != null) {

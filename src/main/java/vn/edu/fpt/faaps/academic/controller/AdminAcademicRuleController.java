@@ -4,7 +4,6 @@ import vn.edu.fpt.faaps.academic.service.AdminAcademicRuleService;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;

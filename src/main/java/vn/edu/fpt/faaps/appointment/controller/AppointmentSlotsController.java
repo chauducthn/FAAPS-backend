@@ -1,6 +1,5 @@
 package vn.edu.fpt.faaps.appointment.controller;
 
-import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos;
 import vn.edu.fpt.faaps.appointment.service.AppointmentService;
 
 import jakarta.validation.Valid;
