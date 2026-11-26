@@ -17,9 +17,7 @@ import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.*;
 
 @Service
 public class StudentAiService {
-
     private static final DateTimeFormatter ISO_DT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
-
     private final JdbcTemplate jdbc;
     private final StudentRoadmapService roadmaps;
     private final StudentAiChatSupport chatSupport;
@@ -72,7 +70,8 @@ public class StudentAiService {
     @Transactional
     public AiConversationDto createConversation(UUID studentId, CreateAiConversationDto dto) {
         String id = UUID.randomUUID().toString();
-        String title = dto != null && dto.title() != null && !dto.title().isBlank() ? dto.title().strip() : "New Advising Chat";
+        String title = dto != null && dto.title() != null && !dto.title().isBlank()
+                ? dto.title().strip() : "New Advising Chat";
         jdbc.update("""
                 INSERT INTO ai_conversations (id, user_id, title, status, last_message_at, created_at)
                 VALUES (?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -119,12 +118,11 @@ public class StudentAiService {
         if (text.isEmpty() && (file == null || file.isEmpty())) {
             throw new IllegalArgumentException("content or file is required");
         }
-        StudentAiAttachmentHelper.AttachmentOutcome attachment =
-                (file != null && !file.isEmpty()) ? attachments.process(studentId, text, file) : null;
+        var attachment = (file != null && !file.isEmpty()) ? attachments.process(studentId, text, file) : null;
         String storedUserContent = attachment == null ? text
                 : (text.isEmpty() ? "[Attached: " + attachment.fileName() + "]"
                         : "[Attached: " + attachment.fileName() + "]\n" + text);
-        List<StudentAiChatSupport.AiConfigModel> activeConfigs = chatSupport.getActiveChatConfigs();
+        var activeConfigs = chatSupport.getActiveChatConfigs();
         int memoryLimit = activeConfigs.isEmpty() || activeConfigs.get(0).retrievalTopK() == null
                 ? 12 : activeConfigs.get(0).retrievalTopK();
         List<GeminiGateway.Turn> history = contextBuilder.loadConversationMemory(conversationId, memoryLimit);
@@ -149,8 +147,7 @@ public class StudentAiService {
         boolean usedActionFallback = outcome.reply().fallback()
                 && attachment != null && attachment.directFallbackReply() != null;
         String answerContent = usedActionFallback
-                ? attachment.directFallbackReply()
-                : generator.resolveAnswerContent(outcome.reply(), outcome.config());
+                ? attachment.directFallbackReply() : generator.resolveAnswerContent(outcome.reply(), outcome.config());
         boolean isFallback = outcome.reply().fallback() && !usedActionFallback;
         String configId = outcome.config() != null ? outcome.config().id() : null;
 
@@ -161,8 +158,9 @@ public class StudentAiService {
                 """, assistantMsgId, conversationId.toString(), answerContent, category, isFallback, configId);
         chatSupport.logAiUsage(studentId, assistantMsgId, configId, outcome.reply(), latencyMs);
 
-        AiChatMessageDto userMsg = new AiChatMessageDto(userMsgId, conversationId.toString(), "USER", storedUserContent,
-                category, false, false, null, null, List.of(), null, null, nowTs.toLocalDateTime().format(ISO_DT));
+        AiChatMessageDto userMsg = new AiChatMessageDto(userMsgId, conversationId.toString(), "USER",
+                storedUserContent, category, false, false, null, null, List.of(), null, null,
+                nowTs.toLocalDateTime().format(ISO_DT));
         AiChatMessageDto assistantMsg = new AiChatMessageDto(assistantMsgId, conversationId.toString(), "ASSISTANT",
                 answerContent, category, false, isFallback, null, configId, List.of(), null, null,
                 LocalDateTime.now().format(ISO_DT));
@@ -179,7 +177,9 @@ public class StudentAiService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found or unauthorized");
         }
         jdbc.update("UPDATE ai_messages SET was_helpful = ?, feedback = ? WHERE id = ?",
-                feedbackDto.wasHelpful(), feedbackDto.feedback() != null ? feedbackDto.feedback().strip() : null, messageId.toString());
+                feedbackDto.wasHelpful(),
+                feedbackDto.feedback() != null ? feedbackDto.feedback().strip() : null,
+                messageId.toString());
     }
 
     public StudyRoadmapDto getRoadmap(UUID studentId) {

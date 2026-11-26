@@ -117,14 +117,20 @@ public class AuthPasswordService {
 
     @Transactional
     public void changePassword(UUID userId, String currentPassword, String newPassword) {
+        changePassword(userId, currentPassword, newPassword, false);
+    }
+
+    @Transactional
+    public void changePassword(UUID userId, String currentPassword, String newPassword, boolean mustChangePassword) {
         if (userId == null) {
             throw new BadCredentialsException("Authentication required");
         }
-        if (currentPassword == null || currentPassword.isBlank()) {
+        boolean hasCurrent = currentPassword != null && !currentPassword.isBlank();
+        if (!mustChangePassword && !hasCurrent) {
             throw new IllegalArgumentException("Current password is required");
         }
         PasswordResetSupport.validatePassword(newPassword);
-        if (currentPassword.equals(newPassword)) {
+        if (hasCurrent && currentPassword.equals(newPassword)) {
             throw new IllegalArgumentException("New password must be different from current password");
         }
 
@@ -135,8 +141,11 @@ public class AuthPasswordService {
             throw new IllegalArgumentException("Account not found or inactive");
         }
         String existingHash = hashes.get(0);
-        if (existingHash == null || !passwordEncoder.matches(currentPassword, existingHash)) {
+        if (!mustChangePassword && (existingHash == null || !passwordEncoder.matches(currentPassword, existingHash))) {
             throw new IllegalArgumentException("Current password is incorrect");
+        }
+        if (existingHash != null && passwordEncoder.matches(newPassword, existingHash)) {
+            throw new IllegalArgumentException("New password must be different from current password");
         }
 
         jdbc.update("""

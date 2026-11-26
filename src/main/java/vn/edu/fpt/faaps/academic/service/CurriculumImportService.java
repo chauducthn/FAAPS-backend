@@ -55,8 +55,8 @@ public class CurriculumImportService {
             throw new IllegalArgumentException("Only a non-empty validated preview can be imported");
         int imported = 0;
         for (RowItem item : items) {
-            if (item.semesterNumber() < 0 || item.semesterNumber() > 9)
-                throw new IllegalArgumentException("Semester must be between 0 and 9");
+            if (item.semesterNumber() < 0 || item.semesterNumber() > 12)
+                throw new IllegalArgumentException("Semester must be between 0 and 12");
             Integer activeCourse = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM courses WHERE id=? AND UPPER(code)=? AND status='ACTIVE'",
                     Integer.class, item.courseId(), item.courseCode().strip().toUpperCase(Locale.ROOT));
@@ -89,10 +89,10 @@ public class CurriculumImportService {
     private int integer(String value, String field, List<String> errors) {
         try {
             int parsed = Integer.parseInt(value.strip());
-            if (parsed < 1 || parsed > 9) throw new NumberFormatException();
+            if (parsed < 0 || parsed > 12) throw new NumberFormatException();
             return parsed;
         } catch (Exception exception) {
-            errors.add(field + " must be between 1 and 9");
+            errors.add(field + " must be between 0 and 12");
             return 0;
         }
     }

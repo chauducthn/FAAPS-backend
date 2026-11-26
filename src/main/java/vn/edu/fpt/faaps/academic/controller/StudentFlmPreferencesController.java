@@ -27,28 +27,31 @@ public class StudentFlmPreferencesController {
 
     @GetMapping
     public PreferencesView get(@AuthenticationPrincipal AuthSession student) {
-        String majorCode = resolveMajorCode(student);
-        return preferences.get(student.id(), majorCode);
+        String[] info = resolveAcademicInfo(student);
+        return preferences.get(student.id(), info[0], info[1]);
     }
 
     @PutMapping
     public PreferencesView save(@AuthenticationPrincipal AuthSession student,
             @Valid @RequestBody UpdateFlmPreferencesRequest request) {
-        String majorCode = resolveMajorCode(student);
-        return preferences.save(student.id(), majorCode,
-                request.comboCode(), request.englishPrep(), request.musicalInstrument());
+        String[] info = resolveAcademicInfo(student);
+        return preferences.save(student.id(), info[0],
+                request.comboCode(), request.englishPrep(),
+                request.musicalInstrument(), request.physicalEducation());
     }
 
-    private String resolveMajorCode(AuthSession student) {
+    private String[] resolveAcademicInfo(AuthSession student) {
         try {
-            return academics.profile(student.id()).majorCode();
+            var p = academics.profile(student.id());
+            return new String[] { p.majorCode(), p.cohort() };
         } catch (RuntimeException ignored) {
-            return null;
+            return new String[] { null, null };
         }
     }
 
     public record UpdateFlmPreferencesRequest(
             @Size(max = 64) String comboCode,
             @Size(max = 32) String englishPrep,
-            @Size(max = 32) String musicalInstrument) {}
+            @Size(max = 32) String musicalInstrument,
+            @Size(max = 32) String physicalEducation) {}
 }

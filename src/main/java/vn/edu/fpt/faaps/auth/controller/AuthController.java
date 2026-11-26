@@ -125,7 +125,8 @@ public class AuthController {
         if (session == null) {
             throw new BadCredentialsException("Authentication required");
         }
-        requirePasswordService().changePassword(session.id(), body.currentPassword(), body.newPassword());
+        requirePasswordService().changePassword(
+                session.id(), body.currentPassword(), body.newPassword(), session.mustChangePassword());
         establishSecurityContext(authService.sessionFor(session.id()), request, response);
         return Map.of("success", true, "message", "Password changed successfully");
     }
@@ -163,6 +164,6 @@ public class AuthController {
     public record ResetPasswordRequest(@NotBlank String token, @NotBlank String newPassword) {
     }
 
-    public record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {
+    public record ChangePasswordRequest(String currentPassword, @NotBlank String newPassword) {
     }
 }

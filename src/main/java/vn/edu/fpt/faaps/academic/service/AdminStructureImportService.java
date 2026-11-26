@@ -111,7 +111,7 @@ public class AdminStructureImportService {
                 String mid = majorIdByKey.get(majorKey(link.majorCode(), link.majorName()));
                 String cid = mid != null ? cohortIdByKey.get(cohortKey(mid, link.version())) : null;
                 if (cid == null || link.courseId() == null || !activeCourseIds.contains(link.courseId())
-                        || link.term() < 0 || link.term() > 9) {
+                        || link.term() < 0 || link.term() > 12) {
                     skipped++;
                     continue;
                 }
@@ -160,7 +160,9 @@ public class AdminStructureImportService {
         return List.of("ACTIVE", "DRAFT", "INACTIVE").contains(upper) ? upper : "ACTIVE";
     }
     private String majorKey(String code, String name) {
-        return (code == null ? "" : code.strip().toUpperCase(Locale.ROOT)) + "::" + (name == null ? "" : name.strip().toLowerCase(Locale.ROOT));
+        String c = code == null ? "" : code.strip().toUpperCase(Locale.ROOT);
+        String n = name == null ? "" : name.strip().toLowerCase(Locale.ROOT);
+        return c + "::" + n;
     }
     private String cohortKey(String majorId, String version) {
         return majorId + "::" + (version == null ? "" : version.strip().toUpperCase(Locale.ROOT));
