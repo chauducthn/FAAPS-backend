@@ -69,7 +69,6 @@ public class AuthController {
         return startSession(authService.loginAdmin(credentials.email(), credentials.password()), request, response);
     }
 
-    /** Email + password sign-in for Admin and for students who registered with a password. */
     @PostMapping("/login")
     public AuthSession login(@Valid @RequestBody AdminLoginRequest credentials,
             HttpServletRequest request, HttpServletResponse response) {
@@ -103,8 +102,8 @@ public class AuthController {
     @PostMapping("/forgot-password")
     public Map<String, Object> forgotPassword(@Valid @RequestBody ForgotPasswordRequest body,
             HttpServletRequest request) {
-        AuthPasswordService.ForgotPasswordResult result =
-                requirePasswordService().forgotPassword(body.email(), request.getRemoteAddr());
+        AuthPasswordService.ForgotPasswordResult result = requirePasswordService().forgotPassword(body.email(),
+                request.getRemoteAddr());
         return Map.of("success", result.success(), "message", result.message());
     }
 
@@ -122,11 +121,13 @@ public class AuthController {
 
     @PostMapping("/change-password")
     public Map<String, Object> changePassword(@AuthenticationPrincipal AuthSession session,
-            @Valid @RequestBody ChangePasswordRequest body) {
+            @Valid @RequestBody ChangePasswordRequest body,
+            HttpServletRequest request, HttpServletResponse response) {
         if (session == null) {
             throw new BadCredentialsException("Authentication required");
         }
         requirePasswordService().changePassword(session.id(), body.currentPassword(), body.newPassword());
+        establishSecurityContext(authService.sessionFor(session.id()), request, response);
         return Map.of("success", true, "message", "Password changed successfully");
     }
 
@@ -155,42 +156,6 @@ public class AuthController {
             throw new AuthUnavailableException();
         }
         return passwordService;
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiError> invalidArgument(IllegalArgumentException exception) {
-        return ResponseEntity.badRequest().body(ApiError.of("INVALID_REQUEST", exception.getMessage()));
-    }
-
-    @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<ApiError> responseStatus(ResponseStatusException exception) {
-        String code = exception.getStatusCode().value() == 429 ? "RATE_LIMITED" : "INVALID_REQUEST";
-        String reason = exception.getReason() != null ? exception.getReason() : "Request rejected";
-        return ResponseEntity.status(exception.getStatusCode()).body(ApiError.of(code, reason));
-    }
-
-    @ExceptionHandler(BadCredentialsException.class)
-    public ResponseEntity<ApiError> invalidCredentials() {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiError.of("INVALID_CREDENTIALS", "Invalid credentials"));
-    }
-
-    @ExceptionHandler(AuthRefreshTokenService.InvalidRefreshTokenException.class)
-    public ResponseEntity<ApiError> invalidRefreshToken() {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiError.of("INVALID_REFRESH_TOKEN", "Refresh token is invalid, expired, or revoked"));
-    }
-
-    @ExceptionHandler(DisabledException.class)
-    public ResponseEntity<ApiError> disabledAccount() {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(ApiError.of("ACCOUNT_INACTIVE", "Account is not active"));
-    }
-
-    @ExceptionHandler(AuthUnavailableException.class)
-    public ResponseEntity<ApiError> unavailable() {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(ApiError.of("ACCOUNT_STORAGE_UNAVAILABLE", "Account storage is not configured"));
     }
 
     public record ForgotPasswordRequest(@NotBlank @Email String email) {}

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.AdvisorAppointmentDto;
+import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.AdvisorOptionDto;
 import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.AvailabilitySlotDto;
 import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.AvailableSlotDto;
 import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.BookAppointmentDto;
@@ -23,16 +24,33 @@ import vn.edu.fpt.faaps.appointment.repository.AppointmentReadRepository;
 
 @Service
 public class AppointmentService {
+    private final JdbcTemplate jdbc;
     private final AppointmentReadRepository reads;
     private final AppointmentAvailabilityHelper availability;
     private final AppointmentBookingHelper booking;
     private final AppointmentStatusHelper statusHelper;
 
     public AppointmentService(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
         this.reads = new AppointmentReadRepository(jdbc);
         this.availability = new AppointmentAvailabilityHelper(jdbc, this.reads);
         this.booking = new AppointmentBookingHelper(jdbc, this.reads);
         this.statusHelper = new AppointmentStatusHelper(jdbc, this.reads, this.booking);
+    }
+
+    public List<AdvisorOptionDto> listAdvisorsForStudent(UUID studentId) {
+        UUID assigned = reads.assignedAdvisor(studentId);
+        String assignedId = assigned == null ? "" : assigned.toString();
+        return jdbc.query("""
+                SELECT u.id, u.full_name, u.email
+                FROM advisors a
+                JOIN users u ON u.id = a.user_id
+                WHERE u.status = 'ACTIVE' AND a.status = 'ACTIVE'
+                ORDER BY CASE WHEN u.id = ? THEN 0 ELSE 1 END, u.full_name ASC
+                """, (rs, rowNum) -> {
+            String id = rs.getString("id");
+            return new AdvisorOptionDto(id, rs.getString("full_name"), rs.getString("email"), id.equals(assignedId));
+        }, assignedId);
     }
 
     public List<AvailabilitySlotDto> getAdvisorAvailability(UUID advisorId) {

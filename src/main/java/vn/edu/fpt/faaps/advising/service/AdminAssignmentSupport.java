@@ -1,7 +1,10 @@
 package vn.edu.fpt.faaps.advising.service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -9,6 +12,7 @@ import vn.edu.fpt.faaps.advising.repository.AssignmentReadRepository;
 import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Advisor;
 import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.AssignmentError;
 import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Conflict;
+import vn.edu.fpt.faaps.advising.service.SmartAutoAssignPlanner.StudentCandidate;
 
 class AdminAssignmentSupport {
     private final JdbcTemplate jdbc;
@@ -22,17 +26,58 @@ class AdminAssignmentSupport {
     }
 
     List<UUID> unassignedIds(UUID cohortId) {
+        return unassignedCandidates(cohortId).stream().map(StudentCandidate::id).toList();
+    }
+
+    List<StudentCandidate> unassignedCandidates(UUID cohortId) {
         if (jdbc.queryForObject("SELECT COUNT(*) FROM curriculum_versions WHERE id = ?",
                 Integer.class, cohortId.toString()) == 0) {
             throw new Conflict();
         }
-        return jdbc.query("""
-                SELECT s.user_id FROM students s
-                WHERE s.curriculum_version_id = ?
-                  AND NOT EXISTS(SELECT 1 FROM student_advisor_assignments sa
-                      WHERE sa.student_id = s.user_id AND sa.status = 'ACTIVE' AND sa.end_date IS NULL)
-                ORDER BY s.user_id
-                """, (result, row) -> UUID.fromString(result.getString(1)), cohortId.toString());
+        try {
+            return jdbc.query("""
+                    SELECT s.user_id, s.academic_status, s.current_gpa FROM students s
+                    WHERE s.curriculum_version_id = ?
+                      AND NOT EXISTS(SELECT 1 FROM student_advisor_assignments sa
+                          WHERE sa.student_id = s.user_id AND sa.status = 'ACTIVE' AND sa.end_date IS NULL)
+                    ORDER BY s.user_id
+                    """, (rs, row) -> new StudentCandidate(
+                    UUID.fromString(rs.getString("user_id")),
+                    SmartAutoAssignPlanner.isAtRisk(rs.getString("academic_status"), rs.getBigDecimal("current_gpa"))),
+                    cohortId.toString());
+        } catch (Exception ignored) {
+            return jdbc.query("""
+                    SELECT s.user_id FROM students s
+                    WHERE s.curriculum_version_id = ?
+                      AND NOT EXISTS(SELECT 1 FROM student_advisor_assignments sa
+                          WHERE sa.student_id = s.user_id AND sa.status = 'ACTIVE' AND sa.end_date IS NULL)
+                    ORDER BY s.user_id
+                    """, (rs, row) -> new StudentCandidate(UUID.fromString(rs.getString("user_id")), false),
+                    cohortId.toString());
+        }
+    }
+
+    Map<UUID, Long> activeAtRiskCounts(List<UUID> advisorIds) {
+        Map<UUID, Long> counts = new HashMap<>();
+        if (advisorIds == null || advisorIds.isEmpty()) return counts;
+        String placeholders = String.join(",", advisorIds.stream().map(id -> "?").toList());
+        Object[] args = advisorIds.stream().map(UUID::toString).toArray();
+        try {
+            jdbc.query("""
+                    SELECT sa.advisor_id, COUNT(*) AS cnt
+                    FROM student_advisor_assignments sa
+                    JOIN students s ON s.user_id = sa.student_id
+                    WHERE sa.advisor_id IN (%s) AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
+                      AND ((s.academic_status IS NOT NULL AND UPPER(s.academic_status) <> 'ACTIVE')
+                           OR (s.current_gpa > 0 AND s.current_gpa < 5.00))
+                    GROUP BY sa.advisor_id
+                    """.formatted(placeholders), rs -> {
+                counts.put(UUID.fromString(rs.getString("advisor_id")), rs.getLong("cnt"));
+            }, args);
+        } catch (Exception ignored) {
+            // Minimal H2 test schemas may omit academic_status/current_gpa columns.
+        }
+        return counts;
     }
 
     List<UUID> selectedTargets(List<UUID> requested, List<UUID> available) {

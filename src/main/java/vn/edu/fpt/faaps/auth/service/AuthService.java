@@ -14,6 +14,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 public class AuthService {
+    public static final String DEFAULT_INITIAL_PASSWORD = "FPTUniversity@2026";
+
     private final AuthAccountStore accountStore;
     private final PasswordEncoder passwordEncoder;
     private final String dummyHash;
@@ -65,7 +67,10 @@ public class AuthService {
         if (!"ACTIVE".equals(account.status())) {
             throw new DisabledException("Account is not active");
         }
-        return AuthSession.from(account);
+        boolean mustChange = !"ADMIN".equalsIgnoreCase(account.role())
+                && account.passwordHash() != null
+                && passwordEncoder.matches(DEFAULT_INITIAL_PASSWORD, account.passwordHash());
+        return AuthSession.from(account, mustChange);
     }
 
     public Authentication authentication(AuthSession session) {

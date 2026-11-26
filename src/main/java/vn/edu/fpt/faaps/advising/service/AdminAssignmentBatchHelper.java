@@ -1,16 +1,19 @@
 package vn.edu.fpt.faaps.advising.service;
 
-import java.util.Comparator;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import vn.edu.fpt.faaps.advising.repository.AssignmentReadRepository;
 import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Advisor;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Conflict;
 import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Preview;
 import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Result;
 import vn.edu.fpt.faaps.advising.service.AdminAssignmentService.Student;
+import vn.edu.fpt.faaps.advising.service.SmartAutoAssignPlanner.AdvisorSlot;
+import vn.edu.fpt.faaps.advising.service.SmartAutoAssignPlanner.AssignmentPair;
+import vn.edu.fpt.faaps.advising.service.SmartAutoAssignPlanner.Plan;
+import vn.edu.fpt.faaps.advising.service.SmartAutoAssignPlanner.StudentCandidate;
 
 class AdminAssignmentBatchHelper {
     private final AssignmentReadRepository reads;
@@ -27,23 +30,22 @@ class AdminAssignmentBatchHelper {
     Preview preview(String cohort, List<UUID> advisorIds, List<UUID> studentIds) {
         List<Advisor> selected = support.selectedAdvisors(advisorIds);
         List<UUID> available = reads.students(cohort, true).stream().map(Student::id).toList();
-        int count = (studentIds != null && !studentIds.isEmpty())
-                ? support.selectedTargets(studentIds, available).size()
-                : available.size();
-        return new Preview(cohort, count, distribute(selected, count));
+        List<UUID> targets = (studentIds != null && !studentIds.isEmpty())
+                ? support.selectedTargets(studentIds, available)
+                : available;
+        Plan plan = buildPlan(selected, targets.stream().map(id -> new StudentCandidate(id, false)).toList(), true);
+        return new Preview(cohort, targets.size(), plan.assignedByAdvisor());
     }
 
-    Map<String, Object> previewCohort(UUID cohortId, List<UUID> advisorIds, List<UUID> studentIds) {
+    Map<String, Object> previewCohort(UUID cohortId, List<UUID> advisorIds, List<UUID> studentIds, boolean allowOverLimit) {
         List<Advisor> selected = support.selectedAdvisorsForCohort(cohortId, advisorIds);
-        List<UUID> available = support.unassignedIds(cohortId);
-        int count = (studentIds != null && !studentIds.isEmpty())
-                ? support.selectedTargets(studentIds, available).size()
-                : available.size();
-        return allocationResponse(cohortId, count, selected, distribute(selected, count));
+        List<StudentCandidate> targets = resolveCohortCandidates(cohortId, studentIds);
+        Plan plan = buildPlan(selected, targets, allowOverLimit);
+        return allocationResponse(cohortId, plan, allowOverLimit);
     }
 
     Map<String, Object> confirmCohort(UUID cohortId, List<UUID> advisorIds, List<UUID> studentIds,
-            UUID actorId, String notes) {
+            boolean allowOverLimit, UUID actorId, String notes) {
         cohorts.lockCohort(cohortId);
         List<Advisor> initial = support.selectedAdvisorsForCohort(cohortId, advisorIds);
         for (UUID advisorId : initial.stream().map(Advisor::id).sorted().toList()) {
@@ -51,18 +53,16 @@ class AdminAssignmentBatchHelper {
         }
         List<Advisor> selected = support.selectedAdvisorsForCohort(cohortId, advisorIds);
 
-        List<UUID> targetIds = resolveCohortTargets(cohortId, studentIds);
-        for (UUID studentId : targetIds) {
-            support.lockStudent(studentId);
+        List<StudentCandidate> initialTargets = resolveCohortCandidates(cohortId, studentIds);
+        for (StudentCandidate candidate : initialTargets) {
+            support.lockStudent(candidate.id());
         }
-        if (studentIds != null && !studentIds.isEmpty()) {
-            support.selectedTargets(studentIds, support.unassignedIds(cohortId));
-        } else {
-            targetIds = support.unassignedIds(cohortId);
+        List<StudentCandidate> targets = resolveCohortCandidates(cohortId, studentIds);
+        Plan plan = buildPlan(selected, targets, allowOverLimit);
+        for (AssignmentPair pair : plan.pairs()) {
+            support.insertAssignment(pair.studentId(), pair.advisorId(), actorId, notes);
         }
-
-        Map<UUID, Integer> allocation = assignRoundRobin(selected, targetIds, actorId, notes);
-        return allocationResponse(cohortId, targetIds.size(), selected, allocation);
+        return allocationResponse(cohortId, plan, allowOverLimit);
     }
 
     Result confirm(String cohort, List<UUID> advisorIds, List<UUID> studentIds, UUID actorId, String notes) {
@@ -79,16 +79,21 @@ class AdminAssignmentBatchHelper {
         } else {
             targetIds = reads.students(cohort, true).stream().map(Student::id).sorted().toList();
         }
-
-        Map<UUID, Integer> assignedCounts = assignRoundRobin(selected, targetIds, actorId, notes);
-        return new Result(targetIds.size(), assignedCounts);
+        Plan plan = buildPlan(selected, targetIds.stream().map(id -> new StudentCandidate(id, false)).toList(), true);
+        for (AssignmentPair pair : plan.pairs()) {
+            support.insertAssignment(pair.studentId(), pair.advisorId(), actorId, notes);
+        }
+        return new Result(plan.assigned(), plan.assignedByAdvisor());
     }
 
-    private List<UUID> resolveCohortTargets(UUID cohortId, List<UUID> studentIds) {
-        if (studentIds != null && !studentIds.isEmpty()) {
-            return support.selectedTargets(studentIds, support.unassignedIds(cohortId));
+    private List<StudentCandidate> resolveCohortCandidates(UUID cohortId, List<UUID> studentIds) {
+        List<StudentCandidate> available = support.unassignedCandidates(cohortId);
+        if (studentIds == null || studentIds.isEmpty()) {
+            return available;
         }
-        return support.unassignedIds(cohortId);
+        List<UUID> validated = support.selectedTargets(studentIds, available.stream().map(StudentCandidate::id).toList());
+        Set<UUID> allowed = Set.copyOf(validated);
+        return available.stream().filter(c -> allowed.contains(c.id())).toList();
     }
 
     private List<UUID> resolveLegacyTargets(String cohort, List<UUID> studentIds) {
@@ -99,57 +104,24 @@ class AdminAssignmentBatchHelper {
         return available.stream().sorted().toList();
     }
 
-    private Map<UUID, Integer> assignRoundRobin(List<Advisor> selected, List<UUID> targetIds,
-            UUID actorId, String notes) {
-        Map<UUID, Integer> allocation = new HashMap<>();
-        Map<UUID, Long> loads = new HashMap<>();
-        for (Advisor advisor : selected) {
-            allocation.put(advisor.id(), 0);
-            loads.put(advisor.id(), advisor.activeStudents());
-        }
-        for (UUID studentId : targetIds) {
-            Advisor next = nextAdvisor(selected, loads);
-            support.insertAssignment(studentId, next.id(), actorId, notes);
-            loads.put(next.id(), loads.get(next.id()) + 1);
-            allocation.put(next.id(), allocation.get(next.id()) + 1);
-        }
-        return allocation;
+    private Plan buildPlan(List<Advisor> advisors, List<StudentCandidate> targets, boolean allowOverLimit) {
+        Map<UUID, Long> riskCounts = support.activeAtRiskCounts(advisors.stream().map(Advisor::id).toList());
+        List<AdvisorSlot> slots = advisors.stream()
+                .map(a -> new AdvisorSlot(a.id(), a.maxAdvisees(), a.activeStudents(), riskCounts.getOrDefault(a.id(), 0L)))
+                .toList();
+        return SmartAutoAssignPlanner.plan(slots, targets, allowOverLimit);
     }
 
-    private Map<UUID, Integer> distribute(List<Advisor> advisors, int count) {
-        Map<UUID, Integer> assigned = new HashMap<>();
-        Map<UUID, Long> loads = new HashMap<>();
-        for (Advisor advisor : advisors) {
-            assigned.put(advisor.id(), 0);
-            loads.put(advisor.id(), advisor.activeStudents());
-        }
-        for (int index = 0; index < count; index++) {
-            Advisor next = nextAdvisor(advisors, loads);
-            assigned.put(next.id(), assigned.get(next.id()) + 1);
-            loads.put(next.id(), loads.get(next.id()) + 1);
-        }
-        return assigned;
-    }
-
-    private Advisor nextAdvisor(List<Advisor> advisors, Map<UUID, Long> loads) {
-        return advisors.stream()
-                .min(Comparator.comparingLong((Advisor advisor) -> loads.get(advisor.id()))
-                        .thenComparing(advisor -> advisor.id().toString()))
-                .orElseThrow(Conflict::new);
-    }
-
-    private Map<String, Object> allocationResponse(UUID cohortId, int count,
-            List<Advisor> advisors, Map<UUID, Integer> allocation) {
-        List<Map<String, Object>> limits = advisors.stream().map(advisor -> {
-            long after = advisor.activeStudents() + allocation.get(advisor.id());
-            int excess = advisor.maxAdvisees() == null ? 0
-                    : (int) Math.max(0, after - advisor.maxAdvisees());
-            return Map.<String, Object>of(
-                    "advisorId", advisor.id(), "assigned", allocation.get(advisor.id()),
-                    "totalBefore", advisor.activeStudents(), "totalAfter", after,
-                    "overLimitBy", excess, "warning", excess > 0);
-        }).toList();
-        return Map.of("cohortId", cohortId, "assigned", count, "allocation", limits,
-                "warning", limits.stream().anyMatch(item -> (boolean) item.get("warning")));
+    private Map<String, Object> allocationResponse(UUID cohortId, Plan plan, boolean allowOverLimit) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("cohortId", cohortId);
+        body.put("assigned", plan.assigned());
+        body.put("unassignedRemaining", plan.unassignedRemaining());
+        body.put("atRiskAssigned", plan.atRiskAssigned());
+        body.put("totalTarget", plan.totalTarget());
+        body.put("allowOverLimit", allowOverLimit);
+        body.put("allocation", plan.allocation());
+        body.put("warning", plan.warning());
+        return body;
     }
 }

@@ -147,25 +147,19 @@ class AdminUserServiceTest {
     void resetsPasswordSingleAndBulk() {
         AdminUserDtos.PasswordResetResponse singleResult = users.resetPassword(studentId);
         assertEquals(1, singleResult.updated());
-        assertNotNull(singleResult.defaultPassword());
-        assertTrue(singleResult.defaultPassword().startsWith("Faaps@"));
+        assertEquals("FPTUniversity@2026", singleResult.defaultPassword());
         assertEquals(1, singleResult.resetResults().size());
         assertEquals("SUCCESS", singleResult.resetResults().get(0).status());
         assertEquals("student@example.com", singleResult.resetResults().get(0).email());
-        assertEquals(singleResult.defaultPassword(), singleResult.resetResults().get(0).newPassword());
+        assertEquals("FPTUniversity@2026", singleResult.resetResults().get(0).newPassword());
         assertNotNull(jdbc.queryForObject("SELECT password_hash FROM users WHERE id = ?", String.class, studentId.toString()));
         assertEquals("LOCAL", jdbc.queryForObject("SELECT auth_provider FROM users WHERE id = ?", String.class, studentId.toString()));
 
         AdminUserDtos.PasswordResetResponse bulkResult = users.bulkResetPassword(List.of(adminId, studentId));
         assertEquals(2, bulkResult.updated());
-        assertNotNull(bulkResult.defaultPassword());
+        assertEquals("FPTUniversity@2026", bulkResult.defaultPassword());
         assertEquals(2, bulkResult.resetResults().size());
-        String pwd1 = bulkResult.resetResults().get(0).newPassword();
-        String pwd2 = bulkResult.resetResults().get(1).newPassword();
-        assertNotNull(pwd1);
-        assertNotNull(pwd2);
-        assertTrue(pwd1.startsWith("Faaps@"));
-        assertTrue(pwd2.startsWith("Faaps@"));
-        assertNotEquals(pwd1, pwd2);
+        assertEquals("FPTUniversity@2026", bulkResult.resetResults().get(0).newPassword());
+        assertEquals("FPTUniversity@2026", bulkResult.resetResults().get(1).newPassword());
     }
 }

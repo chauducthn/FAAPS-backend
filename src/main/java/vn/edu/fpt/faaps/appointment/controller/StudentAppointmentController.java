@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.AdvisorOptionDto;
 import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.BookAppointmentDto;
 import vn.edu.fpt.faaps.appointment.dto.AppointmentDtos.BookedAppointmentDto;
 import vn.edu.fpt.faaps.auth.model.AuthSession;
@@ -32,6 +33,11 @@ public class StudentAppointmentController {
             @AuthenticationPrincipal AuthSession student,
             @Valid @RequestBody BookAppointmentDto body) {
         return appointmentService.bookAppointment(student.id(), body);
+    }
+
+    @GetMapping("/advisors")
+    public List<AdvisorOptionDto> listAdvisors(@AuthenticationPrincipal AuthSession student) {
+        return appointmentService.listAdvisorsForStudent(student.id());
     }
 
     @GetMapping

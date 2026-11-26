@@ -6,44 +6,33 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.fpt.faaps.academic.service.StudentOnboardingService;
+import vn.edu.fpt.faaps.auth.service.AuthService;
 import vn.edu.fpt.faaps.common.validation.IdentityInput;
 import vn.edu.fpt.faaps.common.validation.StudentCodeValidator;
 import vn.edu.fpt.faaps.user.service.AdminUserImportLoader.CohortInfo;
 import vn.edu.fpt.faaps.user.service.AdminUserImportLoader.LoadedRefs;
 
-/** Atomic batch import of student and advisor accounts from Excel spreadsheets. */
+/**
+ * Atomic batch import of student and advisor accounts from Excel spreadsheets.
+ */
 @Service
 public class AdminUserImportService {
 
     private static final int BATCH_SIZE = 500;
     private static final int DEFAULT_MAX_ADVISEES = 30;
-    private static final String INSERT_USER_SQL = "INSERT INTO users (id, role_id, email, auth_provider, full_name, phone, status, created_at, updated_at) "
-            + "VALUES (?, ?, ?, 'GOOGLE', ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
-    private static final String INSERT_STUDENT_SQL = "INSERT INTO students (user_id, student_code, major_id, curriculum_version_id, "
-            + "enrollment_semester_id, expected_graduation_semester_id, current_semester, current_gpa, "
-            + "total_credits_earned, academic_status, created_at, updated_at) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
-    private static final String INSERT_ADVISOR_SQL = "INSERT INTO advisors (user_id, advisor_code, max_advisees, status, created_at, updated_at) "
-            + "VALUES (?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
 
     private final JdbcTemplate jdbc;
 
-    public AdminUserImportService(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
-    }
+    public AdminUserImportService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     public record UserImportRow(String role, String email, String fullName, String phone, String studentCode,
-            String majorCode, String cohort, String enrollmentSemester, Integer currentSemester, Integer maxAdvisees) {
-    }
-
-    public record ImportUsersRequest(List<UserImportRow> items) {
-    }
-
-    public record ImportUsersSummary(int created, int studentsCreated, int advisorsCreated, int skipped) {
-    }
+            String majorCode, String cohort, String enrollmentSemester, Integer currentSemester, Integer maxAdvisees) {}
+    public record ImportUsersRequest(List<UserImportRow> items) {}
+    public record ImportUsersSummary(int created, int studentsCreated, int advisorsCreated, int skipped) {}
 
     @Transactional
     public ImportUsersSummary importBatch(ImportUsersRequest request) {
@@ -52,9 +41,11 @@ public class AdminUserImportService {
             throw new IllegalArgumentException("No users provided for import.");
         }
         LoadedRefs refs = AdminUserImportLoader.preload(jdbc);
+        String defaultHash = new BCryptPasswordEncoder().encode(AuthService.DEFAULT_INITIAL_PASSWORD);
         List<Object[]> userRows = new ArrayList<>();
         List<Object[]> studentRows = new ArrayList<>();
         List<Object[]> advisorRows = new ArrayList<>();
+        List<Object[]> advisorCohortRows = new ArrayList<>();
         int skipped = 0;
 
         for (int i = 0; i < items.size(); i++) {
@@ -85,14 +76,19 @@ public class AdminUserImportService {
                 studentRows.add(student);
             } else {
                 advisorRows.add(buildAdvisorRow(userId, email, row.maxAdvisees(), rowNum));
+                CohortInfo advCohort = resolveActiveCohort(row, refs.cohorts());
+                if (advCohort != null) {
+                    advisorCohortRows.add(new Object[] { advCohort.id(), userId.toString() });
+                }
             }
             refs.emails().add(email);
-            userRows.add(new Object[] {userId.toString(), roleId, email, fullName, phone});
+            userRows.add(new Object[] { userId.toString(), roleId, email, defaultHash, fullName, phone });
         }
 
-        batchInsert(INSERT_USER_SQL, userRows);
-        batchInsert(INSERT_STUDENT_SQL, studentRows);
-        batchInsert(INSERT_ADVISOR_SQL, advisorRows);
+        batchInsert(AdminUserImportLoader.INSERT_USER_SQL, userRows);
+        batchInsert(AdminUserImportLoader.INSERT_STUDENT_SQL, studentRows);
+        batchInsert(AdminUserImportLoader.INSERT_ADVISOR_SQL, advisorRows);
+        batchInsert(AdminUserImportLoader.INSERT_COHORT_ADVISOR_SQL, advisorCohortRows);
         return new ImportUsersSummary(userRows.size(), studentRows.size(), advisorRows.size(), skipped);
     }
 
@@ -105,44 +101,49 @@ public class AdminUserImportService {
         if (currentSem < 1) {
             throw new IllegalArgumentException("Row " + rowNum + ": currentSemester must be at least 1.");
         }
-        CohortInfo cohort = resolveCohort(row, code, rowNum, refs.cohorts());
+        CohortInfo cohort = resolveCohort(row, code, refs.cohorts());
+        String majorCode = upper(row.majorCode());
+        String majorId = cohort != null ? cohort.majorId() : refs.majorIds().get(majorCode);
         String enrollCode = upper(row.enrollmentSemester());
-        String enrollId = enrollCode.isEmpty() ? null : refs.semesters().get(enrollCode);
+        String enrollId = enrollCode.isEmpty() ? null
+                : AdminUserImportLoader.ensureSemester(jdbc, refs.semesters(), enrollCode);
         if (!enrollCode.isEmpty() && enrollId == null) {
-            throw new IllegalArgumentException("Row " + rowNum + ": Enrollment semester '" + enrollCode + "' was not found.");
+            throw new IllegalArgumentException(
+                    "Row " + rowNum + ": Enrollment semester '" + enrollCode + "' must use SP/SU/FA + year.");
         }
         String expectedGradId = null;
         if (cohort != null && enrollId != null && cohort.maxTerms() > 0) {
-            String gradCode = ExpectedGraduation.code(enrollCode, refs.currentSemesterCode(), currentSem, cohort.maxTerms());
+            String gradCode = ExpectedGraduation.code(enrollCode, refs.currentSemesterCode(), currentSem,
+                    cohort.maxTerms());
             if (gradCode != null) {
-                expectedGradId = refs.semesters().get(gradCode.toUpperCase(Locale.ROOT));
+                expectedGradId = AdminUserImportLoader.ensureSemester(jdbc, refs.semesters(), gradCode);
             }
         }
         refs.studentCodes().add(code);
         return new Object[] {
-                userId.toString(), code, cohort == null ? null : cohort.majorId(),
+                userId.toString(), code, majorId,
                 cohort == null ? null : cohort.id(), enrollId, expectedGradId, currentSem
         };
     }
 
-    private CohortInfo resolveCohort(UserImportRow row, String studentCode, int rowNum, Map<String, CohortInfo> cohorts) {
-        String cohortVersion = upper(row.cohort());
-        if (cohortVersion.isEmpty()) {
+    private CohortInfo resolveCohort(UserImportRow row, String studentCode, Map<String, CohortInfo> cohorts) {
+        CohortInfo info = resolveActiveCohort(row, cohorts);
+        if (info == null)
             return null;
-        }
-        String majorCode = upper(row.majorCode());
-        if (majorCode.isEmpty() && studentCode.length() >= 2) {
-            majorCode = studentCode.substring(0, 2);
-        }
-        CohortInfo info = cohorts.get(majorCode + "|" + cohortVersion);
-        if (info == null) {
-            throw new IllegalArgumentException("Row " + rowNum + ": Cohort '" + majorCode + " " + cohortVersion + "' was not found.");
-        }
-        if (!"ACTIVE".equalsIgnoreCase(info.majorStatus()) || !"ACTIVE".equalsIgnoreCase(info.status())) {
-            throw new IllegalArgumentException("Row " + rowNum + ": Cohort '" + majorCode + " " + cohortVersion + "' is not active.");
-        }
         StudentCodeValidator.validateMajorAndCohortMatch(studentCode, info.majorCode(), info.version());
         return info;
+    }
+
+    private CohortInfo resolveActiveCohort(UserImportRow row, Map<String, CohortInfo> cohorts) {
+        String majorCode = upper(row.majorCode());
+        String cohortVersion = upper(row.cohort());
+        if (majorCode.isEmpty() || cohortVersion.isEmpty())
+            return null;
+        CohortInfo info = cohorts.get(majorCode + "|" + cohortVersion);
+        return (info != null && "ACTIVE".equalsIgnoreCase(info.majorStatus())
+                && "ACTIVE".equalsIgnoreCase(info.status()))
+                        ? info
+                        : null;
     }
 
     private Object[] buildAdvisorRow(UUID userId, String email, Integer requestedMax, int rowNum) {
@@ -155,7 +156,7 @@ public class AdminUserImportService {
         if (advisorCode.isEmpty() || advisorCode.length() > 50) {
             throw new IllegalArgumentException("Row " + rowNum + ": Advisor email prefix must be 1 to 50 characters.");
         }
-        return new Object[] {userId.toString(), advisorCode, maxAdvisees};
+        return new Object[] { userId.toString(), advisorCode, maxAdvisees };
     }
 
     private void batchInsert(String sql, List<Object[]> rows) {
@@ -165,22 +166,14 @@ public class AdminUserImportService {
     }
 
     private static String normalizeFullName(String value, int rowNum) {
-        String clean = value == null ? "" : value.strip().replaceAll("\\s+", " ");
-        if (clean.isEmpty() || clean.length() > 255) {
-            throw new IllegalArgumentException("Row " + rowNum + ": fullName is required and must be at most 255 characters.");
-        }
-        return clean;
+        return AdminUserImportLoader.normalizeFullName(value, rowNum);
     }
 
     private static String normalizePhone(String phone, int rowNum) {
-        String clean = phone == null || phone.isBlank() ? null : phone.strip();
-        if (clean != null && !StudentOnboardingService.PHONE.matcher(clean).matches()) {
-            throw new IllegalArgumentException("Row " + rowNum + ": phone must be a 10-digit Vietnamese number starting with 0.");
-        }
-        return clean;
+        return AdminUserImportLoader.normalizePhone(phone, rowNum);
     }
 
     private static String upper(String value) {
-        return value == null ? "" : value.strip().toUpperCase(Locale.ROOT);
+        return AdminUserImportLoader.upper(value);
     }
 }

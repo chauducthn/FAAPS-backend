@@ -24,6 +24,13 @@ public class AppointmentDtos {
             String endTime
     ) {}
 
+    public record AdvisorOptionDto(
+            String id,
+            String fullName,
+            String email,
+            boolean assigned
+    ) {}
+
     public record BookAppointmentDto(
             UUID advisorId,
             @NotBlank String startTime,

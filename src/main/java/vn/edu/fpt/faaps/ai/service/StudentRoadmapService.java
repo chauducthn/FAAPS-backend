@@ -86,7 +86,29 @@ class StudentRoadmapService {
             String semCode = store.resolveSemesterCode(expId);
             parts.add("Target graduation: " + (semCode != null ? semCode : expId));
         }
+        String method = recommendedStudyMethod(input);
+        if (!method.isEmpty()) {
+            parts.add("Study method: " + method);
+        }
         return parts.isEmpty() ? DEFAULT_DESC : String.join(" | ", parts);
+    }
+
+    private static String recommendedStudyMethod(GenerateRoadmapDto input) {
+        if (input == null) {
+            return "";
+        }
+        String orient = input.orientation() == null ? "" : input.orientation().strip().toUpperCase(Locale.ROOT);
+        String trackTip = switch (orient) {
+            case "JOB" -> "Prioritize hands-on project courses, labs, and OJT readiness; build a portfolio repo per term.";
+            case "ACADEMIC" -> "Focus on core theory, maintain >= 80% attendance, and review past exams weekly.";
+            case "RESEARCH" -> "Pair core foundations with seminar/elective topics and join a faculty research group early.";
+            case "ENTREPRENEURIAL" -> "Combine technical core with EXE/product electives and validate real prototypes in Capstone.";
+            default -> "Clear prerequisites early, balance heavy coding courses with general subjects, and track weekly milestones.";
+        };
+        if (input.targetGpa() != null && input.targetGpa() >= 8.0) {
+            return trackTip + " Aim for >= 8.0/10 on progressive assessments and avoid overloading > 18 credits.";
+        }
+        return trackTip;
     }
 
     private Map<Integer, List<RoadmapCourseDto>> groupCourses(List<Map<String, Object>> rows, int maxCredits,

@@ -4,24 +4,18 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
- * Standard validator and normalizer for student identifiers across FAAPS.
- * Format requirement: 2 uppercase letters followed by 6 digits (e.g. SE173012, IA160343).
+ * Standard validator and normalizer for FPT University student identifiers across FAAPS.
+ * Format: Campus (Q/D/H/S/C) + Program Group (E=Engineering, S=Studies/Business, A=Arts/Languages)
+ * + 2-digit cohort (01-22) + 4 digits (e.g. SE182965, SS209938, HE190001).
  */
 public final class StudentCodeValidator {
 
     private static final Pattern STUDENT_CODE_PATTERN =
-            Pattern.compile("^[A-Z]{2}(0[1-9]|1\\d|2[0-2])\\d{4}$");
+            Pattern.compile("^[QDHSC][ESA](0[1-9]|1\\d|2[0-2])\\d{4}$");
 
     private StudentCodeValidator() {
     }
 
-    /**
-     * Validates student code format and normalizes it (trimmed and uppercase).
-     *
-     * @param studentCode raw student code input
-     * @return trimmed, upper-cased student code
-     * @throws IllegalArgumentException if null, blank, or invalid format
-     */
     public static String validateAndNormalize(String studentCode) {
         if (studentCode == null || studentCode.isBlank()) {
             throw new IllegalArgumentException("studentCode is required");
@@ -29,28 +23,20 @@ public final class StudentCodeValidator {
         String normalized = studentCode.strip().toUpperCase(Locale.ROOT);
         if (!STUDENT_CODE_PATTERN.matcher(normalized).matches()) {
             throw new IllegalArgumentException(
-                    "studentCode must be 2 letters, a cohort from 01 to 22 and 4 digits (e.g. SE190001)");
+                    "studentCode must start with campus (Q/D/H/S/C) + group (E/S/A) + cohort 01-22 + 4 digits (e.g. SE182965, SS209938)");
         }
-
         return normalized;
     }
 
     /**
-     * Ensures the first two letters and next two digits of the student code match the cohort's major and version.
+     * Ensures the 2-digit cohort in the student code (e.g. 19 in SE190001 -> K19) matches the cohort version.
+     * Note: the first two letters encode Campus + Program Group, NOT the major code.
      */
     public static void validateMajorAndCohortMatch(String normalizedStudentCode, String majorCode, String cohortVersion) {
         if (normalizedStudentCode == null || normalizedStudentCode.length() < 4) {
             return;
         }
-        String prefix = normalizedStudentCode.substring(0, 2).toUpperCase(Locale.ROOT);
-        String studentCohort = "K" + normalizedStudentCode.substring(2, 4);
-        if (majorCode != null && !majorCode.isBlank()) {
-            String expectedMajor = majorCode.strip().toUpperCase(Locale.ROOT);
-            if (!prefix.equals(expectedMajor)) {
-                throw new IllegalArgumentException(
-                        "Student ID prefix '" + prefix + "' must match cohort major code '" + expectedMajor + "'");
-            }
-        }
+        String studentCohort = "K" + Integer.parseInt(normalizedStudentCode.substring(2, 4));
         if (cohortVersion != null && !cohortVersion.isBlank()) {
             String expectedCohort = cohortVersion.strip().toUpperCase(Locale.ROOT);
             if (!studentCohort.equals(expectedCohort)) {
@@ -60,12 +46,6 @@ public final class StudentCodeValidator {
         }
     }
 
-    /**
-     * Checks whether the given student code matches the expected format pattern.
-     *
-     * @param studentCode raw student code input
-     * @return true if valid format, false otherwise
-     */
     public static boolean isValidFormat(String studentCode) {
         if (studentCode == null || studentCode.isBlank()) {
             return false;

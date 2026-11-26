@@ -9,6 +9,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import vn.edu.fpt.faaps.auth.service.AuthService;
 import vn.edu.fpt.faaps.common.validation.IdentityInput;
 import vn.edu.fpt.faaps.common.validation.StudentCodeValidator;
 import vn.edu.fpt.faaps.user.dto.AdminUserDtos.CreateAccount;
@@ -57,7 +59,7 @@ final class AdminUserCreationHelper {
             if ("STUDENT".equals(role)) {
                 addStudentProfile(userId, input);
             } else {
-                saveAdvisorProfile(userId, input.maxAdvisees(), input.advisorCode(), email);
+                saveAdvisorProfile(userId, input.maxAdvisees(), input.advisorCode(), email, input.curriculumVersionId());
             }
         } catch (DuplicateKeyException exception) {
             throw new Conflict("Email or student code already exists");
@@ -86,23 +88,26 @@ final class AdminUserCreationHelper {
                     input.fullName().strip(), phone, userId.toString());
             return;
         }
+        String defaultHash = new BCryptPasswordEncoder().encode(AuthService.DEFAULT_INITIAL_PASSWORD);
         int inserted = jdbc.update("""
-                INSERT INTO users (id, role_id, email, auth_provider, full_name, phone, status,
+                INSERT INTO users (id, role_id, email, password_hash, auth_provider, full_name, phone, status,
                                    created_at, updated_at)
-                SELECT ?, r.id, ?, 'GOOGLE', ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                SELECT ?, r.id, ?, ?, 'LOCAL', ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 FROM roles r WHERE r.code = ?
-                """, userId.toString(), email, input.fullName().strip(), phone, role);
+                """, userId.toString(), email, defaultHash, input.fullName().strip(), phone, role);
         if (inserted != 1) {
             throw new Conflict("Role " + role + " is not configured");
         }
     }
 
-    private void saveAdvisorProfile(UUID userId, Integer requestedMaxAdvisees, String advisorCode, String email) {
+    private void saveAdvisorProfile(UUID userId, Integer requestedMaxAdvisees, String advisorCode,
+            String email, UUID cohortId) {
         int maxAdvisees = requestedMaxAdvisees == null ? 30 : requestedMaxAdvisees;
         String cleanCode = extractEmailLocalPart(email);
         if (advisorCode != null && !advisorCode.isBlank() && !advisorCode.strip().equals(cleanCode)) {
             throw new IllegalArgumentException("Advisor identifier must match the email prefix before @");
         }
+        boolean inserted = false;
         if (cleanCode != null) {
             if (cleanCode.length() > 50) {
                 throw new IllegalArgumentException("Advisor identifier must be at most 50 characters");
@@ -112,17 +117,32 @@ final class AdminUserCreationHelper {
                         INSERT INTO advisors (user_id, advisor_code, max_advisees, status, created_at, updated_at)
                         VALUES (?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         """, userId.toString(), cleanCode, maxAdvisees);
-                return;
+                inserted = true;
             } catch (DuplicateKeyException duplicate) {
                 throw duplicate;
             } catch (BadSqlGrammarException ex) {
                 log.debug("Fallback advisor insert without advisor_code column: {}", ex.getMessage());
             }
         }
-        jdbc.update("""
-                INSERT INTO advisors (user_id, max_advisees, status, created_at, updated_at)
-                VALUES (?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, userId.toString(), maxAdvisees);
+        if (!inserted) {
+            jdbc.update("""
+                    INSERT INTO advisors (user_id, max_advisees, status, created_at, updated_at)
+                    VALUES (?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, userId.toString(), maxAdvisees);
+        }
+        if (cohortId != null) {
+            Integer exists = jdbc.queryForObject("SELECT COUNT(*) FROM curriculum_versions WHERE id = ?",
+                    Integer.class, cohortId.toString());
+            if (exists == null || exists == 0) {
+                throw new NotFound("Cohort not found");
+            }
+            try {
+                jdbc.update("INSERT INTO cohort_advisors (cohort_id, advisor_id, is_active) VALUES (?, ?, TRUE)",
+                        cohortId.toString(), userId.toString());
+            } catch (BadSqlGrammarException ex) {
+                log.debug("Skipping cohort_advisors insert on minimal schema: {}", ex.getMessage());
+            }
+        }
     }
 
     private static String extractEmailLocalPart(String email) {

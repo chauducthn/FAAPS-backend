@@ -50,7 +50,7 @@ class AdminUserCreationTest {
         assertEquals(majorId.toString(), created.majorId());
         assertEquals(curriculumId.toString(), created.curriculumVersionId());
         assertEquals(graduationSemesterId.toString(), created.expectedGraduationSemesterId());
-        assertEquals("GOOGLE", jdbc.queryForObject("SELECT auth_provider FROM users WHERE id = ?",
+        assertEquals("LOCAL", jdbc.queryForObject("SELECT auth_provider FROM users WHERE id = ?",
                 String.class, created.id().toString()));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM students WHERE user_id = ?",
                 Integer.class, created.id().toString()));
@@ -84,7 +84,7 @@ class AdminUserCreationTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> users.create(new CreateAccount("STUDENT", "test.qa@example.com", "QA Student",
                         "0900000000", "ABC123", curriculumId, enrollmentSemesterId, null, 1, null)));
-        assertEquals("studentCode must be 2 letters, a cohort from 01 to 22 and 4 digits (e.g. SE190001)",
+        assertEquals("studentCode must start with campus (Q/D/H/S/C) + group (E/S/A) + cohort 01-22 + 4 digits (e.g. SE182965, SS209938)",
                 ex.getMessage());
         for (String code : new String[] { "SE000001", "SE230001", "SE99001", "S1190001" }) {
             assertThrows(IllegalArgumentException.class, () -> users.create(new CreateAccount("STUDENT",
