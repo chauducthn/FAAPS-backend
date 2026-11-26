@@ -9,7 +9,6 @@ import vn.edu.fpt.faaps.advising.repository.AssignmentReadRepository;
 import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.Advisor;
 import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.Preview;
 import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.Result;
-import vn.edu.fpt.faaps.advising.service.AdminAssignmentModels.Student;
 import vn.edu.fpt.faaps.advising.service.SmartAutoAssignPlanner.AdvisorSlot;
 import vn.edu.fpt.faaps.advising.service.SmartAutoAssignPlanner.AssignmentPair;
 import vn.edu.fpt.faaps.advising.service.SmartAutoAssignPlanner.Plan;

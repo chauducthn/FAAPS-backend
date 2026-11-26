@@ -127,7 +127,7 @@ class AdminCourseImportTest {
         assertEquals(2, detail.prerequisites().size());
 
         List<String> prereqCodes = detail.prerequisites().stream()
-                .map(item -> item.prerequisiteCode()).toList();
+                .map(prerequisite -> prerequisite.prerequisiteCode()).toList();
         assertTrue(prereqCodes.contains("DBI202"));
         assertTrue(prereqCodes.contains("PRO192"));
     }

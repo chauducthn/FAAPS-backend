@@ -79,7 +79,10 @@ public class AcademicWarningScheduler {
         if (!lowGpa) {
             return 0;
         }
-        String severity = gpa != null && gpa.compareTo(GPA_PROBATION_THRESHOLD) < 0 ? "PROBATION" : "WARNING";
+        if (gpa == null) {
+            return 0;
+        }
+        String severity = gpa.compareTo(GPA_PROBATION_THRESHOLD) < 0 ? "PROBATION" : "WARNING";
         String desc = String.format(Locale.ROOT,
                 "Cumulative GPA is %.2f (below minimum threshold of 5.00).", gpa.doubleValue());
         String action = "Meet with your academic advisor to adjust your study plan and retake low-grade courses.";

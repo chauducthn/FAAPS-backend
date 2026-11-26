@@ -32,7 +32,7 @@ class ApiReportFixesAdminTest {
         UUID catId = UUID.randomUUID();
         jdbc.update("INSERT INTO course_categories (id, code, name) VALUES (?, 'CORE', 'Core')", catId.toString());
 
-        var c2 = courses.create("HCM202", "Ho Chi Minh Ideology", 2, catId, null, null, null, "ACTIVE", List.of());
+        courses.create("HCM202", "Ho Chi Minh Ideology", 2, catId, null, null, null, "ACTIVE", List.of());
         var c3a = courses.create("PRF192", "Programming Fundamentals", 3, catId, null, null, null, "ACTIVE", List.of());
         var c3b = courses.create("PRO192", "OOP", 3, catId, null, null, null, "ACTIVE", List.of());
 
