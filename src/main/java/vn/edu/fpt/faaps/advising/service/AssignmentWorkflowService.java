@@ -13,6 +13,7 @@ public class AssignmentWorkflowService {
     private final AdminAssignmentService assignments;
     private final CohortAdvisorService cohorts;
     private final AssignmentWorkflowQueryHelper queries;
+    private final AssignedStudentsQueryHelper assignedQueries;
 
     public AssignmentWorkflowService(JdbcTemplate jdbc, AdminAssignmentService assignments,
             CohortAdvisorService cohorts) {
@@ -20,6 +21,12 @@ public class AssignmentWorkflowService {
         this.assignments = assignments;
         this.cohorts = cohorts;
         this.queries = new AssignmentWorkflowQueryHelper(jdbc);
+        this.assignedQueries = new AssignedStudentsQueryHelper(jdbc);
+    }
+
+    public Page<Map<String, Object>> assigned(UUID advisorId, UUID cohortId, String majorCode,
+            String search, int page, int size) {
+        return assignedQueries.assigned(advisorId, cohortId, majorCode, search, page, size);
     }
 
     public List<Map<String, Object>> unassigned(UUID cohortId) {

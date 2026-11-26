@@ -58,7 +58,7 @@ public class AdminUserService {
 
     public Page list(String role, String status, String search, UUID majorId, UUID curriculumVersionId, int page,
             int size, String sort) {
-        if (page < 0 || size < 1 || size > 100) {
+        if (page < 0 || size < 1 || size > 10000) {
             throw new IllegalArgumentException("page or size is invalid");
         }
         if (role != null && !List.of("STUDENT", "ADVISOR").contains(role)) {

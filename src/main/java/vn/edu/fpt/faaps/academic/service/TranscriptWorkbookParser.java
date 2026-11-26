@@ -2,11 +2,15 @@ package vn.edu.fpt.faaps.academic.service;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -18,6 +22,7 @@ import vn.edu.fpt.faaps.academic.dto.TranscriptDtos.ImportRow;
 @Component
 public class TranscriptWorkbookParser {
     private static final Set<String> STATUSES = Set.of("IN_PROGRESS", "PASSED", "FAILED", "WITHDRAWN", "EXEMPTED");
+    private static final Pattern FPT_SEMESTER = Pattern.compile("^(SP|SPRING|SU|SUMMER|FA|FALL)\\s*(\\d{2}|20\\d{2})$");
 
     private final JdbcTemplate jdbc;
 
@@ -111,7 +116,7 @@ public class TranscriptWorkbookParser {
             error = "Status is invalid";
         }
         String courseId = idFor("SELECT id FROM courses WHERE code = ?", course);
-        String semesterId = idFor("SELECT id FROM semesters WHERE code = ?", semester);
+        String semesterId = resolveOrCreateSemester(semester);
         if (courseId == null) {
             error = "CourseCode not found";
         }
@@ -130,6 +135,34 @@ public class TranscriptWorkbookParser {
                 || name.length() > 255 || !name.toLowerCase().endsWith(".xlsx")) {
             throw new IllegalArgumentException("Choose an .xlsx file up to 5 MB");
         }
+    }
+
+    private String resolveOrCreateSemester(String rawCode) {
+        String existing = idFor("SELECT id FROM semesters WHERE UPPER(code) = ?", rawCode.toUpperCase(Locale.ROOT));
+        if (existing != null) return existing;
+        Matcher m = FPT_SEMESTER.matcher(rawCode.trim().toUpperCase(Locale.ROOT));
+        if (!m.matches()) return null;
+        String prefix = m.group(1).substring(0, 2);
+        int year = m.group(2).length() == 2 ? 2000 + Integer.parseInt(m.group(2)) : Integer.parseInt(m.group(2));
+        if (year < 2006 || year > 2040) return null;
+        String canonical = prefix + year;
+        String found = idFor("SELECT id FROM semesters WHERE UPPER(code) = ?", canonical);
+        if (found != null) return found;
+        String name = switch (prefix) {
+            case "SP" -> "Spring " + year;
+            case "SU" -> "Summer " + year;
+            default -> "Fall " + year;
+        };
+        LocalDate start = "SP".equals(prefix) ? LocalDate.of(year, 1, 1)
+                : "SU".equals(prefix) ? LocalDate.of(year, 5, 1) : LocalDate.of(year, 9, 1);
+        LocalDate end = "SP".equals(prefix) ? LocalDate.of(year, 4, 30)
+                : "SU".equals(prefix) ? LocalDate.of(year, 8, 31) : LocalDate.of(year, 12, 31);
+        String id = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO semesters (id, code, name, start_date, end_date, is_current)
+                VALUES (?, ?, ?, ?, ?, FALSE)
+                """, id, canonical, name, start, end);
+        return id;
     }
 
     private String idFor(String sql, String code) {

@@ -25,6 +25,30 @@ final class StudentAiChatSupport {
         this.jdbc = jdbc;
     }
 
+    static final String DEFAULT_ADVISOR_PROMPT =
+            "You are FAAPS, a dedicated AI Academic Advisor for FPT University (FPTU) students. "
+            + "Respond warmly and clearly in the student's language (Vietnamese or English). "
+            + "1) Read LIVE FAAPS ACADEMIC CONTEXT carefully to personalize guidance: analyze the student's GPA, "
+            + "strong subjects, weak/failed subjects, open warnings, and curriculum progress. "
+            + "2) Provide concrete study strategies: how to study specific courses, prerequisite order, credit load "
+            + "balance, and retake/improvement plans. "
+            + "3) If MISSING STUDENT DATA is present (e.g., no transcript or major/curriculum yet), proactively "
+            + "inform the student what is missing and invite them to upload their transcript (/student/transcript), "
+            + "set Curriculum & Goals (/student/curriculum-goals), or share their subjects/grades right in this chat.";
+
+    void maybeAutoTitle(UUID conversationId, String firstUserMessage) {
+        if (firstUserMessage == null || firstUserMessage.isBlank()) {
+            return;
+        }
+        String compact = firstUserMessage.replaceAll("\\s+", " ").strip();
+        String title = compact.length() > 54 ? compact.substring(0, 51).strip() + "..." : compact;
+        jdbc.update("""
+                UPDATE ai_conversations
+                SET title = ?
+                WHERE id = ? AND (title IS NULL OR title = '' OR title = 'New Advising Chat')
+                """, title, conversationId.toString());
+    }
+
     void verifyConversationOwner(UUID conversationId, UUID studentId) {
         Integer count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM ai_conversations WHERE id = ? AND user_id = ?",

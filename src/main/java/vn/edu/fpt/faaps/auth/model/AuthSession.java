@@ -10,10 +10,16 @@ public record AuthSession(
         String email,
         String role,
         String status,
-        boolean mustChangePassword) implements Serializable, Principal {
+        boolean mustChangePassword,
+        String avatarUrl) implements Serializable, Principal {
 
     public AuthSession(UUID id, String fullName, String email, String role, String status) {
-        this(id, fullName, email, role, status, false);
+        this(id, fullName, email, role, status, false, null);
+    }
+
+    public AuthSession(UUID id, String fullName, String email, String role, String status,
+            boolean mustChangePassword) {
+        this(id, fullName, email, role, status, mustChangePassword, null);
     }
 
     @Override
@@ -27,6 +33,6 @@ public record AuthSession(
 
     public static AuthSession from(AuthAccount account, boolean mustChangePassword) {
         return new AuthSession(account.id(), account.fullName(), account.email(),
-                account.role(), account.status(), mustChangePassword);
+                account.role(), account.status(), mustChangePassword, account.avatarUrl());
     }
 }

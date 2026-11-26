@@ -1,23 +1,19 @@
 package vn.edu.fpt.faaps.ai.service;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** Builds grounded live FPTU curriculum, transcript, policy, and conversation-memory context for AI chat & copilot. */
+/** Builds grounded live FPTU curriculum, transcript, strength/weakness, and data-gap context for AI chat. */
 final class AiAcademicContextBuilder {
 
-    private static final Pattern COURSE_CODE_RE = Pattern.compile("\\b([A-Z]{2,4}\\d{2,3}[a-z]?)\\b");
-
     private final JdbcTemplate jdbc;
+    private final AiContextSupplementHelper supplements;
 
     AiAcademicContextBuilder(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.supplements = new AiContextSupplementHelper(jdbc);
     }
 
     List<GeminiGateway.Turn> loadConversationMemory(UUID conversationId, int maxTurns) {
@@ -40,7 +36,7 @@ final class AiAcademicContextBuilder {
     String buildStudentContext(UUID studentId, String userQuestion) {
         StringBuilder sb = new StringBuilder("\n\n=== LIVE FAAPS ACADEMIC CONTEXT ===\n");
         appendCoreContext(sb, studentId);
-        appendMentionedCourses(sb, userQuestion);
+        supplements.appendMentionedCourses(sb, userQuestion);
         return sb.toString();
     }
 
@@ -55,9 +51,10 @@ final class AiAcademicContextBuilder {
         if (cvId != null) {
             appendCurriculumOutline(sb, cvId);
         }
-        appendTranscriptSummary(sb, studentId);
-        appendOpenWarnings(sb, studentId);
-        appendActivePolicies(sb);
+        int transcriptCount = appendTranscriptAnalysis(sb, studentId);
+        supplements.appendOpenWarnings(sb, studentId);
+        appendDataCompleteness(sb, cvId, transcriptCount);
+        supplements.appendActivePolicies(sb);
     }
 
     private String appendStudentProfile(StringBuilder sb, UUID studentId) {
@@ -82,7 +79,8 @@ final class AiAcademicContextBuilder {
             }
             String[] r = rows.get(0);
             sb.append(String.format("Student: %s (%s) | Major: %s (%s) | Cohort: %s%n",
-                    r[0], r[1], r[7] != null ? r[7] : "N/A", r[8] != null ? r[8] : "Unassigned", r[9] != null ? r[9] : "N/A"));
+                    r[0], r[1], r[7] != null ? r[7] : "N/A",
+                    r[8] != null ? r[8] : "Unassigned", r[9] != null ? r[9] : "N/A"));
             sb.append(String.format("Current Semester: %s | GPA: %s | Credits Earned: %s | Standing: %s%n",
                     r[2], r[3], r[4], r[5]));
             return r[6];
@@ -108,74 +106,54 @@ final class AiAcademicContextBuilder {
         }
     }
 
-    private void appendTranscriptSummary(StringBuilder sb, UUID studentId) {
+    private int appendTranscriptAnalysis(StringBuilder sb, UUID studentId) {
         try {
-            List<String> rows = jdbc.query("""
-                    SELECT c.code, r.status, r.grade_point FROM student_course_records r
-                    JOIN courses c ON c.id = r.course_id WHERE r.student_id = ? ORDER BY r.updated_at DESC LIMIT 50
-                    """, (rs, rowNum) -> rs.getString("code") + ":" + rs.getString("status")
-                    + (rs.getObject("grade_point") != null ? "(" + rs.getObject("grade_point") + ")" : ""), studentId.toString());
-            if (!rows.isEmpty()) {
-                sb.append("Transcript Records: ").append(String.join(", ", rows)).append("\n");
+            List<String> all = new ArrayList<>();
+            List<String> strong = new ArrayList<>();
+            List<String> weak = new ArrayList<>();
+            jdbc.query("""
+                    SELECT c.code, c.name, r.status, r.grade_point
+                    FROM student_course_records r JOIN courses c ON c.id = r.course_id
+                    WHERE r.student_id = ? ORDER BY r.updated_at DESC LIMIT 60
+                    """, rs -> {
+                String code = rs.getString("code");
+                String status = rs.getString("status");
+                Object gpObj = rs.getObject("grade_point");
+                Double gp = gpObj instanceof Number n ? n.doubleValue() : null;
+                String entry = code + ":" + status + (gp != null ? "(" + gp + ")" : "");
+                all.add(entry);
+                if ("FAILED".equalsIgnoreCase(status) || (gp != null && gp < 6.0)) {
+                    weak.add(entry);
+                } else if (gp != null && gp >= 8.0) {
+                    strong.add(entry);
+                }
+            }, studentId.toString());
+            if (!all.isEmpty()) {
+                sb.append("Transcript Records (").append(all.size()).append("): ")
+                        .append(String.join(", ", all)).append("\n");
             }
+            if (!strong.isEmpty()) {
+                sb.append("Strong Subjects (>=8.0): ").append(String.join(", ", strong)).append("\n");
+            }
+            if (!weak.isEmpty()) {
+                sb.append("Weak / Failed Subjects (<6.0 or FAILED): ").append(String.join(", ", weak)).append("\n");
+            }
+            return all.size();
         } catch (Exception ignored) {
-            // Optional context.
+            return 0;
         }
     }
 
-    private void appendOpenWarnings(StringBuilder sb, UUID studentId) {
-        try {
-            List<String> rows = jdbc.query("""
-                    SELECT CONCAT(warning_type, ' [', severity, ']') FROM academic_warnings
-                    WHERE student_id = ? AND resolved_at IS NULL LIMIT 5
-                    """, (rs, rowNum) -> rs.getString(1), studentId.toString());
-            if (!rows.isEmpty()) {
-                sb.append("Open Warnings: ").append(String.join(", ", rows)).append("\n");
-            }
-        } catch (Exception ignored) {
-            // Optional context.
+    private void appendDataCompleteness(StringBuilder sb, String curriculumVersionId, int transcriptCount) {
+        List<String> missing = new ArrayList<>();
+        if (curriculumVersionId == null || curriculumVersionId.isBlank()) {
+            missing.add("Major & Curriculum not configured (direct student to /student/curriculum-goals)");
         }
-    }
-
-    private void appendActivePolicies(StringBuilder sb) {
-        try {
-            List<String> rows = jdbc.query("""
-                    SELECT COALESCE(display_message, policy_type) AS title, COALESCE(description, '') AS descr
-                    FROM academic_policies WHERE is_active = TRUE ORDER BY priority ASC LIMIT 10
-                    """, (rs, rowNum) -> "- " + rs.getString("title") + ": " + rs.getString("descr"));
-            if (!rows.isEmpty()) {
-                sb.append("Active FPTU Academic Rules:\n").append(String.join("\n", rows)).append("\n");
-            }
-        } catch (Exception ignored) {
-            // Optional context.
+        if (transcriptCount == 0) {
+            missing.add("No transcript/grades uploaded yet (suggest uploading at /student/transcript or sharing courses/scores in chat)");
         }
-    }
-
-    private void appendMentionedCourses(StringBuilder sb, String question) {
-        if (question == null || question.isBlank()) {
-            return;
-        }
-        Set<String> codes = new LinkedHashSet<>();
-        Matcher matcher = COURSE_CODE_RE.matcher(question);
-        while (matcher.find() && codes.size() < 6) {
-            codes.add(matcher.group(1).toUpperCase());
-        }
-        List<String> found = new ArrayList<>();
-        for (String code : codes) {
-            try {
-                found.addAll(jdbc.query("""
-                        SELECT c.code, c.name, c.credits,
-                               (SELECT GROUP_CONCAT(p.code SEPARATOR ', ') FROM course_prerequisites cp
-                                JOIN courses p ON p.id = cp.prerequisite_course_id WHERE cp.course_id = c.id) AS prereqs
-                        FROM courses c WHERE UPPER(c.code) = ? LIMIT 1
-                        """, (rs, rowNum) -> rs.getString("code") + " - " + rs.getString("name") + " (" + rs.getInt("credits")
-                        + " credits, prereqs: " + (rs.getString("prereqs") != null ? rs.getString("prereqs") : "None") + ")", code));
-            } catch (Exception ignored) {
-                // Skip lookup failure.
-            }
-        }
-        if (!found.isEmpty()) {
-            sb.append("Referenced Courses: ").append(String.join("; ", found)).append("\n");
+        if (!missing.isEmpty()) {
+            sb.append("MISSING STUDENT DATA: ").append(String.join("; ", missing)).append("\n");
         }
     }
 }

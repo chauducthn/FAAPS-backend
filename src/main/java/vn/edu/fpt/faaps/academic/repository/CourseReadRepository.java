@@ -68,7 +68,7 @@ public final class CourseReadRepository {
     }
 
     private void validateListParams(String status, Integer credits, int page, int size) {
-        if (page < 0 || size < 1 || size > 100) {
+        if (page < 0 || size < 1 || size > 10000) {
             throw new IllegalArgumentException("page or size is invalid");
         }
         if (status != null && !status.equalsIgnoreCase("ALL")

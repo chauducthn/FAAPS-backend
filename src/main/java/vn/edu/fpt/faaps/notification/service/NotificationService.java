@@ -54,6 +54,11 @@ public class NotificationService {
                 """, recipientId.toString());
     }
 
+    @Transactional
+    public int clearAll(UUID recipientId) {
+        return jdbc.update("DELETE FROM notifications WHERE recipient_user_id=?", recipientId.toString());
+    }
+
     private LocalDateTime time(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
         var value = rs.getTimestamp(column);
         return value == null ? null : value.toLocalDateTime();

@@ -16,42 +16,54 @@ import org.springframework.security.authentication.DisabledException;
 
 public class JdbcAuthAccountStore implements AuthAccountStore {
     private final JdbcTemplate jdbcTemplate;
+    private final boolean hasAvatarColumn;
 
     public JdbcAuthAccountStore(DataSource dataSource) {
         this.jdbcTemplate = new JdbcTemplate(dataSource);
+        this.hasAvatarColumn = detectAvatarColumn(this.jdbcTemplate);
+    }
+
+    private static boolean detectAvatarColumn(JdbcTemplate jdbc) {
+        try {
+            jdbc.query("SELECT avatar_url FROM users WHERE 1 = 0", (rs, row) -> null);
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private String avatarSelect() {
+        return hasAvatarColumn ? ", u.avatar_url" : ", NULL AS avatar_url";
     }
 
     @Override
     public Optional<AuthAccount> findById(UUID id) {
-        return jdbcTemplate.query("""
-                SELECT u.id, u.email, u.full_name, r.code AS role,
-                       u.status, u.password_hash
-                FROM users u JOIN roles r ON r.id = u.role_id
-                WHERE u.id = ? AND (r.code <> 'ADMIN' OR EXISTS (
-                    SELECT 1 FROM admin_account a WHERE a.user_id = u.id))
-                """, this::mapAccount, id.toString()).stream().findFirst();
+        return jdbcTemplate.query(
+                "SELECT u.id, u.email, u.full_name, r.code AS role, u.status, u.password_hash" + avatarSelect()
+                + " FROM users u JOIN roles r ON r.id = u.role_id"
+                + " WHERE u.id = ? AND (r.code <> 'ADMIN' OR EXISTS ("
+                + " SELECT 1 FROM admin_account a WHERE a.user_id = u.id))",
+                this::mapAccount, id.toString()).stream().findFirst();
     }
 
     @Override
     public Optional<AuthAccount> findAdminByEmail(String email) {
-        return jdbcTemplate.query("""
-                SELECT u.id, u.email, u.full_name, r.code AS role,
-                       u.status, u.password_hash
-                FROM users u JOIN roles r ON r.id = u.role_id
-                WHERE (u.email = ? OR ? = 'admin') AND r.code = 'ADMIN'
-                  AND EXISTS (SELECT 1 FROM admin_account a WHERE a.user_id = u.id)
-                """, this::mapAccount, email, email).stream().findFirst();
+        return jdbcTemplate.query(
+                "SELECT u.id, u.email, u.full_name, r.code AS role, u.status, u.password_hash" + avatarSelect()
+                + " FROM users u JOIN roles r ON r.id = u.role_id"
+                + " WHERE (u.email = ? OR ? = 'admin') AND r.code = 'ADMIN'"
+                + " AND EXISTS (SELECT 1 FROM admin_account a WHERE a.user_id = u.id)",
+                this::mapAccount, email, email).stream().findFirst();
     }
 
     @Override
     public Optional<AuthAccount> findLocalByEmail(String email) {
-        return jdbcTemplate.query("""
-                SELECT u.id, u.email, u.full_name, r.code AS role,
-                       u.status, u.password_hash
-                FROM users u JOIN roles r ON r.id = u.role_id
-                WHERE LOWER(u.email) = LOWER(?) AND r.code IN ('STUDENT', 'ADVISOR')
-                  AND u.password_hash IS NOT NULL
-                """, this::mapAccount, email).stream().findFirst();
+        return jdbcTemplate.query(
+                "SELECT u.id, u.email, u.full_name, r.code AS role, u.status, u.password_hash" + avatarSelect()
+                + " FROM users u JOIN roles r ON r.id = u.role_id"
+                + " WHERE LOWER(u.email) = LOWER(?) AND r.code IN ('STUDENT', 'ADVISOR')"
+                + " AND u.password_hash IS NOT NULL",
+                this::mapAccount, email).stream().findFirst();
     }
 
     @Override
@@ -135,18 +147,17 @@ public class JdbcAuthAccountStore implements AuthAccountStore {
     }
 
     private Optional<AuthAccount> findByGoogleSubject(String subject) {
-        return jdbcTemplate.query("""
-                SELECT u.id, u.email, u.full_name, r.code AS role,
-                       u.status, u.password_hash
-                FROM users u JOIN roles r ON r.id = u.role_id
-                WHERE u.auth_provider = 'GOOGLE' AND u.external_id = ?
-                """, this::mapAccount, subject).stream().findFirst();
+        return jdbcTemplate.query(
+                "SELECT u.id, u.email, u.full_name, r.code AS role, u.status, u.password_hash" + avatarSelect()
+                + " FROM users u JOIN roles r ON r.id = u.role_id"
+                + " WHERE u.auth_provider = 'GOOGLE' AND u.external_id = ?",
+                this::mapAccount, subject).stream().findFirst();
     }
 
     private AuthAccount mapAccount(ResultSet resultSet, int rowNumber) throws SQLException {
         return new AuthAccount(UUID.fromString(resultSet.getString("id")), resultSet.getString("email"),
                 resultSet.getString("full_name"), resultSet.getString("role"), resultSet.getString("status"),
-                resultSet.getString("password_hash"));
+                resultSet.getString("password_hash"), resultSet.getString("avatar_url"));
     }
 
     private record GoogleLinkTarget(String id, String role, String status,

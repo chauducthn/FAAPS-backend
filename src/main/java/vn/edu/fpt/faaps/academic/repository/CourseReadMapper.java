@@ -44,6 +44,14 @@ final class CourseReadMapper {
             case "name,desc" -> " ORDER BY c.name DESC, c.id DESC";
             case "credits,asc" -> " ORDER BY c.credits ASC, c.code ASC";
             case "credits,desc" -> " ORDER BY c.credits DESC, c.code ASC";
+            case "categoryCode,asc" -> " ORDER BY COALESCE(cat.code, 'ZZZZ') ASC, c.code ASC";
+            case "categoryCode,desc" -> " ORDER BY COALESCE(cat.code, '') DESC, c.code ASC";
+            case "categoryName,asc" -> " ORDER BY COALESCE(cat.name, 'ZZZZ') ASC, c.code ASC";
+            case "categoryName,desc" -> " ORDER BY COALESCE(cat.name, '') DESC, c.code ASC";
+            case "prerequisiteCount,asc" -> " ORDER BY prerequisite_count ASC, c.code ASC";
+            case "prerequisiteCount,desc" -> " ORDER BY prerequisite_count DESC, c.code ASC";
+            case "status,asc" -> " ORDER BY c.status ASC, c.code ASC";
+            case "status,desc" -> " ORDER BY c.status DESC, c.code ASC";
             case "createdAt,desc" -> " ORDER BY c.created_at DESC, c.id DESC";
             case "createdAt,asc" -> " ORDER BY c.created_at ASC, c.id ASC";
             default -> throw new IllegalArgumentException("sort is invalid");

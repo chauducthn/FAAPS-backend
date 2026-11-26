@@ -1,6 +1,7 @@
 package vn.edu.fpt.faaps.advising.controller;
 
 import vn.edu.fpt.faaps.advising.service.AssignmentWorkflowService;
+import vn.edu.fpt.faaps.advising.service.CohortAdvisorAutoAssignHelper;
 import vn.edu.fpt.faaps.advising.service.CohortAdvisorService;
 
 import jakarta.validation.Valid;
@@ -27,10 +28,21 @@ import vn.edu.fpt.faaps.auth.model.AuthSession;
 public class AssignmentWorkflowController {
     private final AssignmentWorkflowService workflow;
     private final CohortAdvisorService cohortAdvisors;
+    private final CohortAdvisorAutoAssignHelper autoAssignCohorts;
 
-    public AssignmentWorkflowController(AssignmentWorkflowService workflow, CohortAdvisorService cohortAdvisors) {
+    public AssignmentWorkflowController(AssignmentWorkflowService workflow,
+            CohortAdvisorService cohortAdvisors, CohortAdvisorAutoAssignHelper autoAssignCohorts) {
         this.workflow = workflow;
         this.cohortAdvisors = cohortAdvisors;
+        this.autoAssignCohorts = autoAssignCohorts;
+    }
+
+    @GetMapping("/assigned")
+    public AssignmentWorkflowService.Page<Map<String, Object>> assigned(
+            @RequestParam(required = false) UUID advisorId, @RequestParam(required = false) UUID cohortId,
+            @RequestParam(required = false) String majorCode, @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return workflow.assigned(advisorId, cohortId, majorCode, search, page, size);
     }
 
     @GetMapping("/unassigned")
@@ -83,10 +95,16 @@ public class AssignmentWorkflowController {
         return Map.of("advisors", updated, "cohorts", request.cohortIds().size());
     }
 
+    @PostMapping("/advisors/cohorts/auto")
+    public Map<String, Object> autoAssignAdvisorCohorts(@Valid @RequestBody AutoAssignAdvisorCohortsRequest request) {
+        return autoAssignCohorts.autoAssignCohorts(request.advisorIds());
+    }
+
     public record LimitRequest(@Min(1) int maxAdvisees) {}
     public record CohortRequest(@NotNull UUID advisorId, String notes) {}
     public record AdvisorCohortsRequest(@NotNull List<UUID> cohortIds) {}
     public record BulkAdvisorCohortsRequest(@NotEmpty List<UUID> advisorIds, @NotEmpty List<UUID> cohortIds) {}
+    public record AutoAssignAdvisorCohortsRequest(@NotEmpty List<UUID> advisorIds) {}
 }
 
 

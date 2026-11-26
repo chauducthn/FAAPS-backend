@@ -10,41 +10,46 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.academic.service.TranscriptImportService;
 import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.*;
 
 @Service
 public class StudentAiService {
 
     private static final DateTimeFormatter ISO_DT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
-    private static final String DEFAULT_SYSTEM_PROMPT =
-            "You are FAAPS, the AI Academic Advisor for FPT University (FPTU). "
-            + "Use the provided student profile, FLM curriculum, transcript, prerequisites, and active academic rules "
-            + "to answer questions, plan semesters, and advise accurately in the user's language.";
 
     private final JdbcTemplate jdbc;
     private final StudentRoadmapService roadmaps;
     private final StudentAiChatSupport chatSupport;
     private final AiAcademicContextBuilder contextBuilder;
-    private final AiSecretStore secretStore;
-    private final GeminiGateway gemini;
+    private final StudentAiGenerationHelper generator;
+    private final StudentAiAttachmentHelper attachments;
 
     @Autowired
-    public StudentAiService(JdbcTemplate jdbc, GeminiGateway gemini, AiSecretStore secretStore) {
+    public StudentAiService(JdbcTemplate jdbc, GeminiGateway gemini, AiSecretStore secretStore,
+            @Autowired(required = false) TranscriptImportService transcriptImport,
+            @Autowired(required = false) GeminiVisionClient visionClient) {
         this.jdbc = jdbc;
         this.roadmaps = new StudentRoadmapService(jdbc);
         this.chatSupport = new StudentAiChatSupport(jdbc);
         this.contextBuilder = new AiAcademicContextBuilder(jdbc);
-        this.secretStore = secretStore;
-        this.gemini = gemini;
+        this.generator = new StudentAiGenerationHelper(gemini, secretStore);
+        this.attachments = new StudentAiAttachmentHelper(transcriptImport, visionClient);
+    }
+
+    public StudentAiService(JdbcTemplate jdbc, GeminiGateway gemini, AiSecretStore secretStore) {
+        this(jdbc, gemini, secretStore, null, null);
     }
 
     public StudentAiService(JdbcTemplate jdbc, GeminiGateway gemini) {
-        this(jdbc, gemini, new AiSecretStore(jdbc));
+        this(jdbc, gemini, new AiSecretStore(jdbc), null, null);
     }
 
     StudentAiService(JdbcTemplate jdbc) {
-        this(jdbc, new GeminiGateway("", new com.fasterxml.jackson.databind.ObjectMapper()), new AiSecretStore(jdbc));
+        this(jdbc, new GeminiGateway("", new com.fasterxml.jackson.databind.ObjectMapper()),
+                new AiSecretStore(jdbc), null, null);
     }
 
     public List<AiConversationDto> listConversations(UUID studentId) {
@@ -98,69 +103,70 @@ public class StudentAiService {
 
     @Transactional
     public SendAiMessageResultDto sendMessage(UUID conversationId, UUID studentId, SendAiMessageDto body) {
+        return processMessage(conversationId, studentId, body.content(), null);
+    }
+
+    @Transactional
+    public SendAiMessageResultDto sendMessageWithAttachment(
+            UUID conversationId, UUID studentId, String content, MultipartFile file) {
+        return processMessage(conversationId, studentId, content, file);
+    }
+
+    private SendAiMessageResultDto processMessage(
+            UUID conversationId, UUID studentId, String rawContent, MultipartFile file) {
         chatSupport.verifyConversationOwner(conversationId, studentId);
-        String userContent = body.content().strip();
-        if (userContent.isEmpty()) {
-            throw new IllegalArgumentException("content cannot be empty");
+        String text = rawContent == null ? "" : rawContent.strip();
+        if (text.isEmpty() && (file == null || file.isEmpty())) {
+            throw new IllegalArgumentException("content or file is required");
         }
+        StudentAiAttachmentHelper.AttachmentOutcome attachment =
+                (file != null && !file.isEmpty()) ? attachments.process(studentId, text, file) : null;
+        String storedUserContent = attachment == null ? text
+                : (text.isEmpty() ? "[Attached: " + attachment.fileName() + "]"
+                        : "[Attached: " + attachment.fileName() + "]\n" + text);
         List<StudentAiChatSupport.AiConfigModel> activeConfigs = chatSupport.getActiveChatConfigs();
         int memoryLimit = activeConfigs.isEmpty() || activeConfigs.get(0).retrievalTopK() == null
                 ? 12 : activeConfigs.get(0).retrievalTopK();
         List<GeminiGateway.Turn> history = contextBuilder.loadConversationMemory(conversationId, memoryLimit);
-        String academicContext = contextBuilder.buildStudentContext(studentId, userContent);
+        String academicContext = contextBuilder.buildStudentContext(studentId, storedUserContent)
+                + (attachment != null ? attachment.extraContext() : "");
 
         String userMsgId = UUID.randomUUID().toString();
         Timestamp nowTs = Timestamp.valueOf(LocalDateTime.now());
-        String category = chatSupport.classifyQuestion(userContent);
+        String category = chatSupport.classifyQuestion(storedUserContent);
         jdbc.update("""
                 INSERT INTO ai_messages (id, conversation_id, sender, content, question_category, is_unsupported,
                                          is_fallback, confidence_score, created_at)
                 VALUES (?, ?, 'USER', ?, ?, FALSE, FALSE, NULL, ?)
-                """, userMsgId, conversationId.toString(), userContent, category, nowTs);
+                """, userMsgId, conversationId.toString(), storedUserContent, category, nowTs);
         jdbc.update("UPDATE ai_conversations SET last_message_at = ? WHERE id = ?", nowTs, conversationId.toString());
+        chatSupport.maybeAutoTitle(conversationId, text.isEmpty() && attachment != null ? attachment.fileName() : text);
 
         String assistantMsgId = UUID.randomUUID().toString();
         long started = System.nanoTime();
-        GenerationOutcome outcome = generateWithFallback(activeConfigs, academicContext, history, userContent);
+        var outcome = generator.generateWithFallback(activeConfigs, academicContext, history, storedUserContent);
         int latencyMs = (int) Math.min(Integer.MAX_VALUE, (System.nanoTime() - started) / 1_000_000);
-        String answerContent = resolveAnswerContent(outcome.reply(), outcome.config());
+        boolean usedActionFallback = outcome.reply().fallback()
+                && attachment != null && attachment.directFallbackReply() != null;
+        String answerContent = usedActionFallback
+                ? attachment.directFallbackReply()
+                : generator.resolveAnswerContent(outcome.reply(), outcome.config());
+        boolean isFallback = outcome.reply().fallback() && !usedActionFallback;
         String configId = outcome.config() != null ? outcome.config().id() : null;
 
         jdbc.update("""
                 INSERT INTO ai_messages (id, conversation_id, sender, content, question_category, is_unsupported,
                                          is_fallback, confidence_score, ai_configuration_id, created_at)
                 VALUES (?, ?, 'ASSISTANT', ?, ?, FALSE, ?, NULL, ?, CURRENT_TIMESTAMP)
-                """, assistantMsgId, conversationId.toString(), answerContent, category, outcome.reply().fallback(), configId);
+                """, assistantMsgId, conversationId.toString(), answerContent, category, isFallback, configId);
         chatSupport.logAiUsage(studentId, assistantMsgId, configId, outcome.reply(), latencyMs);
 
-        AiChatMessageDto userMsg = new AiChatMessageDto(userMsgId, conversationId.toString(), "USER", userContent,
+        AiChatMessageDto userMsg = new AiChatMessageDto(userMsgId, conversationId.toString(), "USER", storedUserContent,
                 category, false, false, null, null, List.of(), null, null, nowTs.toLocalDateTime().format(ISO_DT));
         AiChatMessageDto assistantMsg = new AiChatMessageDto(assistantMsgId, conversationId.toString(), "ASSISTANT",
-                answerContent, category, false, outcome.reply().fallback(), null, configId, List.of(), null, null,
+                answerContent, category, false, isFallback, null, configId, List.of(), null, null,
                 LocalDateTime.now().format(ISO_DT));
         return new SendAiMessageResultDto(userMsg, assistantMsg);
-    }
-
-    private GenerationOutcome generateWithFallback(List<StudentAiChatSupport.AiConfigModel> configs,
-            String academicContext, List<GeminiGateway.Turn> history, String userContent) {
-        if (configs.isEmpty()) {
-            GeminiGateway.Reply reply = gemini.generate(new GeminiGateway.Request(
-                    "GEMINI", null, null, DEFAULT_SYSTEM_PROMPT + academicContext, history, userContent, 0.5, 4096, 30));
-            return new GenerationOutcome(reply, null);
-        }
-        GeminiGateway.Reply lastReply = GeminiGateway.Reply.unavailable();
-        for (StudentAiChatSupport.AiConfigModel cfg : configs) {
-            String prompt = (cfg.systemPrompt() == null || cfg.systemPrompt().isBlank()
-                    ? DEFAULT_SYSTEM_PROMPT : cfg.systemPrompt()) + academicContext;
-            GeminiGateway.Reply reply = gemini.generate(new GeminiGateway.Request(
-                    cfg.provider(), cfg.modelName(), secretStore.findRawKey(cfg.id()),
-                    prompt, history, userContent, cfg.temperature(), cfg.maxTokens(), cfg.timeoutSeconds()));
-            if (!reply.fallback()) {
-                return new GenerationOutcome(reply, cfg);
-            }
-            lastReply = reply;
-        }
-        return new GenerationOutcome(lastReply, configs.get(0));
     }
 
     @Transactional
@@ -184,14 +190,4 @@ public class StudentAiService {
     public StudyRoadmapDto generateRoadmap(UUID studentId, GenerateRoadmapDto dto) {
         return roadmaps.generate(studentId, dto);
     }
-
-    private String resolveAnswerContent(GeminiGateway.Reply reply, StudentAiChatSupport.AiConfigModel activeConfig) {
-        if (!reply.fallback()) return reply.text();
-        if (activeConfig != null && activeConfig.fallbackMessage() != null && !activeConfig.fallbackMessage().isBlank()) {
-            return activeConfig.fallbackMessage();
-        }
-        return "The academic assistant is unavailable. Please contact your advisor.";
-    }
-
-    private record GenerationOutcome(GeminiGateway.Reply reply, StudentAiChatSupport.AiConfigModel config) {}
 }

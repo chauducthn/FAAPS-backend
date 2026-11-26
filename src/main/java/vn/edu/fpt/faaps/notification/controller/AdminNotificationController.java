@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -81,6 +82,11 @@ public class AdminNotificationController {
         int updated = jdbc.update("UPDATE notifications SET is_read=TRUE, read_at=CURRENT_TIMESTAMP WHERE recipient_user_id=? AND is_read=FALSE",
                 session.id().toString());
         return Map.of("updated", updated);
+    }
+
+    @DeleteMapping
+    public Map<String, Integer> clearAll(@AuthenticationPrincipal AuthSession session) {
+        return Map.of("deleted", notifications.clearAll(session.id()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

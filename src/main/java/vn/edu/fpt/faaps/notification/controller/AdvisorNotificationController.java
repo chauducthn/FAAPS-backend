@@ -32,4 +32,9 @@ public class AdvisorNotificationController {
     public Map<String, Integer> readAll(@AuthenticationPrincipal AuthSession user) {
         return Map.of("updated", notifications.readAll(user.id()));
     }
+
+    @DeleteMapping
+    public Map<String, Integer> clearAll(@AuthenticationPrincipal AuthSession user) {
+        return Map.of("deleted", notifications.clearAll(user.id()));
+    }
 }

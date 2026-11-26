@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -14,8 +15,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import vn.edu.fpt.faaps.auth.model.AuthSession;
 import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.AiChatMessageDto;
 import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.AiConversationDto;
@@ -62,6 +65,15 @@ public class StudentAiController {
             @AuthenticationPrincipal AuthSession student,
             @Valid @RequestBody SendAiMessageDto body) {
         return studentAiService.sendMessage(id, student.id(), body);
+    }
+
+    @PostMapping(value = "/conversations/{id}/messages/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public SendAiMessageResultDto sendMessageWithAttachment(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthSession student,
+            @RequestParam(value = "content", required = false, defaultValue = "") String content,
+            @RequestParam("file") MultipartFile file) {
+        return studentAiService.sendMessageWithAttachment(id, student.id(), content, file);
     }
 
     @PatchMapping("/messages/{id}/feedback")

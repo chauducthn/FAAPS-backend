@@ -15,7 +15,8 @@ import vn.edu.fpt.faaps.academic.service.ImportErrorWorkbook;
 @RestController
 @RequestMapping("/api/admin/courses")
 public class AdminCourseController {
-    private static final String CODE_PART = "(?:[A-Z]{3}\\d{2}[\\dx][a-z]?\\*?|[A-Z][A-Za-z]{1,5}\\d{0,2}(?:[_-][A-Za-z0-9.*]+)*(?:\\*\\.?\\d+(?:\\.\\d+)?)?\\*?)";
+    private static final String CODE_PART = "(?:[\\p{Lu}\\d][\\p{Lu}]{2}\\d{2}[\\dx][\\p{Ll}]?\\*?|"
+            + "[\\p{Lu}\\d][\\p{L}]{1,5}\\d{0,2}(?:[_-][\\p{L}0-9.*]+)*(?:\\*\\.?\\d+(?:\\.\\d+)?)?\\*?)";
     private static final String CODE_REGEX = "^" + CODE_PART + "(?:/" + CODE_PART + ")*$";
     private static final String CODE_MSG = "Invalid course code format (e.g. CSD201, SSL101c, IoT_GRA_ELE, NWC203c/NWC204)";
     private static final String LINK_REGEX = "^$|^https?://\\S+$";

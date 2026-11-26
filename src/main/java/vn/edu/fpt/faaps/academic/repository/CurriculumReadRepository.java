@@ -39,7 +39,7 @@ public class CurriculumReadRepository {
     public AdminCurriculumService.Page list(
             UUID major, String majorCode, String version, UUID startSemesterId,
             String status, Boolean current, String search, int page, int size) {
-        if (page < 0 || size < 1 || size > 100) {
+        if (page < 0 || size < 1 || size > 10000) {
             throw new IllegalArgumentException("page must be non-negative and size must be between 1 and 100");
         }
         String normalized = normalize(status);

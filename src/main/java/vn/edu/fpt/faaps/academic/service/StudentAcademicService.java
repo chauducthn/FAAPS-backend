@@ -15,16 +15,23 @@ public class StudentAcademicService {
     private final AcademicWarningScheduler warningScheduler;
     private final StudentAcademicQueryRepository queries;
     private final StudentProfileUpdater profileUpdater;
+    private final StudentFlmPreferencesService flmPreferences;
 
     public StudentAcademicService(JdbcTemplate jdbc) {
-        this(jdbc, new AcademicWarningScheduler(jdbc));
+        this(jdbc, new AcademicWarningScheduler(jdbc), new StudentFlmPreferencesService(jdbc));
+    }
+
+    public StudentAcademicService(JdbcTemplate jdbc, AcademicWarningScheduler warningScheduler) {
+        this(jdbc, warningScheduler, new StudentFlmPreferencesService(jdbc));
     }
 
     @Autowired
-    public StudentAcademicService(JdbcTemplate jdbc, AcademicWarningScheduler warningScheduler) {
+    public StudentAcademicService(JdbcTemplate jdbc, AcademicWarningScheduler warningScheduler,
+            StudentFlmPreferencesService flmPreferences) {
         this.warningScheduler = warningScheduler;
         this.queries = new StudentAcademicQueryRepository(jdbc);
         this.profileUpdater = new StudentProfileUpdater(jdbc, queries);
+        this.flmPreferences = flmPreferences;
     }
 
     public Profile profile(UUID studentId) {
@@ -70,7 +77,9 @@ public class StudentAcademicService {
     }
 
     public List<CurriculumCourse> curriculumCourses(UUID studentId) {
-        return queries.curriculumCourses(studentId);
+        List<CurriculumCourse> raw = queries.curriculumCourses(studentId);
+        Curriculum curr = queries.curriculum(studentId);
+        return flmPreferences.apply(studentId, curr != null ? curr.majorCode() : null, raw);
     }
 
     public List<AcademicWarning> warnings(UUID studentId) {

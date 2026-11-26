@@ -9,14 +9,31 @@ public final class AdminUserDtos {
 
     /** {@code majorCode} and {@code cohort} (the curriculum version, e.g. K19) are set for students only. */
     public record Summary(UUID id, String userId, String fullName, String email,
-            String role, String status, LocalDateTime createdAt, String majorCode, String cohort) {}
+            String role, String status, LocalDateTime createdAt, String majorCode, String cohort, String avatarUrl) {
+        public Summary(UUID id, String userId, String fullName, String email,
+                String role, String status, LocalDateTime createdAt, String majorCode, String cohort) {
+            this(id, userId, fullName, email, role, status, createdAt, majorCode, cohort, null);
+        }
+    }
 
     public record Detail(UUID id, String userId, String fullName, String email,
             String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
             String majorId, String majorCode, String majorName, String curriculumVersionId,
             String curriculumCode, String curriculumName, String enrollmentSemesterId,
             String enrollmentSemesterCode, String expectedGraduationSemesterId,
-            String expectedGraduationSemesterCode, Integer currentSemester, String academicStatus) {
+            String expectedGraduationSemesterCode, Integer currentSemester, String academicStatus, String avatarUrl) {
+        public Detail(UUID id, String userId, String fullName, String email,
+                String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
+                String majorId, String majorCode, String majorName, String curriculumVersionId,
+                String curriculumCode, String curriculumName, String enrollmentSemesterId,
+                String enrollmentSemesterCode, String expectedGraduationSemesterId,
+                String expectedGraduationSemesterCode, Integer currentSemester, String academicStatus) {
+            this(id, userId, fullName, email, role, status, createdAt, updatedAt,
+                    majorId, majorCode, majorName, curriculumVersionId, curriculumCode, curriculumName,
+                    enrollmentSemesterId, enrollmentSemesterCode, expectedGraduationSemesterId,
+                    expectedGraduationSemesterCode, currentSemester, academicStatus, null);
+        }
+
         public Detail(UUID id, String userId, String fullName, String email,
                 String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
                 String majorId, String majorName, String curriculumVersionId, String curriculumCode,
@@ -25,7 +42,7 @@ public final class AdminUserDtos {
             this(id, userId, fullName, email, role, status, createdAt, updatedAt,
                     majorId, null, majorName, curriculumVersionId, curriculumCode, null,
                     enrollmentSemesterId, null, expectedGraduationSemesterId, null,
-                    currentSemester, academicStatus);
+                    currentSemester, academicStatus, null);
         }
     }
 

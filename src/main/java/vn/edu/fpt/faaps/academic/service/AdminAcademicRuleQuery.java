@@ -34,7 +34,7 @@ final class AdminAcademicRuleQuery {
 
     Page list(String search, String status, String policyType, UUID curriculumVersionId,
             int page, int size, String sort) {
-        if (page < 0 || size < 1 || size > 100) {
+        if (page < 0 || size < 1 || size > 10000) {
             throw new IllegalArgumentException("page or size is invalid");
         }
         if (status != null && !status.equalsIgnoreCase("ALL")

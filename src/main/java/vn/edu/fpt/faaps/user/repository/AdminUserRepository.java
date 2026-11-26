@@ -17,9 +17,24 @@ import vn.edu.fpt.faaps.user.exception.UserExceptions.NotFound;
 @Repository
 public class AdminUserRepository {
     private final JdbcTemplate jdbc;
+    private final boolean hasAvatarColumn;
 
     public AdminUserRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.hasAvatarColumn = detectAvatarColumn(jdbc);
+    }
+
+    private static boolean detectAvatarColumn(JdbcTemplate jdbc) {
+        try {
+            jdbc.query("SELECT avatar_url FROM users WHERE 1 = 0", (rs, row) -> null);
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private String avatarExpr() {
+        return hasAvatarColumn ? "u.avatar_url" : "NULL AS avatar_url";
     }
 
     public Page list(String role, String status, String search, UUID majorId, int page, int size, String sort) {
@@ -34,6 +49,16 @@ public class AdminUserRepository {
             case "fullName,desc" -> "u.full_name DESC, u.id DESC";
             case "userId,asc" -> "COALESCE(s.student_code, u.email) ASC, u.id ASC";
             case "userId,desc" -> "COALESCE(s.student_code, u.email) DESC, u.id DESC";
+            case "email,asc" -> "u.email ASC, u.id ASC";
+            case "email,desc" -> "u.email DESC, u.id DESC";
+            case "role,asc" -> "r.code ASC, u.full_name ASC, u.id ASC";
+            case "role,desc" -> "r.code DESC, u.full_name ASC, u.id DESC";
+            case "major,asc" -> "COALESCE(m.code, 'ZZZZ') ASC, u.full_name ASC, u.id ASC";
+            case "major,desc" -> "COALESCE(m.code, '') DESC, u.full_name ASC, u.id DESC";
+            case "cohort,asc" -> "COALESCE(cv.version, 'ZZZZ') ASC, u.full_name ASC, u.id ASC";
+            case "cohort,desc" -> "COALESCE(cv.version, '') DESC, u.full_name ASC, u.id DESC";
+            case "status,asc" -> "u.status ASC, u.full_name ASC, u.id ASC";
+            case "status,desc" -> "u.status DESC, u.full_name ASC, u.id DESC";
             default -> throw new IllegalArgumentException("sort is invalid");
         };
         StringBuilder where = new StringBuilder(" WHERE r.code IN ('STUDENT', 'ADVISOR')");
@@ -53,26 +78,30 @@ public class AdminUserRepository {
         List<Object> paging = new ArrayList<>(parameters);
         paging.add(size);
         paging.add(page * size);
-        List<Summary> items = jdbc.query("SELECT u.id, CASE WHEN r.code='STUDENT' THEN COALESCE(s.student_code,u.email) ELSE u.email END user_code, u.full_name,u.email,r.code role,u.status,u.created_at,m.code major_code,cv.version cohort" + from + where + " ORDER BY " + order + " LIMIT ? OFFSET ?", this::summary, paging.toArray());
+        List<Summary> items = jdbc.query(
+                "SELECT u.id, CASE WHEN r.code='STUDENT' THEN COALESCE(s.student_code,u.email) ELSE u.email END user_code,"
+                + " u.full_name, u.email, r.code role, u.status, u.created_at, m.code major_code, cv.version cohort, "
+                + avatarExpr() + from + where + " ORDER BY " + order + " LIMIT ? OFFSET ?",
+                this::summary, paging.toArray());
         return new Page(items, page, size, total, (total + size - 1) / size);
     }
 
     public Detail detail(UUID id) {
-        return jdbc.query("""
-                SELECT u.id, CASE WHEN r.code='STUDENT' THEN COALESCE(s.student_code,u.email) ELSE u.email END user_code,
-                       u.full_name, u.email, r.code role, u.status, u.created_at, u.updated_at,
-                       COALESCE(s.major_id, cv.major_id) major_id, m.code major_code, m.name major_name,
-                       s.curriculum_version_id, cv.version curriculum_code, cv.name curriculum_name,
-                       s.enrollment_semester_id, es.code enrollment_semester_code,
-                       s.expected_graduation_semester_id, gs.code expected_graduation_semester_code,
-                       s.current_semester, s.academic_status
-                FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN students s ON s.user_id=u.id
-                LEFT JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id
-                LEFT JOIN majors m ON m.id=COALESCE(s.major_id, cv.major_id)
-                LEFT JOIN semesters es ON es.id=s.enrollment_semester_id
-                LEFT JOIN semesters gs ON gs.id=s.expected_graduation_semester_id
-                WHERE u.id=? AND r.code IN ('STUDENT','ADVISOR')
-                """, (rs, row) -> new Detail(UUID.fromString(rs.getString("id")),
+        return jdbc.query(
+                "SELECT u.id, CASE WHEN r.code='STUDENT' THEN COALESCE(s.student_code,u.email) ELSE u.email END user_code,"
+                + " u.full_name, u.email, r.code role, u.status, u.created_at, u.updated_at,"
+                + " COALESCE(s.major_id, cv.major_id) major_id, m.code major_code, m.name major_name,"
+                + " s.curriculum_version_id, cv.version curriculum_code, cv.name curriculum_name,"
+                + " s.enrollment_semester_id, es.code enrollment_semester_code,"
+                + " s.expected_graduation_semester_id, gs.code expected_graduation_semester_code,"
+                + " s.current_semester, s.academic_status, " + avatarExpr()
+                + " FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN students s ON s.user_id=u.id"
+                + " LEFT JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id"
+                + " LEFT JOIN majors m ON m.id=COALESCE(s.major_id, cv.major_id)"
+                + " LEFT JOIN semesters es ON es.id=s.enrollment_semester_id"
+                + " LEFT JOIN semesters gs ON gs.id=s.expected_graduation_semester_id"
+                + " WHERE u.id=? AND r.code IN ('STUDENT','ADVISOR')",
+                (rs, row) -> new Detail(UUID.fromString(rs.getString("id")),
                 resolveIdentifier(rs.getString("role"), rs.getString("user_code"), rs.getString("email")),
                 rs.getString("full_name"), rs.getString("email"), rs.getString("role"), rs.getString("status"),
                 rs.getTimestamp("created_at").toLocalDateTime(), rs.getTimestamp("updated_at").toLocalDateTime(),
@@ -80,7 +109,8 @@ public class AdminUserRepository {
                 rs.getString("curriculum_version_id"), rs.getString("curriculum_code"), rs.getString("curriculum_name"),
                 rs.getString("enrollment_semester_id"), rs.getString("enrollment_semester_code"),
                 rs.getString("expected_graduation_semester_id"), rs.getString("expected_graduation_semester_code"),
-                (Integer) rs.getObject("current_semester"), rs.getString("academic_status")),
+                (Integer) rs.getObject("current_semester"), rs.getString("academic_status"),
+                rs.getString("avatar_url")),
                 id.toString()).stream().findFirst().orElseThrow(NotFound::new);
     }
 
@@ -93,7 +123,7 @@ public class AdminUserRepository {
                 resolveIdentifier(rs.getString("role"), rs.getString("user_code"), rs.getString("email")),
                 rs.getString("full_name"), rs.getString("email"), rs.getString("role"),
                 rs.getString("status"), rs.getTimestamp("created_at").toLocalDateTime(),
-                rs.getString("major_code"), rs.getString("cohort"));
+                rs.getString("major_code"), rs.getString("cohort"), rs.getString("avatar_url"));
     }
 
     private static String resolveIdentifier(String role, String userCode, String email) {

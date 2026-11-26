@@ -11,9 +11,24 @@ import vn.edu.fpt.faaps.advising.service.AssignmentWorkflowService.Page;
 
 class AssignmentWorkflowQueryHelper {
     private final JdbcTemplate jdbc;
+    private final boolean hasAvatarColumn;
 
     AssignmentWorkflowQueryHelper(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.hasAvatarColumn = detectAvatarColumn(jdbc);
+    }
+
+    private static boolean detectAvatarColumn(JdbcTemplate jdbc) {
+        try {
+            jdbc.query("SELECT avatar_url FROM users WHERE 1 = 0", (rs, row) -> null);
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private String avatarExpr() {
+        return hasAvatarColumn ? "u.avatar_url" : "NULL AS avatar_url";
     }
 
     Page<Map<String, Object>> unassigned(UUID cohortId, String search, Boolean hasPendingRequest,
@@ -39,30 +54,33 @@ class AssignmentWorkflowQueryHelper {
                 params.add(term);
             }
         }
-        String base = """
-                SELECT s.user_id, s.student_code, u.full_name, cv.id AS cohort_id,
-                       cv.version AS cohort, m.code AS major_code,
-                       EXISTS(SELECT 1 FROM notifications n
-                              WHERE n.related_student_id = s.user_id
-                                AND n.notification_type = 'ADVISOR_REQUEST'
-                                AND n.resolved_at IS NULL) AS has_pending_request
-                FROM students s JOIN users u ON u.id = s.user_id
-                JOIN roles r ON r.id=u.role_id AND r.code='STUDENT'
-                JOIN curriculum_versions cv ON cv.id = s.curriculum_version_id
-                JOIN majors m ON m.id = cv.major_id
-                WHERE NOT EXISTS(SELECT 1 FROM student_advisor_assignments sa
-                                 WHERE sa.student_id = s.user_id AND sa.status = 'ACTIVE'
-                                   AND sa.end_date IS NULL)
-                """ + filter + requestFilter + searchFilter;
+        String base = "SELECT s.user_id, s.student_code, u.full_name, " + avatarExpr() + ", cv.id AS cohort_id,"
+                + " cv.version AS cohort, m.code AS major_code,"
+                + " EXISTS(SELECT 1 FROM notifications n WHERE n.related_student_id = s.user_id"
+                + " AND n.notification_type = 'ADVISOR_REQUEST' AND n.resolved_at IS NULL) AS has_pending_request"
+                + " FROM students s JOIN users u ON u.id = s.user_id"
+                + " JOIN roles r ON r.id=u.role_id AND r.code='STUDENT'"
+                + " JOIN curriculum_versions cv ON cv.id = s.curriculum_version_id"
+                + " JOIN majors m ON m.id = cv.major_id"
+                + " WHERE NOT EXISTS(SELECT 1 FROM student_advisor_assignments sa"
+                + " WHERE sa.student_id = s.user_id AND sa.status = 'ACTIVE' AND sa.end_date IS NULL)"
+                + filter + requestFilter + searchFilter;
         Long total = jdbc.queryForObject("SELECT COUNT(*) FROM (" + base + ") filtered", Long.class, params.toArray());
         params.add(size);
         params.add(page * size);
         List<Map<String, Object>> items = jdbc.query(base + " ORDER BY cv.version, s.student_code LIMIT ? OFFSET ?",
-                (result, row) -> Map.<String, Object>of(
-                        "id", result.getString("user_id"), "studentCode", result.getString("student_code"),
-                        "fullName", result.getString("full_name"), "cohortId", result.getString("cohort_id"),
-                        "cohort", result.getString("cohort"), "majorCode", result.getString("major_code"),
-                        "hasPendingRequest", result.getBoolean("has_pending_request")), params.toArray());
+                (result, row) -> {
+                    HashMap<String, Object> item = new HashMap<>();
+                    item.put("id", result.getString("user_id"));
+                    item.put("studentCode", result.getString("student_code"));
+                    item.put("fullName", result.getString("full_name"));
+                    item.put("avatarUrl", result.getString("avatar_url"));
+                    item.put("cohortId", result.getString("cohort_id"));
+                    item.put("cohort", result.getString("cohort"));
+                    item.put("majorCode", result.getString("major_code"));
+                    item.put("hasPendingRequest", result.getBoolean("has_pending_request"));
+                    return item;
+                }, params.toArray());
         return new Page<>(items, page, size, total == null ? 0 : total);
     }
 
@@ -101,34 +119,29 @@ class AssignmentWorkflowQueryHelper {
 
     Page<Map<String, Object>> advisorsWithCohorts(UUID cohortId, String search, int page, int size) {
         validatePage(page, size);
-        String base = """
-                SELECT a.user_id, u.email, u.full_name, a.max_advisees,
-                       a.status,
-                       cv.id AS cohort_id, cv.version AS cohort, m.code AS major_code,
-                       ca.cohort_id IS NOT NULL AS in_pool,
-                       COUNT(sa.id) AS student_count
-                FROM advisors a JOIN users u ON u.id = a.user_id
-                JOIN roles r ON r.id=u.role_id AND r.code='ADVISOR'
-                LEFT JOIN (
-                    SELECT advisor_id, cohort_id FROM cohort_advisors WHERE is_active = TRUE
-                    UNION
-                    SELECT sa.advisor_id, s.curriculum_version_id
-                    FROM student_advisor_assignments sa JOIN students s ON s.user_id = sa.student_id
-                    WHERE sa.status = 'ACTIVE' AND sa.end_date IS NULL
-                ) ac ON ac.advisor_id = a.user_id
-                LEFT JOIN curriculum_versions cv ON cv.id = ac.cohort_id
-                LEFT JOIN majors m ON m.id = cv.major_id
-                LEFT JOIN cohort_advisors ca ON ca.advisor_id = a.user_id
-                    AND ca.cohort_id = ac.cohort_id AND ca.is_active = TRUE
-                LEFT JOIN students s ON s.curriculum_version_id = ac.cohort_id
-                LEFT JOIN student_advisor_assignments sa ON sa.student_id = s.user_id
-                    AND sa.advisor_id = a.user_id AND sa.status = 'ACTIVE' AND sa.end_date IS NULL
-                WHERE a.status = 'ACTIVE' AND u.status = 'ACTIVE'
-                  AND (? IS NULL OR cv.id = ?)
-                  AND (? IS NULL OR LOWER(u.email) LIKE ? OR LOWER(u.full_name) LIKE ? OR LOWER(m.code) LIKE ?)
-                GROUP BY a.user_id, u.email, u.full_name, a.max_advisees,
-                         a.status, cv.id, cv.version, m.code, ca.cohort_id
-                """;
+        String avatarCol = hasAvatarColumn ? "u.avatar_url" : "NULL AS avatar_url";
+        String avatarGroup = hasAvatarColumn ? ", u.avatar_url" : "";
+        String base = "SELECT a.user_id, u.email, u.full_name, " + avatarCol + ", a.max_advisees, a.status,"
+                + " cv.id AS cohort_id, cv.version AS cohort, m.code AS major_code,"
+                + " ca.cohort_id IS NOT NULL AS in_pool, COUNT(sa.id) AS student_count"
+                + " FROM advisors a JOIN users u ON u.id = a.user_id"
+                + " JOIN roles r ON r.id=u.role_id AND r.code='ADVISOR'"
+                + " LEFT JOIN (SELECT advisor_id, cohort_id FROM cohort_advisors WHERE is_active = TRUE"
+                + " UNION SELECT sa.advisor_id, s.curriculum_version_id FROM student_advisor_assignments sa"
+                + " JOIN students s ON s.user_id = sa.student_id WHERE sa.status = 'ACTIVE' AND sa.end_date IS NULL"
+                + " ) ac ON ac.advisor_id = a.user_id"
+                + " LEFT JOIN curriculum_versions cv ON cv.id = ac.cohort_id"
+                + " LEFT JOIN majors m ON m.id = cv.major_id"
+                + " LEFT JOIN cohort_advisors ca ON ca.advisor_id = a.user_id"
+                + " AND ca.cohort_id = ac.cohort_id AND ca.is_active = TRUE"
+                + " LEFT JOIN students s ON s.curriculum_version_id = ac.cohort_id"
+                + " LEFT JOIN student_advisor_assignments sa ON sa.student_id = s.user_id"
+                + " AND sa.advisor_id = a.user_id AND sa.status = 'ACTIVE' AND sa.end_date IS NULL"
+                + " WHERE a.status = 'ACTIVE' AND u.status = 'ACTIVE'"
+                + " AND (? IS NULL OR cv.id = ?)"
+                + " AND (? IS NULL OR LOWER(u.email) LIKE ? OR LOWER(u.full_name) LIKE ? OR LOWER(m.code) LIKE ?)"
+                + " GROUP BY a.user_id, u.email, u.full_name" + avatarGroup
+                + ", a.max_advisees, a.status, cv.id, cv.version, m.code, ca.cohort_id";
         String term = search == null || search.isBlank() ? null : "%" + search.strip().toLowerCase() + "%";
         String cohortStr = cohortId == null ? null : cohortId.toString();
         Object[] baseParams = {cohortStr, cohortStr, term, term, term, term};
@@ -142,6 +155,7 @@ class AssignmentWorkflowQueryHelper {
                     item.put("advisorId", result.getString("user_id"));
                     item.put("email", result.getString("email"));
                     item.put("fullName", result.getString("full_name"));
+                    item.put("avatarUrl", result.getString("avatar_url"));
                     item.put("maxAdvisees", result.getObject("max_advisees"));
                     item.put("status", result.getString("status"));
                     item.put("cohortId", result.getString("cohort_id"));
@@ -155,7 +169,7 @@ class AssignmentWorkflowQueryHelper {
     }
 
     private void validatePage(int page, int size) {
-        if (page < 0 || size < 1 || size > 100 || (long) page * size > Integer.MAX_VALUE) {
+        if (page < 0 || size < 1 || size > 10000 || (long) page * size > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("page or size is invalid");
         }
     }
