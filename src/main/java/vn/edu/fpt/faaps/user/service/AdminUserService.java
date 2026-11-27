@@ -58,6 +58,11 @@ public class AdminUserService {
 
     public Page list(String role, String status, String search, UUID majorId, UUID curriculumVersionId, int page,
             int size, String sort) {
+        return list(role, status, search, majorId, curriculumVersionId, null, page, size, sort);
+    }
+
+    public Page list(String role, String status, String search, UUID majorId, UUID curriculumVersionId, String cohort,
+            int page, int size, String sort) {
         if (page < 0 || size < 1 || size > 10000) {
             throw new IllegalArgumentException("page or size is invalid");
         }
@@ -67,7 +72,7 @@ public class AdminUserService {
         if (status != null && !List.of("ACTIVE", "INACTIVE", "SUSPENDED", "LOCKED").contains(status)) {
             throw new IllegalArgumentException("status is invalid");
         }
-        return repository.list(role, status, search, majorId, curriculumVersionId, page, size, sort);
+        return repository.list(role, status, search, majorId, curriculumVersionId, cohort, page, size, sort);
     }
 
     public Detail detail(UUID id) {

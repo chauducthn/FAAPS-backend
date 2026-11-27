@@ -13,6 +13,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.academic.dto.CourseWorkload;
+import vn.edu.fpt.faaps.academic.service.CourseWorkloadService;
 import vn.edu.fpt.faaps.advising.controller.AdvisorAcademicLookupController.LookupCourse;
 import vn.edu.fpt.faaps.advising.controller.AdvisorAcademicLookupController.LookupCurriculum;
 import vn.edu.fpt.faaps.advising.controller.AdvisorAcademicLookupController.LookupPrerequisite;
@@ -21,9 +23,11 @@ import vn.edu.fpt.faaps.advising.controller.AdvisorAcademicLookupController.Look
 class AdvisorAcademicLookupQueries {
     private static final Logger log = LoggerFactory.getLogger(AdvisorAcademicLookupQueries.class);
     private final JdbcTemplate jdbc;
+    private final CourseWorkloadService workloads;
 
     AdvisorAcademicLookupQueries(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.workloads = new CourseWorkloadService(jdbc);
     }
 
     List<LookupCourse> findCourses(String search, String category) {
@@ -46,9 +50,11 @@ class AdvisorAcademicLookupQueries {
         }
 
         List<CourseBase> bases = queryCourses(where + " ORDER BY c.code ASC", params.toArray());
+        Map<String, CourseWorkload> workloadMap = workloads.evaluateByCourseIds(
+                bases.stream().map(CourseBase::id).toList());
         List<LookupCourse> result = new ArrayList<>(bases.size());
         for (CourseBase base : bases) {
-            result.add(toLookupCourse(base));
+            result.add(toLookupCourse(base, workloadMap.get(base.id())));
         }
         return result;
     }
@@ -58,7 +64,8 @@ class AdvisorAcademicLookupQueries {
         if (bases.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found");
         }
-        return toLookupCourse(bases.get(0));
+        CourseBase base = bases.get(0);
+        return toLookupCourse(base, workloads.evaluateOne(base.id()));
     }
 
     List<LookupCurriculum> findCurriculums() {
@@ -134,11 +141,11 @@ class AdvisorAcademicLookupQueries {
         ), courseId);
     }
 
-    private LookupCourse toLookupCourse(CourseBase base) {
+    private LookupCourse toLookupCourse(CourseBase base, CourseWorkload workload) {
         return new LookupCourse(
                 base.id(), base.code(), base.name(), base.credits(), base.category(),
                 base.description(), base.objectives(), base.learningOutcomes(),
-                base.materialLink(), loadPrerequisites(base.id()), List.of());
+                base.materialLink(), loadPrerequisites(base.id()), List.of(), workload);
     }
 
     private static CourseBase mapCourseBase(ResultSet rs, boolean hasMaterialLink) throws SQLException {

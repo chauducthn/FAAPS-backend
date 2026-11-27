@@ -10,7 +10,9 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import vn.edu.fpt.faaps.academic.service.CourseEquivalenceService;
 import vn.edu.fpt.faaps.academic.service.StudentBlockPlanService;
+import vn.edu.fpt.faaps.academic.service.StudentBlockPlanService.BatchPlacementInput;
 import vn.edu.fpt.faaps.academic.service.StudentBlockPlanService.BlockPlacement;
 import vn.edu.fpt.faaps.academic.service.StudentBlockPlanService.PlacementInput;
 import vn.edu.fpt.faaps.auth.model.AuthSession;
@@ -19,9 +21,11 @@ import vn.edu.fpt.faaps.auth.model.AuthSession;
 @RequestMapping({"/api/student/curriculum/block-plan", "/student/curriculum/block-plan"})
 public class StudentBlockPlanController {
     private final StudentBlockPlanService service;
+    private final CourseEquivalenceService equivalences;
 
-    public StudentBlockPlanController(StudentBlockPlanService service) {
+    public StudentBlockPlanController(StudentBlockPlanService service, CourseEquivalenceService equivalences) {
         this.service = service;
+        this.equivalences = equivalences;
     }
 
     @GetMapping
@@ -33,6 +37,12 @@ public class StudentBlockPlanController {
     public List<BlockPlacement> upsert(@AuthenticationPrincipal AuthSession student,
             @RequestBody PlacementInput input) {
         return service.upsert(student.id(), input);
+    }
+
+    @PutMapping("/batch")
+    public List<BlockPlacement> batchUpdate(@AuthenticationPrincipal AuthSession student,
+            @RequestBody BatchPlacementInput input) {
+        return service.batchUpdate(student.id(), input);
     }
 
     @DeleteMapping("/{courseCode}")
@@ -49,5 +59,10 @@ public class StudentBlockPlanController {
     @GetMapping("/prerequisites")
     public Map<String, List<String>> prerequisites() {
         return service.prerequisiteMap();
+    }
+
+    @GetMapping("/equivalents")
+    public Map<String, List<String>> equivalents() {
+        return equivalences.equivalenceMap();
     }
 }

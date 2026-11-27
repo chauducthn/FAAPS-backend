@@ -31,9 +31,10 @@ public class AdminCourseController {
     @GetMapping
     public AdminCourseService.Page list(@RequestParam(required = false) String search,
             @RequestParam(required = false) String status, @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) Integer credits, @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size, @RequestParam(defaultValue = "code,asc") String sort) {
-        return courses.list(search, status, categoryId, credits, page, size, sort);
+            @RequestParam(required = false) Integer credits, @RequestParam(required = false) String workloadLevel,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "code,asc") String sort) {
+        return courses.list(search, status, categoryId, credits, workloadLevel, page, size, sort);
     }
 
     @GetMapping("/{id}")
@@ -71,7 +72,7 @@ public class AdminCourseController {
     public ResponseEntity<AdminCourseService.CourseDetail> create(@Valid @RequestBody CreateCourseRequest request) {
         var created = courses.create(request.code(), request.name(), request.credits(), request.categoryId(),
                 request.description(), request.objectives(), request.learningOutcomes(),
-                request.materialLink(), request.status(), request.prerequisites());
+                request.materialLink(), request.workloadLevel(), request.status(), request.prerequisites());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -80,7 +81,8 @@ public class AdminCourseController {
             @PathVariable UUID id, @Valid @RequestBody UpdateCourseRequest request) {
         return courses.update(id, request.code(), request.name(), request.credits(), request.categoryId(),
                 request.description(), request.objectives(), request.learningOutcomes(),
-                request.materialLink(), true, request.status(), request.prerequisites());
+                request.materialLink(), true, request.workloadLevel(), request.workloadLevel() != null,
+                request.status(), request.prerequisites());
     }
 
     @DeleteMapping("/{id}")
@@ -147,11 +149,12 @@ public class AdminCourseController {
             @NotNull UUID categoryId, String description, String objectives, String learningOutcomes,
             @Size(max = 500, message = "Material link must be at most 500 characters")
             @Pattern(regexp = LINK_REGEX, message = LINK_MSG) String materialLink,
-            String status, List<AdminCourseService.PrerequisiteInput> prerequisites) {
+            String workloadLevel, String status, List<AdminCourseService.PrerequisiteInput> prerequisites) {
         public CreateCourseRequest(String code, String name, Integer credits, UUID categoryId, String description,
-                String objectives, String learningOutcomes, String status,
+                String objectives, String learningOutcomes, String materialLink, String status,
                 List<AdminCourseService.PrerequisiteInput> prerequisites) {
-            this(code, name, credits, categoryId, description, objectives, learningOutcomes, null, status, prerequisites);
+            this(code, name, credits, categoryId, description, objectives, learningOutcomes,
+                    materialLink, null, status, prerequisites);
         }
     }
 
@@ -161,12 +164,12 @@ public class AdminCourseController {
             String description, String objectives, String learningOutcomes,
             @Size(max = 500, message = "Material link must be at most 500 characters")
             @Pattern(regexp = LINK_REGEX, message = LINK_MSG) String materialLink,
-            String status, List<AdminCourseService.PrerequisiteInput> prerequisites) {
+            String workloadLevel, String status, List<AdminCourseService.PrerequisiteInput> prerequisites) {
         public UpdateCourseRequest(String code, String name, Integer credits, UUID categoryId, String description,
-                String objectives, String learningOutcomes, String status,
+                String objectives, String learningOutcomes, String materialLink, String status,
                 List<AdminCourseService.PrerequisiteInput> prerequisites) {
             this(code, name, credits, categoryId, description, objectives, learningOutcomes,
-                    AdminCourseService.KEEP_EXISTING_MATERIAL_LINK, status, prerequisites);
+                    materialLink, AdminCourseService.KEEP_EXISTING_WORKLOAD_LEVEL, status, prerequisites);
         }
     }
 

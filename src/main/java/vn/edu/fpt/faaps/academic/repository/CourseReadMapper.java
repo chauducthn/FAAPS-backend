@@ -73,7 +73,8 @@ final class CourseReadMapper {
                 rs.getInt("prerequisite_count"),
                 rs.getInt("curriculum_count"),
                 rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null,
-                rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null);
+                rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null,
+                null);
     }
 
     static CourseDetail mapDetail(ResultSet rs) throws SQLException {
@@ -96,6 +97,7 @@ final class CourseReadMapper {
                 rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null,
                 List.of(),
                 List.of(),
-                rs.getInt("curriculum_count"));
+                rs.getInt("curriculum_count"),
+                null);
     }
 }

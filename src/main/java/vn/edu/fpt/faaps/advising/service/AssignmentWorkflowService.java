@@ -26,16 +26,26 @@ public class AssignmentWorkflowService {
 
     public Page<Map<String, Object>> assigned(UUID advisorId, UUID cohortId, String majorCode,
             String search, int page, int size) {
-        return assignedQueries.assigned(advisorId, cohortId, majorCode, search, page, size);
+        return assigned(advisorId, cohortId, null, majorCode, search, page, size);
+    }
+
+    public Page<Map<String, Object>> assigned(UUID advisorId, UUID cohortId, String cohort, String majorCode,
+            String search, int page, int size) {
+        return assignedQueries.assigned(advisorId, cohortId, cohort, majorCode, search, page, size);
     }
 
     public List<Map<String, Object>> unassigned(UUID cohortId) {
-        return unassigned(cohortId, null, null, 0, 100).items();
+        return unassigned(cohortId, null, null, null, 0, 100).items();
     }
 
     public Page<Map<String, Object>> unassigned(UUID cohortId, String search, Boolean hasPendingRequest,
             int page, int size) {
-        return queries.unassigned(cohortId, search, hasPendingRequest, page, size);
+        return unassigned(cohortId, null, search, hasPendingRequest, page, size);
+    }
+
+    public Page<Map<String, Object>> unassigned(UUID cohortId, String cohort, String search, Boolean hasPendingRequest,
+            int page, int size) {
+        return queries.unassigned(cohortId, cohort, search, hasPendingRequest, page, size);
     }
 
     public Map<String, Object> summary() {

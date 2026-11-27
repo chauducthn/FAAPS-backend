@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** Persists per-student custom semester & block placements for curriculum courses. */
 @Service
 public class StudentBlockPlanService {
-    private static final Set<String> MODES = Set.of("CUSTOM", "RETAKE", "DEFERRED", "EARLY");
+    private static final Set<String> MODES = Set.of("CUSTOM", "RETAKE", "DEFERRED", "EARLY", "DRAFT", "EXCLUDED");
     private final JdbcTemplate jdbc;
 
     public StudentBlockPlanService(JdbcTemplate jdbc) {
@@ -54,12 +54,43 @@ public class StudentBlockPlanService {
             throw new IllegalArgumentException("blockCode is required");
         }
         String code = input.courseCode().strip().toUpperCase(Locale.ROOT);
-        int sem = Math.max(-6, Math.min(12, input.semesterNumber() == null ? 0 : input.semesterNumber()));
+        int sem = Math.max(-6, Math.min(99, input.semesterNumber() == null ? 0 : input.semesterNumber()));
         String block = input.blockCode().strip().toUpperCase(Locale.ROOT);
         String mode = normalizeMode(input.planMode());
         String note = input.note() == null || input.note().isBlank() ? null
                 : input.note().strip().substring(0, Math.min(255, input.note().strip().length()));
 
+        upsertOne(studentId, code, sem, block, mode, note);
+        return list(studentId);
+    }
+
+    @Transactional
+    public List<BlockPlacement> batchUpdate(UUID studentId, BatchPlacementInput input) {
+        if (input != null && input.removeCodes() != null) {
+            for (String code : input.removeCodes()) {
+                if (code != null && !code.isBlank()) {
+                    jdbc.update("DELETE FROM student_block_placements WHERE student_id = ? AND course_code = ?",
+                            studentId.toString(), code.strip().toUpperCase(Locale.ROOT));
+                }
+            }
+        }
+        if (input != null && input.upserts() != null) {
+            for (PlacementInput item : input.upserts()) {
+                if (item == null || item.courseCode() == null || item.courseCode().isBlank()
+                        || item.blockCode() == null || item.blockCode().isBlank()) continue;
+                String code = item.courseCode().strip().toUpperCase(Locale.ROOT);
+                int sem = Math.max(-6, Math.min(99, item.semesterNumber() == null ? 0 : item.semesterNumber()));
+                String block = item.blockCode().strip().toUpperCase(Locale.ROOT);
+                String mode = normalizeMode(item.planMode());
+                String note = item.note() == null || item.note().isBlank() ? null
+                        : item.note().strip().substring(0, Math.min(255, item.note().strip().length()));
+                upsertOne(studentId, code, sem, block, mode, note);
+            }
+        }
+        return list(studentId);
+    }
+
+    private void upsertOne(UUID studentId, String code, int sem, String block, String mode, String note) {
         int updated = jdbc.update("""
                 UPDATE student_block_placements
                 SET semester_number = ?, block_code = ?, plan_mode = ?, note = ?, updated_at = CURRENT_TIMESTAMP
@@ -72,7 +103,6 @@ public class StudentBlockPlanService {
                     VALUES (?, ?, ?, ?, ?, ?)
                     """, studentId.toString(), code, sem, block, mode, note);
         }
-        return list(studentId);
     }
 
     @Transactional
@@ -115,4 +145,5 @@ public class StudentBlockPlanService {
             String planMode, String note) {}
     public record PlacementInput(String courseCode, Integer semesterNumber, String blockCode,
             String planMode, String note) {}
+    public record BatchPlacementInput(List<PlacementInput> upserts, List<String> removeCodes) {}
 }

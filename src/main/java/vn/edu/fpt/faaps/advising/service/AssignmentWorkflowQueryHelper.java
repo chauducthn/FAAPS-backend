@@ -31,10 +31,12 @@ class AssignmentWorkflowQueryHelper {
         return hasAvatarColumn ? "u.avatar_url" : "NULL AS avatar_url";
     }
 
-    Page<Map<String, Object>> unassigned(UUID cohortId, String search, Boolean hasPendingRequest,
+    Page<Map<String, Object>> unassigned(UUID cohortId, String cohort, String search, Boolean hasPendingRequest,
             int page, int size) {
         validatePage(page, size);
-        String filter = cohortId == null ? "" : " AND cv.id = ?";
+        String cohortCode = cohort == null || cohort.isBlank() ? null : cohort.strip().toUpperCase();
+        String filter = (cohortId == null ? "" : " AND cv.id = ?")
+                + (cohortCode == null ? "" : " AND UPPER(cv.version) = ?");
         String term = search == null || search.isBlank() ? null : "%" + search.strip().toLowerCase() + "%";
         String requestFilter = hasPendingRequest == null ? ""
                 : " AND EXISTS(SELECT 1 FROM notifications nr WHERE nr.related_student_id=s.user_id"
@@ -45,6 +47,9 @@ class AssignmentWorkflowQueryHelper {
         List<Object> params = new ArrayList<>();
         if (cohortId != null) {
             params.add(cohortId.toString());
+        }
+        if (cohortCode != null) {
+            params.add(cohortCode);
         }
         if (hasPendingRequest != null) {
             params.add(hasPendingRequest);

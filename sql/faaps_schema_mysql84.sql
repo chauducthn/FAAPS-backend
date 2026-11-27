@@ -114,6 +114,7 @@ CREATE TABLE `courses` (
   `objectives` text,
   `learning_outcomes` text,
   `material_link` varchar(500),
+  `workload_level` varchar(20) DEFAULT NULL COMMENT 'Manual override: LIGHT, MEDIUM, HEAVY (NULL = auto)',
   `status` varchar(20) DEFAULT 'ACTIVE' COMMENT 'ACTIVE, INACTIVE',
   `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
   `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)

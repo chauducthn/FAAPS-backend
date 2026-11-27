@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.academic.dto.CourseWorkload;
 import vn.edu.fpt.faaps.common.dto.ApiError;
 
 @RestController
@@ -53,13 +54,20 @@ public class AdvisorAcademicLookupController {
     public record LookupCourse(
             String id, String code, String name, int credits, String category,
             String description, String objectives, String learningOutcomes, String materialLink,
-            List<LookupPrerequisite> prerequisites, List<SyllabusWeek> syllabus) {
+            List<LookupPrerequisite> prerequisites, List<SyllabusWeek> syllabus, CourseWorkload workload) {
+        public LookupCourse(
+                String id, String code, String name, int credits, String category,
+                String description, String objectives, String learningOutcomes, String materialLink,
+                List<LookupPrerequisite> prerequisites, List<SyllabusWeek> syllabus) {
+            this(id, code, name, credits, category, description, objectives, learningOutcomes,
+                    materialLink, prerequisites, syllabus, null);
+        }
         public LookupCourse(
                 String id, String code, String name, int credits, String category,
                 String description, String objectives, String learningOutcomes,
                 List<LookupPrerequisite> prerequisites, List<SyllabusWeek> syllabus) {
             this(id, code, name, credits, category, description, objectives, learningOutcomes,
-                    null, prerequisites, syllabus);
+                    null, prerequisites, syllabus, null);
         }
     }
 

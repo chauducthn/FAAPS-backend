@@ -23,7 +23,7 @@ public class AdminUserRepository {
     public AdminUserRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
         this.hasAvatarColumn = detectQuery(jdbc, "SELECT avatar_url FROM users WHERE 1 = 0");
-        this.hasCohortAdvisors = detectQuery(jdbc, "SELECT advisor_id FROM cohort_advisors WHERE 1 = 0")
+        this.hasCohortAdvisors = detectQuery(jdbc, "SELECT advisor_id, is_active FROM cohort_advisors WHERE 1 = 0")
                 && detectQuery(jdbc, "SELECT advisor_id FROM student_advisor_assignments WHERE 1 = 0");
     }
 
@@ -41,23 +41,7 @@ public class AdminUserRepository {
     }
 
     private String advisorCohortJoin() {
-        if (!hasCohortAdvisors) return "";
-        return " LEFT JOIN ("
-                + " SELECT adv.advisor_id, MIN(cv2.id) cohort_id, MIN(cv2.major_id) major_id,"
-                + " MIN(m2.name) major_name, MIN(cv2.name) curriculum_name,"
-                + " GROUP_CONCAT(DISTINCT m2.code ORDER BY m2.code SEPARATOR ', ') major_code,"
-                + " GROUP_CONCAT(DISTINCT cv2.version ORDER BY cv2.version SEPARATOR ', ') cohort"
-                + " FROM ("
-                + "   SELECT advisor_id, cohort_id FROM cohort_advisors WHERE is_active = TRUE"
-                + "   UNION"
-                + "   SELECT sa.advisor_id, st.curriculum_version_id cohort_id"
-                + "   FROM student_advisor_assignments sa JOIN students st ON st.user_id = sa.student_id"
-                + "   WHERE sa.status = 'ACTIVE' AND sa.end_date IS NULL AND st.curriculum_version_id IS NOT NULL"
-                + " ) adv"
-                + " JOIN curriculum_versions cv2 ON cv2.id = adv.cohort_id"
-                + " JOIN majors m2 ON m2.id = cv2.major_id"
-                + " GROUP BY adv.advisor_id"
-                + ") ac ON ac.advisor_id = u.id";
+        return AdminUserQuerySql.advisorCohortJoin(hasCohortAdvisors);
     }
 
     public Page list(String role, String status, String search, UUID majorId, int page, int size, String sort) {
@@ -65,27 +49,14 @@ public class AdminUserRepository {
     }
 
     public Page list(String role, String status, String search, UUID majorId, UUID curriculumVersionId, int page, int size, String sort) {
+        return list(role, status, search, majorId, curriculumVersionId, null, page, size, sort);
+    }
+
+    public Page list(String role, String status, String search, UUID majorId, UUID curriculumVersionId, String cohort,
+            int page, int size, String sort) {
         String majorExpr = hasCohortAdvisors ? "COALESCE(m.code, ac.major_code)" : "m.code";
         String cohortExpr = hasCohortAdvisors ? "COALESCE(cv.version, ac.cohort)" : "cv.version";
-        String order = switch (sort) {
-            case "createdAt,asc" -> "u.created_at ASC, u.id ASC";
-            case "createdAt,desc" -> "u.created_at DESC, u.id DESC";
-            case "fullName,asc" -> "u.full_name ASC, u.id ASC";
-            case "fullName,desc" -> "u.full_name DESC, u.id DESC";
-            case "userId,asc" -> "COALESCE(s.student_code, u.email) ASC, u.id ASC";
-            case "userId,desc" -> "COALESCE(s.student_code, u.email) DESC, u.id DESC";
-            case "email,asc" -> "u.email ASC, u.id ASC";
-            case "email,desc" -> "u.email DESC, u.id DESC";
-            case "role,asc" -> "r.code ASC, u.full_name ASC, u.id ASC";
-            case "role,desc" -> "r.code DESC, u.full_name ASC, u.id DESC";
-            case "major,asc" -> "COALESCE(" + majorExpr + ", 'ZZZZ') ASC, u.full_name ASC, u.id ASC";
-            case "major,desc" -> "COALESCE(" + majorExpr + ", '') DESC, u.full_name ASC, u.id DESC";
-            case "cohort,asc" -> "COALESCE(" + cohortExpr + ", 'ZZZZ') ASC, u.full_name ASC, u.id ASC";
-            case "cohort,desc" -> "COALESCE(" + cohortExpr + ", '') DESC, u.full_name ASC, u.id DESC";
-            case "status,asc" -> "u.status ASC, u.full_name ASC, u.id ASC";
-            case "status,desc" -> "u.status DESC, u.full_name ASC, u.id DESC";
-            default -> throw new IllegalArgumentException("sort is invalid");
-        };
+        String order = AdminUserQuerySql.resolveSortOrder(sort, majorExpr, cohortExpr);
         StringBuilder where = new StringBuilder(" WHERE r.code IN ('STUDENT', 'ADVISOR')");
         List<Object> parameters = new ArrayList<>();
         addFilter(where, parameters, " AND r.code = ?", role);
@@ -106,6 +77,16 @@ public class AdminUserRepository {
                 parameters.add(curriculumVersionId.toString());
             } else {
                 addFilter(where, parameters, " AND s.curriculum_version_id = ?", curriculumVersionId.toString());
+            }
+        }
+        if (cohort != null && !cohort.isBlank()) {
+            String c = cohort.strip().toUpperCase(Locale.ROOT);
+            if (hasCohortAdvisors) {
+                where.append(" AND (UPPER(cv.version) = ? OR FIND_IN_SET(?, REPLACE(UPPER(COALESCE(ac.cohort, '')), ', ', ',')) > 0)");
+                parameters.add(c);
+                parameters.add(c);
+            } else {
+                addFilter(where, parameters, " AND UPPER(cv.version) = ?", c);
             }
         }
         if (search != null && !search.isBlank()) {
@@ -177,10 +158,6 @@ public class AdminUserRepository {
     }
 
     private static String resolveIdentifier(String role, String userCode, String email) {
-        if ("ADVISOR".equals(role) && email != null) {
-            int at = email.indexOf('@');
-            if (at > 0) return email.substring(0, at);
-        }
-        return userCode;
+        return AdminUserQuerySql.resolveIdentifier(role, userCode, email);
     }
 }

@@ -2,7 +2,6 @@ package vn.edu.fpt.faaps.academic.service;
 
 
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -19,15 +18,10 @@ public class TranscriptImportService {
     private final TranscriptWorkbookParser parser;
     private final TranscriptOcrParser ocrParser;
 
-    public TranscriptImportService(JdbcTemplate jdbc, TranscriptWorkbookParser parser) {
-        this(jdbc, parser, null);
-    }
+    public TranscriptImportService(JdbcTemplate jdbc, TranscriptWorkbookParser parser) { this(jdbc, parser, null); }
 
     @Autowired
-    public TranscriptImportService(
-            JdbcTemplate jdbc,
-            TranscriptWorkbookParser parser,
-            TranscriptOcrParser ocrParser) {
+    public TranscriptImportService(JdbcTemplate jdbc, TranscriptWorkbookParser parser, TranscriptOcrParser ocrParser) {
         this.jdbc = jdbc;
         this.parser = parser;
         this.ocrParser = ocrParser;
@@ -40,9 +34,7 @@ public class TranscriptImportService {
 
     @Transactional
     public ImportPreview previewOcr(UUID studentId, MultipartFile file) {
-        if (ocrParser == null) {
-            throw new IllegalStateException("Transcript OCR parser is not available");
-        }
+        if (ocrParser == null) throw new IllegalStateException("Transcript OCR parser is not available");
         return storePreview(studentId, file.getOriginalFilename(), ocrParser.parse(file));
     }
 
@@ -72,87 +64,64 @@ public class TranscriptImportService {
 
     @Transactional
     public ImportResult confirm(UUID studentId, UUID importId) {
-        if (jdbc.query("SELECT user_id FROM students WHERE user_id=? FOR UPDATE",
-                (rs, row) -> rs.getString(1), studentId.toString()).isEmpty())
-            throw new IllegalArgumentException("Your academic profile has not been assigned");
-        List<String> state = jdbc.query("""
-                SELECT status FROM student_transcript_imports WHERE id=? AND student_id=? FOR UPDATE
-                """, (rs, row) -> rs.getString(1), importId.toString(), studentId.toString());
+        return confirm(studentId, importId, false);
+    }
+
+    @Transactional
+    public ImportResult confirm(UUID studentId, UUID importId, boolean skipErrors) {
+        ensureStudentForUpdate(studentId);
+        List<String> state = jdbc.query(
+                "SELECT status FROM student_transcript_imports WHERE id=? AND student_id=? FOR UPDATE",
+                (rs, row) -> rs.getString(1), importId.toString(), studentId.toString());
         if (state.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Import not found");
         if (!"PREVIEW".equals(state.get(0))) throw new IllegalArgumentException("Import already confirmed");
-        List<ImportRow> rows = rows(importId);
-        if (rows.stream().anyMatch(row -> row.error() != null)) throw new IllegalArgumentException("Resolve preview errors before confirming");
-        for (ImportRow row : rows) {
-            Integer credits = jdbc.queryForObject("SELECT credits FROM courses WHERE id=?", Integer.class, row.courseId());
-            int earned = Set.of("PASSED", "EXEMPTED").contains(row.status()) ? credits : 0;
-            List<String> existing = jdbc.query("""
-                    SELECT id FROM student_course_records
-                    WHERE student_id=? AND course_id=? AND semester_id=? AND attempt_number=?
-                    FOR UPDATE
-                    """, (rs, index) -> rs.getString(1), studentId.toString(), row.courseId(), row.semesterId(), row.attemptNumber());
-            if (existing.isEmpty()) {
-                jdbc.update("""
-                        INSERT INTO student_course_records
-                        (id,student_id,course_id,semester_id,final_score,status,attempt_number,credits_earned)
-                        VALUES (?,?,?,?,?,?,?,?)
-                        """, UUID.randomUUID().toString(), studentId.toString(), row.courseId(), row.semesterId(),
-                        row.finalScore(), row.status(), row.attemptNumber(), earned);
-            } else {
-                jdbc.update("""
-                        UPDATE student_course_records SET final_score=?,status=?,credits_earned=?,updated_at=CURRENT_TIMESTAMP
-                        WHERE id=?
-                        """, row.finalScore(), row.status(), earned, existing.get(0));
-            }
+        List<ImportRow> allRows = rows(importId);
+        if (!skipErrors && allRows.stream().anyMatch(row -> row.error() != null)) {
+            throw new IllegalArgumentException("Resolve preview errors before confirming");
         }
-        jdbc.update("""
-                UPDATE students s SET total_credits_earned=(
-                  SELECT COALESCE(SUM(earned),0) FROM (
-                    SELECT MAX(credits_earned) earned FROM student_course_records
-                    WHERE student_id=? GROUP BY course_id
-                  ) distinct_courses), updated_at=CURRENT_TIMESTAMP WHERE s.user_id=?
-                """, studentId.toString(), studentId.toString());
-        jdbc.update("""
-                UPDATE students s SET current_gpa=(
-                  SELECT COALESCE(ROUND(SUM(r.final_score*c.credits)/NULLIF(SUM(c.credits),0),2),0)
-                  FROM student_course_records r JOIN courses c ON c.id=r.course_id
-                  WHERE r.student_id=? AND r.final_score IS NOT NULL
-                    AND r.status IN ('PASSED','FAILED')
-                ), updated_at=CURRENT_TIMESTAMP WHERE s.user_id=?
-                """, studentId.toString(), studentId.toString());
-        List<String> affectedSemesters = jdbc.query("SELECT DISTINCT semester_id FROM student_course_records WHERE student_id=?",
-                (rs, index) -> rs.getString(1), studentId.toString());
-        for (String semesterId : affectedSemesters) {
-            List<String> summaries = jdbc.query("SELECT id FROM semester_summaries WHERE student_id=? AND semester_id=?",
-                    (rs, index) -> rs.getString(1), studentId.toString(), semesterId);
-            if (summaries.isEmpty()) {
-                jdbc.update("INSERT INTO semester_summaries(id,student_id,semester_id) VALUES (?,?,?)",
-                        UUID.randomUUID().toString(), studentId.toString(), semesterId);
-            }
-            jdbc.update("""
-                    UPDATE semester_summaries SET
-                      total_credits_enrolled=(SELECT COALESCE(SUM(c.credits),0)
-                        FROM student_course_records r JOIN courses c ON c.id=r.course_id
-                        WHERE r.student_id=? AND r.semester_id=?),
-                      total_credits_earned=(SELECT COALESCE(SUM(r.credits_earned),0)
-                        FROM student_course_records r WHERE r.student_id=? AND r.semester_id=?),
-                      semester_gpa=(SELECT COALESCE(ROUND(SUM(r.final_score*c.credits)/NULLIF(SUM(c.credits),0),2),0)
-                        FROM student_course_records r JOIN courses c ON c.id=r.course_id
-                        WHERE r.student_id=? AND r.semester_id=? AND r.final_score IS NOT NULL
-                          AND r.status IN ('PASSED','FAILED')),
-                      cumulative_gpa=(SELECT COALESCE(ROUND(SUM(r.final_score*c.credits)/NULLIF(SUM(c.credits),0),2),0)
-                        FROM student_course_records r JOIN courses c ON c.id=r.course_id
-                        JOIN semesters completed ON completed.id=r.semester_id
-                        JOIN semesters target ON target.id=?
-                        WHERE r.student_id=? AND completed.start_date<=target.start_date
-                          AND r.final_score IS NOT NULL AND r.status IN ('PASSED','FAILED')),
-                      updated_at=CURRENT_TIMESTAMP WHERE student_id=? AND semester_id=?
-                    """, studentId.toString(), semesterId, studentId.toString(), semesterId,
-                    studentId.toString(), semesterId, semesterId, studentId.toString(),
-                    studentId.toString(), semesterId);
-        }
+        List<ImportRow> rows = allRows.stream().filter(row -> row.error() == null).toList();
+        if (rows.isEmpty()) throw new IllegalArgumentException("No valid transcript rows to import");
+        applyRowsAndRecalculate(studentId, rows, false);
         jdbc.update("UPDATE student_transcript_imports SET status='CONFIRMED',confirmed_at=CURRENT_TIMESTAMP WHERE id=?",
                 importId.toString());
         return new ImportResult(importId.toString(), rows.size(), "CONFIRMED");
+    }
+
+    @Transactional
+    public ImportResult activate(UUID studentId, UUID importId) {
+        ensureStudentForUpdate(studentId);
+        List<String> state = jdbc.query(
+                "SELECT status FROM student_transcript_imports WHERE id=? AND student_id=? FOR UPDATE",
+                (rs, row) -> rs.getString(1), importId.toString(), studentId.toString());
+        if (state.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Import not found");
+        List<ImportRow> rows = rows(importId).stream().filter(row -> row.error() == null).toList();
+        if (rows.isEmpty()) throw new IllegalArgumentException("This import version has no valid rows");
+        applyRowsAndRecalculate(studentId, rows, true);
+        jdbc.update("UPDATE student_transcript_imports SET status='CONFIRMED',confirmed_at=CURRENT_TIMESTAMP WHERE id=?",
+                importId.toString());
+        return new ImportResult(importId.toString(), rows.size(), "CONFIRMED");
+    }
+
+    @Transactional
+    public void deleteImport(UUID studentId, UUID importId) {
+        List<String> found = jdbc.query(
+                "SELECT id FROM student_transcript_imports WHERE id=? AND student_id=?",
+                (rs, row) -> rs.getString(1), importId.toString(), studentId.toString());
+        if (found.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Import not found");
+        jdbc.update("DELETE FROM student_transcript_import_rows WHERE import_id=?", importId.toString());
+        jdbc.update("DELETE FROM student_transcript_imports WHERE id=? AND student_id=?",
+                importId.toString(), studentId.toString());
+    }
+
+    private void ensureStudentForUpdate(UUID studentId) {
+        if (jdbc.query("SELECT user_id FROM students WHERE user_id=? FOR UPDATE",
+                (rs, row) -> rs.getString(1), studentId.toString()).isEmpty()) {
+            throw new IllegalArgumentException("Your academic profile has not been assigned");
+        }
+    }
+
+    private void applyRowsAndRecalculate(UUID studentId, List<ImportRow> rows, boolean replaceAll) {
+        TranscriptScoreRecalculator.applyRowsAndRecalculate(jdbc, studentId, rows, replaceAll);
     }
 
     public List<ImportHistory> history(UUID studentId) {
@@ -173,6 +142,8 @@ public class TranscriptImportService {
         List<ImportRow> rows = rows(importId);
         return new ImportPreview(importId.toString(), rows.size(), (int) rows.stream().filter(row -> row.error() != null).count(), rows);
     }
+
+    public byte[] templateWorkbook() { return parser.buildTemplateWorkbook(); }
 
     public byte[] errorWorkbook(UUID studentId, UUID importId) {
         ImportPreview preview = detail(studentId, importId);

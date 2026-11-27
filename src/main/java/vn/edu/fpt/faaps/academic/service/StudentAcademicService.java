@@ -3,12 +3,16 @@ package vn.edu.fpt.faaps.academic.service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.edu.fpt.faaps.academic.dto.CourseWorkload;
 
 @Service
 public class StudentAcademicService {
@@ -16,6 +20,7 @@ public class StudentAcademicService {
     private final StudentAcademicQueryRepository queries;
     private final StudentProfileUpdater profileUpdater;
     private final StudentFlmPreferencesService flmPreferences;
+    private final CourseWorkloadService workloads;
 
     public StudentAcademicService(JdbcTemplate jdbc) {
         this(jdbc, new AcademicWarningScheduler(jdbc), new StudentFlmPreferencesService(jdbc));
@@ -32,6 +37,7 @@ public class StudentAcademicService {
         this.queries = new StudentAcademicQueryRepository(jdbc);
         this.profileUpdater = new StudentProfileUpdater(jdbc, queries);
         this.flmPreferences = flmPreferences;
+        this.workloads = new CourseWorkloadService(jdbc);
     }
 
     public Profile profile(UUID studentId) {
@@ -79,7 +85,28 @@ public class StudentAcademicService {
     public List<CurriculumCourse> curriculumCourses(UUID studentId) {
         List<CurriculumCourse> raw = queries.curriculumCourses(studentId);
         Curriculum curr = queries.curriculum(studentId);
-        return flmPreferences.apply(studentId, curr != null ? curr.majorCode() : null, raw);
+        List<CurriculumCourse> resolved = flmPreferences.apply(studentId, curr != null ? curr.majorCode() : null, raw);
+        if (resolved.isEmpty()) return resolved;
+        Map<String, String> rawCodeById = new HashMap<>(raw.size());
+        for (CurriculumCourse r : raw) {
+            if (r.courseId() != null && r.code() != null) rawCodeById.put(r.courseId(), r.code().trim().toUpperCase(Locale.ROOT));
+        }
+        List<String> eligibleIds = resolved.stream().filter(c -> isWorkloadEligible(c, rawCodeById))
+                .map(CurriculumCourse::courseId).toList();
+        Map<String, CourseWorkload> map = workloads.evaluateByCourseIds(eligibleIds);
+        return resolved.stream().map(c -> isWorkloadEligible(c, rawCodeById) ? c.withWorkload(map.get(c.courseId())) : c).toList();
+    }
+
+    private static boolean isWorkloadEligible(CurriculumCourse c, Map<String, String> rawCodeById) {
+        if (c.courseId() == null) return false;
+        String rawCode = rawCodeById.get(c.courseId());
+        if (rawCode == null || c.code() == null) return true;
+        String code = c.code().trim().toUpperCase(Locale.ROOT);
+        return rawCode.equals(code) || (isPrepCode(rawCode) && isPrepCode(code));
+    }
+
+    private static boolean isPrepCode(String u) {
+        return u.startsWith("PEN") || u.startsWith("LUK") || u.startsWith("TRS");
     }
 
     public List<AcademicWarning> warnings(UUID studentId) {
@@ -107,14 +134,26 @@ public class StudentAcademicService {
 
     public record Course(String id, String code, String name, int credits, String category,
             String description, String objectives, String learningOutcomes, String materialLink,
-            String knowledgeBlock, String gradingStructure) {
+            String knowledgeBlock, String gradingStructure, CourseWorkload workload) {
+        public Course(String id, String code, String name, int credits, String category,
+                String description, String objectives, String learningOutcomes, String materialLink,
+                String knowledgeBlock, String gradingStructure) {
+            this(id, code, name, credits, category, description, objectives, learningOutcomes,
+                    materialLink, knowledgeBlock, gradingStructure, null);
+        }
         public Course(String id, String code, String name, int credits, String category,
                 String description, String objectives, String learningOutcomes, String materialLink) {
-            this(id, code, name, credits, category, description, objectives, learningOutcomes, materialLink, null, null);
+            this(id, code, name, credits, category, description, objectives, learningOutcomes,
+                    materialLink, null, null, null);
         }
         public Course(String id, String code, String name, int credits, String category,
                 String description, String objectives, String learningOutcomes) {
-            this(id, code, name, credits, category, description, objectives, learningOutcomes, null, null, null);
+            this(id, code, name, credits, category, description, objectives, learningOutcomes,
+                    null, null, null, null);
+        }
+        public Course withWorkload(CourseWorkload w) {
+            return new Course(id, code, name, credits, category, description, objectives, learningOutcomes,
+                    materialLink, knowledgeBlock, gradingStructure, w);
         }
     }
 
@@ -130,7 +169,15 @@ public class StudentAcademicService {
     }
 
     public record CurriculumCourse(String courseId, String code, String name, int credits,
-            int semesterNumber, boolean mandatory, String groupName) {
+            int semesterNumber, boolean mandatory, String groupName, CourseWorkload workload) {
+        public CurriculumCourse(String courseId, String code, String name, int credits,
+                int semesterNumber, boolean mandatory, String groupName) {
+            this(courseId, code, name, credits, semesterNumber, mandatory, groupName, null);
+        }
+
+        public CurriculumCourse withWorkload(CourseWorkload w) {
+            return new CurriculumCourse(courseId, code, name, credits, semesterNumber, mandatory, groupName, w);
+        }
     }
 
     public record AcademicWarning(String id, String studentId, String semesterId, String semesterCode,

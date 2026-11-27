@@ -3,17 +3,21 @@ package vn.edu.fpt.faaps.academic.service;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.fpt.faaps.academic.dto.CourseWorkload;
 import vn.edu.fpt.faaps.academic.service.StudentAcademicService.*;
 
 final class StudentCatalogQueryRepository {
     private final JdbcTemplate jdbc;
+    private final CourseWorkloadService workloads;
 
     StudentCatalogQueryRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.workloads = new CourseWorkloadService(jdbc);
     }
 
     List<Course> courses(String search, int page, int size) {
@@ -21,8 +25,9 @@ final class StudentCatalogQueryRepository {
             throw new IllegalArgumentException("Invalid pagination");
         }
         String term = "%" + (search == null ? "" : search.strip().toLowerCase()) + "%";
+        List<Course> raw;
         try {
-            return jdbc.query("""
+            raw = jdbc.query("""
                     SELECT c.id, c.code, c.name, c.credits, c.description, c.objectives,
                            c.learning_outcomes, c.material_link, c.knowledge_block, c.grading_structure,
                            cat.name AS category_name
@@ -31,7 +36,7 @@ final class StudentCatalogQueryRepository {
                     ORDER BY c.code LIMIT ? OFFSET ?
                     """, (rs, row) -> mapCourse(rs), term, term, size, page * size);
         } catch (Exception ex) {
-            return jdbc.query("""
+            raw = jdbc.query("""
                     SELECT c.id, c.code, c.name, c.credits, c.description, c.objectives,
                            c.learning_outcomes, NULL AS material_link, NULL AS knowledge_block,
                            NULL AS grading_structure, cat.name AS category_name
@@ -40,6 +45,11 @@ final class StudentCatalogQueryRepository {
                     ORDER BY c.code LIMIT ? OFFSET ?
                     """, (rs, row) -> mapCourse(rs), term, term, size, page * size);
         }
+        if (raw.isEmpty()) {
+            return raw;
+        }
+        Map<String, CourseWorkload> map = workloads.evaluateByCourseIds(raw.stream().map(Course::id).toList());
+        return raw.stream().map(c -> c.withWorkload(map.get(c.id()))).toList();
     }
 
     CoursePage coursesPaged(String search, int page, int size) {
@@ -56,8 +66,9 @@ final class StudentCatalogQueryRepository {
     }
 
     Course course(UUID id) {
+        Course found;
         try {
-            return jdbc.query("""
+            found = jdbc.query("""
                     SELECT c.id, c.code, c.name, c.credits, c.description, c.objectives,
                            c.learning_outcomes, c.material_link, c.knowledge_block, c.grading_structure,
                            cat.name AS category_name
@@ -68,7 +79,7 @@ final class StudentCatalogQueryRepository {
         } catch (ResponseStatusException notFound) {
             throw notFound;
         } catch (Exception ex) {
-            return jdbc.query("""
+            found = jdbc.query("""
                     SELECT c.id, c.code, c.name, c.credits, c.description, c.objectives,
                            c.learning_outcomes, NULL AS material_link, NULL AS knowledge_block,
                            NULL AS grading_structure, cat.name AS category_name
@@ -77,6 +88,7 @@ final class StudentCatalogQueryRepository {
                     """, (rs, row) -> mapCourse(rs), id.toString()).stream().findFirst()
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
         }
+        return found.withWorkload(workloads.evaluateOne(found.id()));
     }
 
     List<Prerequisite> prerequisites(UUID courseId) {

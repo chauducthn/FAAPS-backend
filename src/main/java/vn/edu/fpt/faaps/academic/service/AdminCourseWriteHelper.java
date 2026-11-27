@@ -5,6 +5,7 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import vn.edu.fpt.faaps.academic.dto.CourseWorkload;
 import vn.edu.fpt.faaps.academic.repository.CourseReadRepository;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.CategoryItem;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.Conflict;
@@ -37,7 +38,7 @@ final class AdminCourseWriteHelper {
 
     CourseDetail create(String code, String name, int credits, UUID categoryId,
             String description, String objectives, String learningOutcomes, String materialLink,
-            String status, List<PrerequisiteInput> prereqs) {
+            String workloadLevel, String status, List<PrerequisiteInput> prereqs) {
         if (code == null || code.isBlank() || name == null || name.isBlank()) {
             throw new IllegalArgumentException("code and name are required");
         }
@@ -49,6 +50,7 @@ final class AdminCourseWriteHelper {
             throw new IllegalArgumentException("categoryId is required");
         }
         String normalizedLink = normalizeAndValidateMaterialLink(materialLink);
+        String normalizedWorkload = CourseWorkload.normalizeManualLevel(workloadLevel);
         String courseStatus = (status == null || status.isBlank()) ? "ACTIVE" : status.toUpperCase();
         if (!List.of("ACTIVE", "INACTIVE").contains(courseStatus)) {
             throw new IllegalArgumentException("status is invalid");
@@ -57,14 +59,14 @@ final class AdminCourseWriteHelper {
         UUID id = UUID.randomUUID();
         prerequisites.validate(id, prereqs);
         rowWriter.insertCourseRow(id, normalizedCode, name.strip(), credits, categoryId.toString(),
-                description, objectives, learningOutcomes, normalizedLink, courseStatus);
+                description, objectives, learningOutcomes, normalizedLink, normalizedWorkload, courseStatus);
         prerequisites.save(id, prereqs);
         return reads.detail(id);
     }
 
     CourseDetail update(UUID id, String code, String name, Integer credits, UUID categoryId,
             String description, String objectives, String learningOutcomes,
-            String materialLink, boolean updateMaterialLink,
+            String materialLink, boolean updateMaterialLink, String workloadLevel, boolean updateWorkloadLevel,
             String status, List<PrerequisiteInput> prereqs) {
         CourseDetail current = reads.detail(id);
         prerequisites.validate(id, prereqs);
@@ -80,13 +82,17 @@ final class AdminCourseWriteHelper {
         UUID newCat = categoryId != null ? categoryId : current.categoryId();
         String newLink = (!updateMaterialLink || AdminCourseService.KEEP_EXISTING_MATERIAL_LINK.equals(materialLink))
                 ? current.materialLink() : normalizeAndValidateMaterialLink(materialLink);
+        String currentManual = current.workload() != null ? current.workload().manualLevel() : null;
+        String newWorkload = (!updateWorkloadLevel
+                || AdminCourseService.KEEP_EXISTING_WORKLOAD_LEVEL.equals(workloadLevel))
+                ? currentManual : CourseWorkload.normalizeManualLevel(workloadLevel);
         String newStatus = resolveUpdatedStatus(status, current.status());
 
         rowWriter.updateCourseRow(id, newCode, newName, newCredits, newCat.toString(),
                 description != null ? description : current.description(),
                 objectives != null ? objectives : current.objectives(),
                 learningOutcomes != null ? learningOutcomes : current.learningOutcomes(),
-                newLink, newStatus);
+                newLink, newWorkload, newStatus);
         prerequisites.replace(id, prereqs);
         return reads.detail(id);
     }

@@ -27,13 +27,14 @@ class AssignedStudentsQueryHelper {
         }
     }
 
-    Page<Map<String, Object>> assigned(UUID advisorId, UUID cohortId, String majorCode,
+    Page<Map<String, Object>> assigned(UUID advisorId, UUID cohortId, String cohort, String majorCode,
             String search, int page, int size) {
         if (page < 0 || size < 1 || size > 10000 || (long) page * size > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("page or size is invalid");
         }
         String term = search == null || search.isBlank() ? null : "%" + search.strip().toLowerCase() + "%";
         String major = majorCode == null || majorCode.isBlank() ? null : majorCode.strip().toUpperCase();
+        String cohortCode = cohort == null || cohort.isBlank() ? null : cohort.strip().toUpperCase();
         StringBuilder filters = new StringBuilder();
         List<Object> params = new ArrayList<>();
         if (advisorId != null) {
@@ -43,6 +44,10 @@ class AssignedStudentsQueryHelper {
         if (cohortId != null) {
             filters.append(" AND cv.id = ?");
             params.add(cohortId.toString());
+        }
+        if (cohortCode != null) {
+            filters.append(" AND UPPER(cv.version) = ?");
+            params.add(cohortCode);
         }
         if (major != null) {
             filters.append(" AND UPPER(m.code) = ?");

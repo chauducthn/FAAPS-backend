@@ -8,11 +8,13 @@ import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.edu.fpt.faaps.academic.dto.CourseWorkload;
 import vn.edu.fpt.faaps.academic.repository.CourseReadRepository;
 
 @Service
 public class AdminCourseService {
     public static final String KEEP_EXISTING_MATERIAL_LINK = "__KEEP_EXISTING_MATERIAL_LINK__";
+    public static final String KEEP_EXISTING_WORKLOAD_LEVEL = "__KEEP_EXISTING_WORKLOAD_LEVEL__";
 
     private final CourseReadRepository reads;
     private final CourseImportService importService;
@@ -27,10 +29,14 @@ public class AdminCourseService {
     }
 
     public Page list(String search, String status, UUID categoryId, int page, int size, String sort) {
-        return reads.list(search, status, categoryId, null, page, size, sort);
+        return reads.list(search, status, categoryId, null, null, page, size, sort);
     }
     public Page list(String search, String status, UUID categoryId, Integer credits, int page, int size, String sort) {
-        return reads.list(search, status, categoryId, credits, page, size, sort);
+        return reads.list(search, status, categoryId, credits, null, page, size, sort);
+    }
+    public Page list(String search, String status, UUID categoryId, Integer credits, String workloadLevel,
+            int page, int size, String sort) {
+        return reads.list(search, status, categoryId, credits, workloadLevel, page, size, sort);
     }
     public CourseDetail detail(UUID id) { return reads.detail(id); }
     public List<CourseRelation> relations(UUID courseId) { return relationService.list(courseId); }
@@ -52,27 +58,40 @@ public class AdminCourseService {
     @Transactional
     public CourseDetail create(String code, String name, int credits, UUID categoryId, String description,
             String objectives, String learningOutcomes, String status, List<PrerequisiteInput> prerequisites) {
-        return create(code, name, credits, categoryId, description, objectives, learningOutcomes, null, status, prerequisites);
+        return create(code, name, credits, categoryId, description, objectives, learningOutcomes, null, null, status, prerequisites);
     }
     @Transactional
     public CourseDetail create(String code, String name, int credits, UUID categoryId, String description,
             String objectives, String learningOutcomes, String materialLink,
             String status, List<PrerequisiteInput> prerequisites) {
+        return create(code, name, credits, categoryId, description, objectives, learningOutcomes, materialLink, null, status, prerequisites);
+    }
+    @Transactional
+    public CourseDetail create(String code, String name, int credits, UUID categoryId, String description,
+            String objectives, String learningOutcomes, String materialLink, String workloadLevel,
+            String status, List<PrerequisiteInput> prerequisites) {
         return writeHelper.create(code, name, credits, categoryId, description, objectives,
-                learningOutcomes, materialLink, status, prerequisites);
+                learningOutcomes, materialLink, workloadLevel, status, prerequisites);
     }
     @Transactional
     public CourseDetail update(UUID id, String code, String name, Integer credits, UUID categoryId, String description,
             String objectives, String learningOutcomes, String status, List<PrerequisiteInput> prerequisites) {
         return update(id, code, name, credits, categoryId, description, objectives, learningOutcomes,
-                KEEP_EXISTING_MATERIAL_LINK, false, status, prerequisites);
+                KEEP_EXISTING_MATERIAL_LINK, false, KEEP_EXISTING_WORKLOAD_LEVEL, false, status, prerequisites);
     }
     @Transactional
     public CourseDetail update(UUID id, String code, String name, Integer credits, UUID categoryId, String description,
             String objectives, String learningOutcomes, String materialLink, boolean updateMaterialLink,
             String status, List<PrerequisiteInput> prerequisites) {
+        return update(id, code, name, credits, categoryId, description, objectives, learningOutcomes,
+                materialLink, updateMaterialLink, KEEP_EXISTING_WORKLOAD_LEVEL, false, status, prerequisites);
+    }
+    @Transactional
+    public CourseDetail update(UUID id, String code, String name, Integer credits, UUID categoryId, String description,
+            String objectives, String learningOutcomes, String materialLink, boolean updateMaterialLink,
+            String workloadLevel, boolean updateWorkloadLevel, String status, List<PrerequisiteInput> prerequisites) {
         return writeHelper.update(id, code, name, credits, categoryId, description, objectives,
-                learningOutcomes, materialLink, updateMaterialLink, status, prerequisites);
+                learningOutcomes, materialLink, updateMaterialLink, workloadLevel, updateWorkloadLevel, status, prerequisites);
     }
     @Transactional
     public int bulkUpdateStatus(List<UUID> ids, String status) { return writeHelper.bulkUpdateStatus(ids, status); }
@@ -96,36 +115,19 @@ public class AdminCourseService {
 
     public record CourseSummary(UUID id, String code, String name, int credits, UUID categoryId,
             String categoryCode, String categoryName, String description, String materialLink, String status,
-            int prerequisiteCount, int usedInCurriculumCount, LocalDateTime createdAt, LocalDateTime updatedAt) {
-        public CourseSummary(UUID id, String code, String name, int credits, UUID categoryId, String categoryCode,
-                String categoryName, String description, String status, int prerequisiteCount,
-                int usedInCurriculumCount, LocalDateTime createdAt, LocalDateTime updatedAt) {
-            this(id, code, name, credits, categoryId, categoryCode, categoryName, description, null,
-                    status, prerequisiteCount, usedInCurriculumCount, createdAt, updatedAt);
+            int prerequisiteCount, int usedInCurriculumCount, LocalDateTime createdAt, LocalDateTime updatedAt,
+            CourseWorkload workload) {
+        public CourseSummary withWorkload(CourseWorkload w) {
+            return new CourseSummary(id, code, name, credits, categoryId, categoryCode, categoryName, description,
+                    materialLink, status, prerequisiteCount, usedInCurriculumCount, createdAt, updatedAt, w);
         }
     }
 
     public record CourseDetail(UUID id, String code, String name, int credits, UUID categoryId, String categoryCode,
             String categoryName, String description, String objectives, String learningOutcomes, String materialLink,
             String knowledgeBlock, String gradingStructure, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
-            List<PrerequisiteItem> prerequisites, List<CourseReference> referencedBy, int usedInCurriculumCount) {
-        public CourseDetail(UUID id, String code, String name, int credits, UUID categoryId, String categoryCode,
-                String categoryName, String description, String objectives, String learningOutcomes, String materialLink,
-                String status, LocalDateTime createdAt, LocalDateTime updatedAt, List<PrerequisiteItem> prerequisites,
-                List<CourseReference> referencedBy, int usedInCurriculumCount) {
-            this(id, code, name, credits, categoryId, categoryCode, categoryName, description, objectives,
-                    learningOutcomes, materialLink, null, null, status, createdAt, updatedAt,
-                    prerequisites, referencedBy, usedInCurriculumCount);
-        }
-        public CourseDetail(UUID id, String code, String name, int credits, UUID categoryId, String categoryCode,
-                String categoryName, String description, String objectives, String learningOutcomes, String status,
-                LocalDateTime createdAt, LocalDateTime updatedAt, List<PrerequisiteItem> prerequisites,
-                List<CourseReference> referencedBy, int usedInCurriculumCount) {
-            this(id, code, name, credits, categoryId, categoryCode, categoryName, description, objectives,
-                    learningOutcomes, null, null, null, status, createdAt, updatedAt,
-                    prerequisites, referencedBy, usedInCurriculumCount);
-        }
-    }
+            List<PrerequisiteItem> prerequisites, List<CourseReference> referencedBy, int usedInCurriculumCount,
+            CourseWorkload workload) {}
 
     public record CourseReference(UUID courseId, String courseCode, String courseName) {}
     public record PrerequisiteItem(UUID id, UUID prerequisiteCourseId, String prerequisiteCode,

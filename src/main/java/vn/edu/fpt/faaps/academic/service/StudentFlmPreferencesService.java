@@ -18,7 +18,6 @@ import vn.edu.fpt.faaps.academic.service.StudentAcademicService.CurriculumCourse
 @Service
 public class StudentFlmPreferencesService {
     private static final Pattern COMBO_SLOT = Pattern.compile("COM\\*?(\\d)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern LEVEL_CODE = Pattern.compile("^([A-Z]+)(\\d+)$");
     private final JdbcTemplate jdbc;
     private final FlmSubjectGroupService groupService;
 
@@ -145,35 +144,12 @@ public class StudentFlmPreferencesService {
 
     private List<CurriculumCourse> resolveEnglishChain(String startCode, CurriculumCourse placeholder) {
         String upper = startCode.strip().toUpperCase(Locale.ROOT);
-        Matcher m = LEVEL_CODE.matcher(upper);
-        if (m.matches()) {
-            int startNum = Integer.parseInt(m.group(2));
-            try {
-                List<CurriculumCourse> chain = jdbc.query(
-                        "SELECT id, code, name, credits FROM courses WHERE status = 'ACTIVE' AND UPPER(code) REGEXP ? ORDER BY code ASC",
-                        (rs, n) -> new CurriculumCourse(rs.getString(1), rs.getString(2), rs.getString(3),
-                                rs.getInt(4), placeholder.semesterNumber(), false, "English Prep"),
-                        "^" + m.group(1) + "[0-9]+$");
-                List<CurriculumCourse> levels = chain.stream().filter(c -> {
-                    Matcher cm = LEVEL_CODE.matcher(c.code().toUpperCase(Locale.ROOT));
-                    return cm.matches() && Integer.parseInt(cm.group(2)) >= startNum;
-                }).toList();
-                if (!levels.isEmpty()) return levels;
-            } catch (RuntimeException ignored) { /* fallback below */ }
-        }
-        return List.of(resolveSlot(null, upper, upper, placeholder.credits(), placeholder, "English Prep"));
+        CurriculumCourse fallback = resolveSlot(null, upper, upper, placeholder.credits(), placeholder, "English Prep");
+        return FlmEnglishTrackResolver.resolveChain(jdbc, startCode, placeholder, fallback);
     }
 
     private List<NamedOption> resolveEnglishOptions() {
-        try {
-            List<NamedOption> fromDb = jdbc.query(
-                    "SELECT code, name FROM courses WHERE status = 'ACTIVE' AND UPPER(code) REGEXP '^(PEN|TRS|LUK)[0-9]' ORDER BY code ASC",
-                    (rs, n) -> new NamedOption(rs.getString(1), rs.getString(1) + " — " + rs.getString(2)));
-            if (fromDb.isEmpty()) return List.of();
-            List<NamedOption> out = new ArrayList<>(fromDb);
-            out.add(new NamedOption("EXEMPT", "Exempt (IELTS >= 6.0 / Equivalent)"));
-            return out;
-        } catch (RuntimeException ignored) { return List.of(); }
+        return FlmEnglishTrackResolver.resolveOptions(jdbc);
     }
 
     private Stored loadStored(UUID studentId) {

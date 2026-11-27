@@ -10,9 +10,11 @@ final class AdminCourseRowWriter {
     private static final Pattern MATERIAL_LINK_PATTERN = Pattern.compile("^https?://\\S+$");
 
     private final JdbcTemplate jdbc;
+    private final CourseWorkloadService workloadService;
 
     AdminCourseRowWriter(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.workloadService = new CourseWorkloadService(jdbc);
     }
 
     static String normalizeAndValidateMaterialLink(String raw) {
@@ -38,52 +40,94 @@ final class AdminCourseRowWriter {
     }
 
     void insertCourseRow(UUID id, String code, String name, int credits, String categoryId,
-            String description, String objectives, String learningOutcomes, String materialLink, String status) {
+            String description, String objectives, String learningOutcomes, String materialLink,
+            String workloadLevel, String status) {
+        if (workloadLevel != null) {
+            workloadService.ensureColumn();
+        }
         try {
             try {
                 jdbc.update("""
                         INSERT INTO courses (id, code, name, credits, category_id, description, objectives,
-                            learning_outcomes, material_link, status, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            learning_outcomes, material_link, workload_level, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         """, id.toString(), code, name, credits, categoryId,
-                        description, objectives, learningOutcomes, materialLink, status);
+                        description, objectives, learningOutcomes, materialLink, workloadLevel, status);
             } catch (DuplicateKeyException dup) {
                 throw dup;
             } catch (Exception fallbackEx) {
-                jdbc.update("""
-                        INSERT INTO courses (id, code, name, credits, category_id, description, objectives,
-                            learning_outcomes, status, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        """, id.toString(), code, name, credits, categoryId,
-                        description, objectives, learningOutcomes, status);
+                insertCourseRowFallback(id, code, name, credits, categoryId, description,
+                        objectives, learningOutcomes, materialLink, status);
             }
         } catch (DuplicateKeyException e) {
             throw new Conflict("Course code already exists");
         }
     }
 
-    void updateCourseRow(UUID id, String code, String name, int credits, String categoryId,
+    private void insertCourseRowFallback(UUID id, String code, String name, int credits, String categoryId,
             String description, String objectives, String learningOutcomes, String materialLink, String status) {
+        try {
+            jdbc.update("""
+                    INSERT INTO courses (id, code, name, credits, category_id, description, objectives,
+                        learning_outcomes, material_link, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, id.toString(), code, name, credits, categoryId,
+                    description, objectives, learningOutcomes, materialLink, status);
+        } catch (DuplicateKeyException dup) {
+            throw dup;
+        } catch (Exception fallbackEx) {
+            jdbc.update("""
+                    INSERT INTO courses (id, code, name, credits, category_id, description, objectives,
+                        learning_outcomes, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, id.toString(), code, name, credits, categoryId,
+                    description, objectives, learningOutcomes, status);
+        }
+    }
+
+    void updateCourseRow(UUID id, String code, String name, int credits, String categoryId,
+            String description, String objectives, String learningOutcomes, String materialLink,
+            String workloadLevel, String status) {
+        if (workloadLevel != null) {
+            workloadService.ensureColumn();
+        }
         try {
             try {
                 jdbc.update("""
                         UPDATE courses SET code = ?, name = ?, credits = ?, category_id = ?, description = ?,
-                            objectives = ?, learning_outcomes = ?, material_link = ?, status = ?,
+                            objectives = ?, learning_outcomes = ?, material_link = ?, workload_level = ?, status = ?,
                             updated_at = CURRENT_TIMESTAMP WHERE id = ?
                         """, code, name, credits, categoryId, description, objectives,
-                        learningOutcomes, materialLink, status, id.toString());
+                        learningOutcomes, materialLink, workloadLevel, status, id.toString());
             } catch (DuplicateKeyException dup) {
                 throw dup;
             } catch (Exception fallbackEx) {
-                jdbc.update("""
-                        UPDATE courses SET code = ?, name = ?, credits = ?, category_id = ?, description = ?,
-                            objectives = ?, learning_outcomes = ?, status = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                        """, code, name, credits, categoryId, description, objectives,
-                        learningOutcomes, status, id.toString());
+                updateCourseRowFallback(id, code, name, credits, categoryId, description,
+                        objectives, learningOutcomes, materialLink, status);
             }
         } catch (DuplicateKeyException e) {
             throw new Conflict("Course code already exists");
+        }
+    }
+
+    private void updateCourseRowFallback(UUID id, String code, String name, int credits, String categoryId,
+            String description, String objectives, String learningOutcomes, String materialLink, String status) {
+        try {
+            jdbc.update("""
+                    UPDATE courses SET code = ?, name = ?, credits = ?, category_id = ?, description = ?,
+                        objectives = ?, learning_outcomes = ?, material_link = ?, status = ?,
+                        updated_at = CURRENT_TIMESTAMP WHERE id = ?
+                    """, code, name, credits, categoryId, description, objectives,
+                    learningOutcomes, materialLink, status, id.toString());
+        } catch (DuplicateKeyException dup) {
+            throw dup;
+        } catch (Exception fallbackEx) {
+            jdbc.update("""
+                    UPDATE courses SET code = ?, name = ?, credits = ?, category_id = ?, description = ?,
+                        objectives = ?, learning_outcomes = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """, code, name, credits, categoryId, description, objectives,
+                    learningOutcomes, status, id.toString());
         }
     }
 }

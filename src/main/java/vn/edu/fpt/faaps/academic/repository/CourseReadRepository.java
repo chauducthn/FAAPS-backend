@@ -2,47 +2,85 @@ package vn.edu.fpt.faaps.academic.repository;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import vn.edu.fpt.faaps.academic.dto.CourseWorkload;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.CourseDetail;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.CourseReference;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.CourseSummary;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.NotFound;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.Page;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.PrerequisiteItem;
+import vn.edu.fpt.faaps.academic.service.CourseWorkloadService;
 
 public final class CourseReadRepository {
     private final JdbcTemplate jdbc;
+    private final CourseWorkloadService workloads;
 
     public CourseReadRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.workloads = new CourseWorkloadService(jdbc);
     }
 
     public Page list(String search, String status, UUID categoryId, int page, int size, String sort) {
-        return list(search, status, categoryId, null, page, size, sort);
+        return list(search, status, categoryId, null, null, page, size, sort);
     }
 
     public Page list(String search, String status, UUID categoryId, Integer credits, int page, int size, String sort) {
+        return list(search, status, categoryId, credits, null, page, size, sort);
+    }
+
+    public Page list(String search, String status, UUID categoryId, Integer credits, String workloadLevel,
+            int page, int size, String sort) {
         validateListParams(status, credits, page, size);
+        String filterLevel = CourseWorkload.normalizeFilterLevel(workloadLevel);
         StringBuilder where = new StringBuilder(" WHERE 1 = 1");
         List<Object> params = new ArrayList<>();
         appendFilters(where, params, search, status, categoryId, credits);
+        String orderBy = CourseReadMapper.resolveOrderBy(sort);
 
+        if (filterLevel != null) {
+            return listFilteredByWorkload(where, params, orderBy, filterLevel, page, size);
+        }
         Long total = jdbc.queryForObject("SELECT COUNT(*) FROM courses c" + where, Long.class, params.toArray());
         long totalElements = total == null ? 0 : total;
-        String suffix = where + CourseReadMapper.resolveOrderBy(sort) + " LIMIT ? OFFSET ?";
-        String sqlWithLink = CourseReadMapper.SUMMARY_SELECT.formatted("c.material_link") + suffix;
-        String sqlLegacy = CourseReadMapper.SUMMARY_SELECT.formatted("NULL AS material_link") + suffix;
-
+        String suffix = where + orderBy + " LIMIT ? OFFSET ?";
         params.add(size);
         params.add(page * size);
-        List<CourseSummary> items;
+        List<CourseSummary> raw = querySummaries(suffix, params.toArray());
+        return new Page(attachWorkloads(raw), page, size, totalElements, (totalElements + size - 1) / size);
+    }
+
+    private Page listFilteredByWorkload(StringBuilder where, List<Object> params, String orderBy,
+            String filterLevel, int page, int size) {
+        List<CourseSummary> all = attachWorkloads(querySummaries(where + orderBy, params.toArray()));
+        List<CourseSummary> matched = all.stream()
+                .filter(c -> c.workload() != null && filterLevel.equals(c.workload().level()))
+                .toList();
+        long totalElements = matched.size();
+        int from = Math.min(page * size, matched.size());
+        int to = Math.min(from + size, matched.size());
+        return new Page(matched.subList(from, to), page, size, totalElements, (totalElements + size - 1) / size);
+    }
+
+    private List<CourseSummary> querySummaries(String suffix, Object[] args) {
+        String sqlWithLink = CourseReadMapper.SUMMARY_SELECT.formatted("c.material_link") + suffix;
+        String sqlLegacy = CourseReadMapper.SUMMARY_SELECT.formatted("NULL AS material_link") + suffix;
         try {
-            items = jdbc.query(sqlWithLink, (rs, rowNum) -> CourseReadMapper.mapSummary(rs), params.toArray());
+            return jdbc.query(sqlWithLink, (rs, rowNum) -> CourseReadMapper.mapSummary(rs), args);
         } catch (Exception ex) {
-            items = jdbc.query(sqlLegacy, (rs, rowNum) -> CourseReadMapper.mapSummary(rs), params.toArray());
+            return jdbc.query(sqlLegacy, (rs, rowNum) -> CourseReadMapper.mapSummary(rs), args);
         }
-        return new Page(items, page, size, totalElements, (totalElements + size - 1) / size);
+    }
+
+    private List<CourseSummary> attachWorkloads(List<CourseSummary> items) {
+        if (items.isEmpty()) {
+            return items;
+        }
+        Map<String, CourseWorkload> map = workloads.evaluateByCourseIds(
+                items.stream().map(c -> c.id().toString()).toList());
+        return items.stream().map(c -> c.withWorkload(map.get(c.id().toString()))).toList();
     }
 
     public CourseDetail detail(UUID id) {
@@ -62,12 +100,13 @@ public final class CourseReadRepository {
         CourseDetail base = results.get(0);
         List<PrerequisiteItem> prerequisites = loadPrerequisites(id);
         List<CourseReference> referencedBy = loadReferencedBy(id);
+        CourseWorkload workload = workloads.evaluateOne(id.toString());
         return new CourseDetail(base.id(), base.code(), base.name(), base.credits(),
                 base.categoryId(), base.categoryCode(), base.categoryName(),
                 base.description(), base.objectives(), base.learningOutcomes(),
                 base.materialLink(), base.knowledgeBlock(), base.gradingStructure(),
                 base.status(), base.createdAt(), base.updatedAt(),
-                prerequisites, referencedBy, base.usedInCurriculumCount());
+                prerequisites, referencedBy, base.usedInCurriculumCount(), workload);
     }
 
     private void validateListParams(String status, Integer credits, int page, int size) {

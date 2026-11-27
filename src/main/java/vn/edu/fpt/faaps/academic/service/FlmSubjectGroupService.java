@@ -147,11 +147,18 @@ public class FlmSubjectGroupService {
 
     public List<NamedOption> findInstruments() {
         try {
-            return jdbc.query("""
+            List<NamedOption> rows = jdbc.query("""
                     SELECT DISTINCT gc.course_code, gc.course_name FROM flm_subject_group_courses gc
                     JOIN flm_subject_groups g ON g.id = gc.group_id
-                    WHERE g.group_type = 'ELECTIVE' AND UPPER(g.group_code) LIKE 'TMI%' ORDER BY gc.course_code ASC
+                    WHERE g.group_type = 'ELECTIVE' AND UPPER(g.group_code) LIKE 'TMI%' ORDER BY gc.course_code DESC
                     """, (rs, n) -> new NamedOption(rs.getString(1), rs.getString(1) + " — " + rs.getString(2)));
+            rows.sort((a, b) -> b.code().replaceAll("\\D+", "").compareTo(a.code().replaceAll("\\D+", "")));
+            java.util.Map<String, NamedOption> latest = new java.util.LinkedHashMap<>();
+            for (NamedOption opt : rows) {
+                String key = opt.code().toUpperCase(Locale.ROOT).replace('Đ', 'D').replaceAll("\\d+$", "");
+                latest.putIfAbsent(key, opt);
+            }
+            return latest.values().stream().sorted((a, b) -> a.code().compareToIgnoreCase(b.code())).toList();
         } catch (RuntimeException ignored) { return List.of(); }
     }
 

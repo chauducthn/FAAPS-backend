@@ -128,7 +128,14 @@ abstract class AdminApiConventionTestBase {
 
         @Override
         public Optional<AuthAccount> findAdminByEmail(String email) {
-            return Optional.ofNullable(account.get()).filter(c -> c.email().equals(email));
+            return Optional.ofNullable(account.get())
+                    .filter(c -> "ADMIN".equals(c.role()) && c.email().equals(email));
+        }
+
+        @Override
+        public Optional<AuthAccount> findLocalByEmail(String email) {
+            return Optional.ofNullable(account.get())
+                    .filter(c -> !"ADMIN".equals(c.role()) && c.email().equals(email));
         }
 
         @Override

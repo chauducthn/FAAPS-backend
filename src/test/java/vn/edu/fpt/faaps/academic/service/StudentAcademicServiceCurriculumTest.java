@@ -112,4 +112,44 @@ class StudentAcademicServiceCurriculumTest {
                 String.class, studentId.toString());
         assertEquals(gradSemId.toString(), computedGradSem);
     }
+
+    @Test
+    void curriculumCoursesIncludeEvaluatedWorkload() {
+        UUID catId = UUID.randomUUID();
+        UUID courseId = UUID.randomUUID();
+        jdbc.update("INSERT INTO course_categories VALUES (?, 'Major Core')", catId.toString());
+        jdbc.update("INSERT INTO courses VALUES (?, 'PRN212', 'Basic Cross-Platform App Programming', 3, ?, 'Desc', 'Obj', 'LO', 'ACTIVE')",
+                courseId.toString(), catId.toString());
+        jdbc.update("INSERT INTO curriculum_courses VALUES (?, ?, 5, true, 'Core')", cur1.toString(), courseId.toString());
+        service.changeCurriculum(studentId, cur1);
+
+        var courses = service.curriculumCourses(studentId);
+        assertEquals(1, courses.size());
+        var cc = courses.get(0);
+        assertEquals("PRN212", cc.code());
+        assertNotNull(cc.workload());
+        assertNotNull(cc.workload().level());
+        assertEquals("RULE_BASED", cc.workload().source());
+    }
+
+    @Test
+    void unresolvedFlmPlaceholderFallbackDoesNotLeakPlaceholderWorkload() {
+        UUID catId = UUID.randomUUID();
+        UUID placeholderId = UUID.randomUUID();
+        jdbc.update("INSERT INTO course_categories VALUES (?, 'Elective')", catId.toString());
+        jdbc.update("INSERT INTO courses VALUES (?, 'TMI_ELE', 'Musical Instrument Placeholder', 3, ?, 'Desc', 'Obj', 'LO', 'ACTIVE')",
+                placeholderId.toString(), catId.toString());
+        jdbc.update("INSERT INTO curriculum_courses VALUES (?, ?, 1, false, 'Instrument')",
+                cur1.toString(), placeholderId.toString());
+        service.changeCurriculum(studentId, cur1);
+
+        // Choose an instrument code that does not exist in courses table -> falls back to placeholderId
+        new StudentFlmPreferencesService(jdbc).save(studentId, "SE", null, null, "TMI999", null);
+
+        var courses = service.curriculumCourses(studentId);
+        assertEquals(1, courses.size());
+        assertEquals("TMI999", courses.get(0).code());
+        assertEquals(placeholderId.toString(), courses.get(0).courseId());
+        assertNull(courses.get(0).workload());
+    }
 }

@@ -40,17 +40,19 @@ public class AssignmentWorkflowController {
     @GetMapping("/assigned")
     public AssignmentWorkflowService.Page<Map<String, Object>> assigned(
             @RequestParam(required = false) UUID advisorId, @RequestParam(required = false) UUID cohortId,
+            @RequestParam(required = false) String cohort,
             @RequestParam(required = false) String majorCode, @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return workflow.assigned(advisorId, cohortId, majorCode, search, page, size);
+        return workflow.assigned(advisorId, cohortId, cohort, majorCode, search, page, size);
     }
 
     @GetMapping("/unassigned")
     public AssignmentWorkflowService.Page<Map<String, Object>> unassigned(
-            @RequestParam(required = false) UUID cohortId, @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID cohortId, @RequestParam(required = false) String cohort,
+            @RequestParam(required = false) String search,
             @RequestParam(required = false) Boolean hasPendingRequest,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return workflow.unassigned(cohortId, search, hasPendingRequest, page, size);
+        return workflow.unassigned(cohortId, cohort, search, hasPendingRequest, page, size);
     }
 
     @GetMapping("/summary")
