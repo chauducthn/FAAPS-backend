@@ -89,6 +89,8 @@ final class CourseReadMapper {
                 rs.getString("objectives"),
                 rs.getString("learning_outcomes"),
                 rs.getString("material_link"),
+                rs.getString("knowledge_block"),
+                rs.getString("grading_structure"),
                 rs.getString("status"),
                 rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null,
                 rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null,

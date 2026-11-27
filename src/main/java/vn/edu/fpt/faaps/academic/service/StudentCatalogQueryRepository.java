@@ -24,7 +24,8 @@ final class StudentCatalogQueryRepository {
         try {
             return jdbc.query("""
                     SELECT c.id, c.code, c.name, c.credits, c.description, c.objectives,
-                           c.learning_outcomes, c.material_link, cat.name AS category_name
+                           c.learning_outcomes, c.material_link, c.knowledge_block, c.grading_structure,
+                           cat.name AS category_name
                     FROM courses c JOIN course_categories cat ON cat.id = c.category_id
                     WHERE c.status = 'ACTIVE' AND (LOWER(c.code) LIKE ? OR LOWER(c.name) LIKE ?)
                     ORDER BY c.code LIMIT ? OFFSET ?
@@ -32,7 +33,8 @@ final class StudentCatalogQueryRepository {
         } catch (Exception ex) {
             return jdbc.query("""
                     SELECT c.id, c.code, c.name, c.credits, c.description, c.objectives,
-                           c.learning_outcomes, NULL AS material_link, cat.name AS category_name
+                           c.learning_outcomes, NULL AS material_link, NULL AS knowledge_block,
+                           NULL AS grading_structure, cat.name AS category_name
                     FROM courses c JOIN course_categories cat ON cat.id = c.category_id
                     WHERE c.status = 'ACTIVE' AND (LOWER(c.code) LIKE ? OR LOWER(c.name) LIKE ?)
                     ORDER BY c.code LIMIT ? OFFSET ?
@@ -57,7 +59,8 @@ final class StudentCatalogQueryRepository {
         try {
             return jdbc.query("""
                     SELECT c.id, c.code, c.name, c.credits, c.description, c.objectives,
-                           c.learning_outcomes, c.material_link, cat.name AS category_name
+                           c.learning_outcomes, c.material_link, c.knowledge_block, c.grading_structure,
+                           cat.name AS category_name
                     FROM courses c JOIN course_categories cat ON cat.id = c.category_id
                     WHERE c.id = ? AND c.status = 'ACTIVE'
                     """, (rs, row) -> mapCourse(rs), id.toString()).stream().findFirst()
@@ -67,7 +70,8 @@ final class StudentCatalogQueryRepository {
         } catch (Exception ex) {
             return jdbc.query("""
                     SELECT c.id, c.code, c.name, c.credits, c.description, c.objectives,
-                           c.learning_outcomes, NULL AS material_link, cat.name AS category_name
+                           c.learning_outcomes, NULL AS material_link, NULL AS knowledge_block,
+                           NULL AS grading_structure, cat.name AS category_name
                     FROM courses c JOIN course_categories cat ON cat.id = c.category_id
                     WHERE c.id = ? AND c.status = 'ACTIVE'
                     """, (rs, row) -> mapCourse(rs), id.toString()).stream().findFirst()
@@ -114,6 +118,7 @@ final class StudentCatalogQueryRepository {
     private Course mapCourse(ResultSet rs) throws SQLException {
         return new Course(rs.getString("id"), rs.getString("code"), rs.getString("name"),
                 rs.getInt("credits"), rs.getString("category_name"), rs.getString("description"),
-                rs.getString("objectives"), rs.getString("learning_outcomes"), rs.getString("material_link"));
+                rs.getString("objectives"), rs.getString("learning_outcomes"), rs.getString("material_link"),
+                rs.getString("knowledge_block"), rs.getString("grading_structure"));
     }
 }

@@ -29,30 +29,21 @@ public class AdminCourseService {
     public Page list(String search, String status, UUID categoryId, int page, int size, String sort) {
         return reads.list(search, status, categoryId, null, page, size, sort);
     }
-
     public Page list(String search, String status, UUID categoryId, Integer credits, int page, int size, String sort) {
         return reads.list(search, status, categoryId, credits, page, size, sort);
     }
-
-    public CourseDetail detail(UUID id) {
-        return reads.detail(id);
-    }
-
-    public List<CourseRelation> relations(UUID courseId) {
-        return relationService.list(courseId);
-    }
+    public CourseDetail detail(UUID id) { return reads.detail(id); }
+    public List<CourseRelation> relations(UUID courseId) { return relationService.list(courseId); }
 
     @Transactional
     public CourseRelation addRelation(UUID courseId, String kind, Integer groupNo,
             UUID otherCourseId, BigDecimal minimumScore) {
         return relationService.add(courseId, kind, groupNo, otherCourseId, minimumScore);
     }
-
     @Transactional
     public CourseRelation updateRelation(UUID courseId, UUID relationId, Integer groupNo, BigDecimal minimumScore) {
         return relationService.update(courseId, relationId, groupNo, minimumScore);
     }
-
     @Transactional
     public CourseRelation deleteRelation(UUID courseId, UUID relationId) {
         return relationService.delete(courseId, relationId);
@@ -61,10 +52,8 @@ public class AdminCourseService {
     @Transactional
     public CourseDetail create(String code, String name, int credits, UUID categoryId, String description,
             String objectives, String learningOutcomes, String status, List<PrerequisiteInput> prerequisites) {
-        return create(code, name, credits, categoryId, description, objectives,
-                learningOutcomes, null, status, prerequisites);
+        return create(code, name, credits, categoryId, description, objectives, learningOutcomes, null, status, prerequisites);
     }
-
     @Transactional
     public CourseDetail create(String code, String name, int credits, UUID categoryId, String description,
             String objectives, String learningOutcomes, String materialLink,
@@ -72,14 +61,12 @@ public class AdminCourseService {
         return writeHelper.create(code, name, credits, categoryId, description, objectives,
                 learningOutcomes, materialLink, status, prerequisites);
     }
-
     @Transactional
     public CourseDetail update(UUID id, String code, String name, Integer credits, UUID categoryId, String description,
             String objectives, String learningOutcomes, String status, List<PrerequisiteInput> prerequisites) {
         return update(id, code, name, credits, categoryId, description, objectives, learningOutcomes,
                 KEEP_EXISTING_MATERIAL_LINK, false, status, prerequisites);
     }
-
     @Transactional
     public CourseDetail update(UUID id, String code, String name, Integer credits, UUID categoryId, String description,
             String objectives, String learningOutcomes, String materialLink, boolean updateMaterialLink,
@@ -87,50 +74,25 @@ public class AdminCourseService {
         return writeHelper.update(id, code, name, credits, categoryId, description, objectives,
                 learningOutcomes, materialLink, updateMaterialLink, status, prerequisites);
     }
-
     @Transactional
-    public int bulkUpdateStatus(List<UUID> ids, String status) {
-        return writeHelper.bulkUpdateStatus(ids, status);
-    }
-
+    public int bulkUpdateStatus(List<UUID> ids, String status) { return writeHelper.bulkUpdateStatus(ids, status); }
     @Transactional
-    public void delete(UUID id) {
-        writeHelper.delete(id);
-    }
+    public void delete(UUID id) { writeHelper.delete(id); }
 
     @Transactional
     public int bulkDelete(List<UUID> ids) {
-        if (ids == null || ids.isEmpty()) {
-            return 0;
-        }
+        if (ids == null || ids.isEmpty()) return 0;
         int count = 0;
-        for (UUID id : ids) {
-            delete(id);
-            count++;
-        }
+        for (UUID id : ids) { delete(id); count++; }
         return count;
     }
 
-    public List<CategoryItem> categories() {
-        return writeHelper.categories();
-    }
-
-    public ImportPreviewResult previewXlsx(InputStream inputStream) {
-        return importService.previewXlsx(inputStream, categories());
-    }
-
+    public List<CategoryItem> categories() { return writeHelper.categories(); }
+    public ImportPreviewResult previewXlsx(InputStream inputStream) { return importService.previewXlsx(inputStream, categories()); }
     @Transactional
-    public int confirmImport(List<ImportConfirmItem> items) {
-        return importService.confirmImport(items, categories());
-    }
-
-    public static String normalizeAndValidateMaterialLink(String raw) {
-        return AdminCourseWriteHelper.normalizeAndValidateMaterialLink(raw);
-    }
-
-    public static String extractMaterialLink(String raw) {
-        return AdminCourseWriteHelper.extractMaterialLink(raw);
-    }
+    public int confirmImport(List<ImportConfirmItem> items) { return importService.confirmImport(items, categories()); }
+    public static String normalizeAndValidateMaterialLink(String raw) { return AdminCourseWriteHelper.normalizeAndValidateMaterialLink(raw); }
+    public static String extractMaterialLink(String raw) { return AdminCourseWriteHelper.extractMaterialLink(raw); }
 
     public record CourseSummary(UUID id, String code, String name, int credits, UUID categoryId,
             String categoryCode, String categoryName, String description, String materialLink, String status,
@@ -145,14 +107,22 @@ public class AdminCourseService {
 
     public record CourseDetail(UUID id, String code, String name, int credits, UUID categoryId, String categoryCode,
             String categoryName, String description, String objectives, String learningOutcomes, String materialLink,
-            String status, LocalDateTime createdAt, LocalDateTime updatedAt,
+            String knowledgeBlock, String gradingStructure, String status, LocalDateTime createdAt, LocalDateTime updatedAt,
             List<PrerequisiteItem> prerequisites, List<CourseReference> referencedBy, int usedInCurriculumCount) {
+        public CourseDetail(UUID id, String code, String name, int credits, UUID categoryId, String categoryCode,
+                String categoryName, String description, String objectives, String learningOutcomes, String materialLink,
+                String status, LocalDateTime createdAt, LocalDateTime updatedAt, List<PrerequisiteItem> prerequisites,
+                List<CourseReference> referencedBy, int usedInCurriculumCount) {
+            this(id, code, name, credits, categoryId, categoryCode, categoryName, description, objectives,
+                    learningOutcomes, materialLink, null, null, status, createdAt, updatedAt,
+                    prerequisites, referencedBy, usedInCurriculumCount);
+        }
         public CourseDetail(UUID id, String code, String name, int credits, UUID categoryId, String categoryCode,
                 String categoryName, String description, String objectives, String learningOutcomes, String status,
                 LocalDateTime createdAt, LocalDateTime updatedAt, List<PrerequisiteItem> prerequisites,
                 List<CourseReference> referencedBy, int usedInCurriculumCount) {
             this(id, code, name, credits, categoryId, categoryCode, categoryName, description, objectives,
-                    learningOutcomes, null, status, createdAt, updatedAt,
+                    learningOutcomes, null, null, null, status, createdAt, updatedAt,
                     prerequisites, referencedBy, usedInCurriculumCount);
         }
     }
@@ -166,26 +136,28 @@ public class AdminCourseService {
     public record CategoryItem(UUID id, String code, String name, String description) {}
     public record ImportRowItem(int rowNumber, String code, String name, int credits, String categoryId,
             String categoryName, String description, String prerequisites, String objectives, String learningOutcomes,
-            String courseStatus, String materialLink, String status, List<String> errors) {
+            String courseStatus, String materialLink, String knowledgeBlock, String gradingStructure,
+            String status, List<String> errors) {
         public ImportRowItem(int rowNumber, String code, String name, int credits, String categoryId,
                 String categoryName, String description, String prerequisites, String status, List<String> errors) {
             this(rowNumber, code, name, credits, categoryId, categoryName, description, prerequisites,
-                    null, null, "ACTIVE", null, status, errors);
+                    null, null, "ACTIVE", null, null, null, status, errors);
         }
     }
     public record ImportPreviewResult(int totalRows, int validRows, int errorRows, List<ImportRowItem> items) {}
     public record ImportConfirmItem(String code, String name, int credits, UUID categoryId, String description,
-            String prerequisites, String objectives, String learningOutcomes, String status, String materialLink) {
+            String prerequisites, String objectives, String learningOutcomes, String status, String materialLink,
+            String knowledgeBlock, String gradingStructure) {
         public ImportConfirmItem(String code, String name, int credits, UUID categoryId, String description) {
-            this(code, name, credits, categoryId, description, null, null, null, "ACTIVE", null);
+            this(code, name, credits, categoryId, description, null, null, null, "ACTIVE", null, null, null);
         }
         public ImportConfirmItem(String code, String name, int credits, UUID categoryId,
                 String description, String prerequisites) {
-            this(code, name, credits, categoryId, description, prerequisites, null, null, "ACTIVE", null);
+            this(code, name, credits, categoryId, description, prerequisites, null, null, "ACTIVE", null, null, null);
         }
         public ImportConfirmItem(String code, String name, int credits, UUID categoryId, String description,
                 String prerequisites, String objectives, String learningOutcomes) {
-            this(code, name, credits, categoryId, description, prerequisites, objectives, learningOutcomes, "ACTIVE", null);
+            this(code, name, credits, categoryId, description, prerequisites, objectives, learningOutcomes, "ACTIVE", null, null, null);
         }
     }
     public record Page(List<CourseSummary> items, int page, int size, long totalElements, long totalPages) {}

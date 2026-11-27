@@ -159,10 +159,12 @@ public class FlmSubjectGroupService {
         List<ComboOption> out = new ArrayList<>();
         for (GroupRow g : groups) {
             List<SlotCourse> slots = jdbc.query("""
-                    SELECT gc.course_code, gc.course_name, COALESCE(c.credits, 3) FROM flm_subject_group_courses gc
+                    SELECT c.id, gc.course_code, COALESCE(c.name, gc.course_name), COALESCE(c.credits, 3)
+                    FROM flm_subject_group_courses gc
                     LEFT JOIN courses c ON UPPER(c.code) = UPPER(gc.course_code)
                     WHERE gc.group_id = ? ORDER BY gc.term ASC, gc.slot_order ASC
-                    """, (rs, n) -> new SlotCourse(rs.getString(1), rs.getString(2), rs.getInt(3)), g.id());
+                    """, (rs, n) -> new SlotCourse(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4)),
+                    g.id());
             if (!slots.isEmpty()) out.add(new ComboOption(g.code(), g.code() + " — " + g.name(), slots));
         }
         return out;

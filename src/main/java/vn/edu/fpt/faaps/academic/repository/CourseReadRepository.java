@@ -46,11 +46,13 @@ public final class CourseReadRepository {
     }
 
     public CourseDetail detail(UUID id) {
-        String sqlWithLink = CourseReadMapper.DETAIL_SELECT.formatted("c.material_link");
-        String sqlLegacy = CourseReadMapper.DETAIL_SELECT.formatted("NULL AS material_link");
+        String sqlWithExtra = CourseReadMapper.DETAIL_SELECT.formatted(
+                "c.material_link, c.knowledge_block, c.grading_structure");
+        String sqlLegacy = CourseReadMapper.DETAIL_SELECT.formatted(
+                "NULL AS material_link, NULL AS knowledge_block, NULL AS grading_structure");
         List<CourseDetail> results;
         try {
-            results = jdbc.query(sqlWithLink, (rs, rowNum) -> CourseReadMapper.mapDetail(rs), id.toString());
+            results = jdbc.query(sqlWithExtra, (rs, rowNum) -> CourseReadMapper.mapDetail(rs), id.toString());
         } catch (Exception ex) {
             results = jdbc.query(sqlLegacy, (rs, rowNum) -> CourseReadMapper.mapDetail(rs), id.toString());
         }
@@ -63,7 +65,8 @@ public final class CourseReadRepository {
         return new CourseDetail(base.id(), base.code(), base.name(), base.credits(),
                 base.categoryId(), base.categoryCode(), base.categoryName(),
                 base.description(), base.objectives(), base.learningOutcomes(),
-                base.materialLink(), base.status(), base.createdAt(), base.updatedAt(),
+                base.materialLink(), base.knowledgeBlock(), base.gradingStructure(),
+                base.status(), base.createdAt(), base.updatedAt(),
                 prerequisites, referencedBy, base.usedInCurriculumCount());
     }
 

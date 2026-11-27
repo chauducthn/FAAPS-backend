@@ -22,9 +22,21 @@ class StudentRoadmapService {
             "Optimal curriculum progression based on prerequisites and university guidelines.";
 
     private final StudentRoadmapStore store;
+    private final JdbcTemplate jdbc;
 
     StudentRoadmapService(JdbcTemplate jdbc) {
         this.store = new StudentRoadmapStore(jdbc);
+        this.jdbc = jdbc;
+    }
+
+    private int defaultMaxCredits() {
+        try {
+            Integer v = jdbc.queryForObject(
+                    "SELECT max_credits_per_semester FROM academic_semester_limits WHERE id = 1", Integer.class);
+            return v != null && v > 0 ? v : 21;
+        } catch (RuntimeException ignored) {
+            return 21;
+        }
     }
 
     StudyRoadmapDto get(UUID studentId) {
@@ -35,8 +47,10 @@ class StudentRoadmapService {
         validateInput(input);
         store.updateExpectedGraduationIfProvided(studentId, input);
         List<Map<String, Object>> courses = store.curriculumCourses(studentId);
+        int configuredLimit = defaultMaxCredits();
         int maxCredits = input != null && input.maxCreditsPerSemester() != null
-                && input.maxCreditsPerSemester() > 0 ? input.maxCreditsPerSemester() : 20;
+                && input.maxCreditsPerSemester() > 0
+                ? Math.min(input.maxCreditsPerSemester(), configuredLimit) : configuredLimit;
         Map<Integer, List<RoadmapCourseDto>> grouped = groupCourses(courses, maxCredits, input);
         List<RoadmapSemesterDto> semesters = semesters(grouped, maxCredits);
         int totalCredits = semesters.stream().mapToInt(semester -> semester.totalCredits()).sum();

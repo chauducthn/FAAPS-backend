@@ -12,7 +12,7 @@ import vn.edu.fpt.faaps.academic.service.AdminCourseService.CourseDetail;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.PrerequisiteInput;
 
 final class AdminCourseWriteHelper {
-    private static final String CODE_PART = "(?:[\\p{Lu}\\d][\\p{Lu}]{2}\\d{2}[\\dx][\\p{Ll}]?\\*?|"
+    private static final String CODE_PART = "(?:[\\p{Lu}\\d][\\p{L}]{2}\\d{2}[\\dx][\\p{Ll}]?(?:[_-][\\p{L}0-9.*]+)*\\*?|"
             + "[\\p{Lu}\\d][\\p{L}]{1,5}\\d{0,2}(?:[_-][\\p{L}0-9.*]+)*(?:\\*\\.?\\d+(?:\\.\\d+)?)?\\*?)";
     private static final Pattern COURSE_CODE_PATTERN = Pattern.compile("^" + CODE_PART + "(?:/" + CODE_PART + ")*$");
     private final JdbcTemplate jdbc;

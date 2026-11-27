@@ -106,10 +106,15 @@ public class StudentAcademicService {
     }
 
     public record Course(String id, String code, String name, int credits, String category,
-            String description, String objectives, String learningOutcomes, String materialLink) {
+            String description, String objectives, String learningOutcomes, String materialLink,
+            String knowledgeBlock, String gradingStructure) {
+        public Course(String id, String code, String name, int credits, String category,
+                String description, String objectives, String learningOutcomes, String materialLink) {
+            this(id, code, name, credits, category, description, objectives, learningOutcomes, materialLink, null, null);
+        }
         public Course(String id, String code, String name, int credits, String category,
                 String description, String objectives, String learningOutcomes) {
-            this(id, code, name, credits, category, description, objectives, learningOutcomes, null);
+            this(id, code, name, credits, category, description, objectives, learningOutcomes, null, null, null);
         }
     }
 

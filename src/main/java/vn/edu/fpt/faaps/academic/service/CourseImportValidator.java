@@ -13,7 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import vn.edu.fpt.faaps.academic.service.AdminCourseService.CategoryItem;
 
 final class CourseImportValidator {
-    private static final String CODE_PART = "(?:[\\p{Lu}\\d][\\p{Lu}]{2}\\d{2}[\\dx][\\p{Ll}]?\\*?|"
+    private static final String CODE_PART = "(?:[\\p{Lu}\\d][\\p{L}]{2}\\d{2}[\\dx][\\p{Ll}]?(?:[_-][\\p{L}0-9.*]+)*\\*?|"
             + "[\\p{Lu}\\d][\\p{L}]{1,5}\\d{0,2}(?:[_-][\\p{L}0-9.*]+)*(?:\\*\\.?\\d+(?:\\.\\d+)?)?\\*?)";
     private static final String CODE_REGEX = "^" + CODE_PART + "(?:/" + CODE_PART + ")*$";
     private final JdbcTemplate jdbc;
@@ -39,7 +39,7 @@ final class CourseImportValidator {
     }
 
     List<String> validateRow(String code, String name, String creditsStr, String catStr,
-            String statusStr, String materialLink,
+            String statusStr, String materialLink, boolean hasEnrichment,
             Set<String> seenCodesInFile, Set<String> existingCodesInDb,
             List<CategoryItem> cats, Map<String, UUID> catMap) {
         List<String> errors = new ArrayList<>();
@@ -52,7 +52,7 @@ final class CourseImportValidator {
             String upper = cleanCode.toUpperCase();
             if (!seenCodesInFile.add(upper)) {
                 errors.add("Duplicate course code in uploaded file: " + cleanCode);
-            } else if (existingCodesInDb.contains(upper)) {
+            } else if (existingCodesInDb.contains(upper) && !hasEnrichment) {
                 errors.add("Course code already exists in database: " + cleanCode);
             }
         }

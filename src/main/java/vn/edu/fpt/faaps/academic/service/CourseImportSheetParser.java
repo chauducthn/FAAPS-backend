@@ -20,7 +20,10 @@ final class CourseImportSheetParser {
             "nocredit", "no credit", "nocredits", "no credits", "credits", "credit", "tín chỉ", "số tín chỉ"
     };
     private static final String[] CATEGORY_KEYS = {
-            "category", "category code", "course category", "khối kiến thức", "department", "chuyên ngành"
+            "category", "category code", "course category", "department", "chuyên ngành"
+    };
+    private static final String[] KNOWLEDGE_BLOCK_KEYS = {
+            "knowledge block", "knowledge_block", "khối kiến thức"
     };
     private static final String[] DESC_KEYS = { "description", "mô tả", "course description" };
     private static final String[] STATUS_KEYS = { "status", "course status", "active", "trạng thái" };
@@ -33,6 +36,9 @@ final class CourseImportSheetParser {
     };
     private static final String[] OBJ_KEYS = { "objectives", "studenttasks", "student tasks", "mục tiêu" };
     private static final String[] LO_KEYS = { "learning outcomes", "learning_outcomes", "chuẩn đầu ra" };
+    private static final String[] GRADING_KEYS = {
+            "grading structure", "grading_structure", "assessments", "assessment", "cấu trúc điểm"
+    };
 
     private CourseImportSheetParser() {
     }
@@ -77,12 +83,14 @@ final class CourseImportSheetParser {
         int nameCol = findCol(colMap, NAME_KEYS);
         int creditsCol = findCol(colMap, CREDITS_KEYS);
         int catCol = findCol(colMap, CATEGORY_KEYS);
+        int blockCol = findCol(colMap, KNOWLEDGE_BLOCK_KEYS);
         int descCol = findCol(colMap, DESC_KEYS);
         int statusCol = findCol(colMap, STATUS_KEYS);
         int linkCol = findCol(colMap, LINK_KEYS);
         int prereqCol = findCol(colMap, PREREQ_KEYS);
         int objCol = findCol(colMap, OBJ_KEYS);
         int loCol = findCol(colMap, LO_KEYS);
+        int gradingCol = findCol(colMap, GRADING_KEYS);
 
         List<RawCourseRow> rows = new ArrayList<>();
         for (int r = header.rowNum() + 1; r <= lastRow; r++) {
@@ -93,7 +101,7 @@ final class CourseImportSheetParser {
             if (code.isBlank() && name.isBlank()) continue;
             rows.add(new RawCourseRow(r, code, name, cellText(row, creditsCol), cellText(row, catCol),
                     cellText(row, descCol), cellText(row, prereqCol), cellText(row, objCol), cellText(row, loCol),
-                    cellText(row, statusCol), cellText(row, linkCol)));
+                    cellText(row, statusCol), cellText(row, linkCol), cellText(row, blockCol), cellText(row, gradingCol)));
         }
         return rows;
     }
@@ -143,7 +151,8 @@ final class CourseImportSheetParser {
             rows.add(new RawCourseRow(blockIndex++, code, name, findVal(block, CREDITS_KEYS),
                     findVal(block, CATEGORY_KEYS), findVal(block, DESC_KEYS),
                     findVal(block, PREREQ_KEYS), findVal(block, OBJ_KEYS), findVal(block, LO_KEYS),
-                    findVal(block, STATUS_KEYS), findVal(block, LINK_KEYS)));
+                    findVal(block, STATUS_KEYS), findVal(block, LINK_KEYS),
+                    findVal(block, KNOWLEDGE_BLOCK_KEYS), findVal(block, GRADING_KEYS)));
         }
         return rows;
     }
@@ -178,5 +187,5 @@ final class CourseImportSheetParser {
 
     record RawCourseRow(int rowNumber, String code, String name, String creditsStr, String catStr,
             String description, String prerequisites, String objectives, String learningOutcomes,
-            String statusStr, String materialLink) {}
+            String statusStr, String materialLink, String knowledgeBlock, String gradingStructure) {}
 }
