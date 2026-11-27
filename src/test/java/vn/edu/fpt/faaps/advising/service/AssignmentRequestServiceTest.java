@@ -2,7 +2,7 @@ package vn.edu.fpt.faaps.advising.service;
 
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.util.Map;
 import java.util.UUID;
@@ -48,17 +48,22 @@ class AssignmentRequestServiceTest {
         assertEquals(first.get("id"), second.get("id"));
         assertEquals(first.get("id"), requests.assignmentStatus(studentId).get("pendingRequestId"));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM notifications", Integer.class));
-        assertThrows(AdminAssignmentService.Conflict.class, () -> requests.requestAdvising(studentId, "Help", "Courses"));
+        assertEquals(true, requests.assignmentStatus(studentId).get("canRequestAdvising"));
         assertEquals(false, requests.assignmentStatus(studentId).get("canRequestAdvisor"));
     }
 
     @Test
-    void advisingRequestRequiresAnAdvisor() {
-        assertThrows(AdminAssignmentService.Conflict.class, () -> requests.requestAdvising(studentId, "Help", "Courses"));
+    void advisingRequestSupportsOpenPoolAndAssignedAdvisor() {
+        Map<String, Object> openPool = requests.requestAdvising(studentId, "Help", "Courses");
+        assertEquals("PENDING", openPool.get("status"));
+        assertNull(openPool.get("advisorId"));
+
         jdbc.update("INSERT INTO student_advisor_assignments VALUES (?, ?, 'ACTIVE', NULL)",
                 studentId.toString(), advisorId.toString());
-        assertEquals("PENDING", requests.requestAdvising(studentId, "Help", "Courses").get("status"));
-        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM advising_requests", Integer.class));
+        Map<String, Object> assigned = requests.requestAdvising(studentId, "Help 2", "Courses");
+        assertEquals("PENDING", assigned.get("status"));
+        assertEquals(advisorId.toString(), assigned.get("advisorId"));
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM advising_requests", Integer.class));
     }
 }
 

@@ -23,14 +23,14 @@ public class AppointmentReadRepository {
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final String BOOKED_SELECT_WITH_CS = """
             SELECT s.id, s.student_id, u.full_name AS student_name, st.student_code,
-                   s.advisor_id, a.full_name AS advisor_name, s.scheduled_at, s.ended_at,
+                   s.advisor_id, a.full_name AS advisor_name, s.advising_request_id, s.scheduled_at, s.ended_at,
                    s.duration_minutes, s.agenda, s.status, s.summary, s.consultation_summary, s.created_at
             FROM advising_sessions s JOIN users u ON u.id = s.student_id
             LEFT JOIN students st ON st.user_id = s.student_id JOIN users a ON a.id = s.advisor_id
             """;
     private static final String BOOKED_SELECT_LEGACY = """
             SELECT s.id, s.student_id, u.full_name AS student_name, st.student_code,
-                   s.advisor_id, a.full_name AS advisor_name, s.scheduled_at, s.ended_at,
+                   s.advisor_id, a.full_name AS advisor_name, NULL AS advising_request_id, s.scheduled_at, s.ended_at,
                    s.duration_minutes, s.agenda, s.status, s.summary, NULL AS consultation_summary, s.created_at
             FROM advising_sessions s JOIN users u ON u.id = s.student_id
             LEFT JOIN students st ON st.user_id = s.student_id JOIN users a ON a.id = s.advisor_id
@@ -54,7 +54,7 @@ public class AppointmentReadRepository {
         try {
             return jdbc.query("""
                     SELECT s.id, s.student_id, u.full_name AS student_name, st.student_code,
-                           s.scheduled_at, s.ended_at, s.duration_minutes, s.agenda, s.status,
+                           s.advising_request_id, s.scheduled_at, s.ended_at, s.duration_minutes, s.agenda, s.status,
                            s.summary, s.consultation_summary, s.created_at
                     FROM advising_sessions s JOIN users u ON u.id = s.student_id
                     LEFT JOIN students st ON st.user_id = s.student_id
@@ -64,7 +64,7 @@ public class AppointmentReadRepository {
         } catch (Exception ex) {
             return jdbc.query("""
                     SELECT s.id, s.student_id, u.full_name AS student_name, st.student_code,
-                           s.scheduled_at, s.ended_at, s.duration_minutes, s.agenda, s.status,
+                           NULL AS advising_request_id, s.scheduled_at, s.ended_at, s.duration_minutes, s.agenda, s.status,
                            s.summary, NULL AS consultation_summary, s.created_at
                     FROM advising_sessions s JOIN users u ON u.id = s.student_id
                     LEFT JOIN students st ON st.user_id = s.student_id
@@ -117,8 +117,8 @@ public class AppointmentReadRepository {
         String decisionNote = (dedicatedCs != null && dedicatedCs.equals(summary) && "COMPLETED".equalsIgnoreCase(status))
                 ? null : ("COMPLETED".equalsIgnoreCase(status) && dedicatedCs == null ? null : summary);
         return new AdvisorAppointmentDto(rs.getString("id"), rs.getString("student_id"),
-                rs.getString("student_name"), rs.getString("student_code"), start.format(ISO_DT),
-                end.format(ISO_DT), rs.getString("agenda"), status,
+                rs.getString("student_name"), rs.getString("student_code"), rs.getString("advising_request_id"),
+                start.format(ISO_DT), end.format(ISO_DT), rs.getString("agenda"), status,
                 decisionNote, consultationSummary, created == null ? null : created.toLocalDateTime().format(ISO_DT));
     }
 
@@ -135,8 +135,8 @@ public class AppointmentReadRepository {
                 ? null : ("COMPLETED".equalsIgnoreCase(status) && dedicatedCs == null ? null : summary);
         return new BookedAppointmentDto(rs.getString("id"), rs.getString("student_id"),
                 rs.getString("student_name"), rs.getString("student_code"), rs.getString("advisor_id"),
-                rs.getString("advisor_name"), start.format(ISO_DT), end.format(ISO_DT),
-                rs.getString("agenda"), status, decisionNote, consultationSummary,
+                rs.getString("advisor_name"), rs.getString("advising_request_id"), start.format(ISO_DT),
+                end.format(ISO_DT), rs.getString("agenda"), status, decisionNote, consultationSummary,
                 created == null ? null : created.toLocalDateTime().format(ISO_DT));
     }
 

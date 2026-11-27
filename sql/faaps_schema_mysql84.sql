@@ -58,10 +58,19 @@ CREATE TABLE `password_reset_tokens` (
   `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
 );
 
+CREATE TABLE `major_groups` (
+  `id` char(36) PRIMARY KEY DEFAULT (UUID()),
+  `code` varchar(50) UNIQUE NOT NULL COMMENT 'FLM prefix: BIT, BBA, BCT, BEN, BJP, BKR, BCH, BCS, LLB',
+  `name` varchar(255) NOT NULL,
+  `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
+  `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
+);
+
 CREATE TABLE `majors` (
   `id` char(36) PRIMARY KEY DEFAULT (UUID()),
   `code` varchar(50) UNIQUE NOT NULL,
   `name` varchar(255) NOT NULL,
+  `major_group_id` char(36),
   `description` text,
   `total_credits` int NOT NULL,
   `duration_years` decimal(3,1) NOT NULL,
@@ -160,6 +169,7 @@ CREATE TABLE `students` (
 CREATE TABLE `advisors` (
   `user_id` char(36) PRIMARY KEY,
   `advisor_code` varchar(50) UNIQUE,
+  `major_group_id` char(36),
   `specialization` text,
   `max_advisees` int DEFAULT 30,
   `status` varchar(20) DEFAULT 'ACTIVE' COMMENT 'ACTIVE, INACTIVE, ON_LEAVE',

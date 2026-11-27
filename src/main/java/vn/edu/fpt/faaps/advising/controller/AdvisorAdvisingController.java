@@ -35,8 +35,9 @@ public class AdvisorAdvisingController {
     public List<AdvisingConversationService.Request> list(
             @AuthenticationPrincipal AuthSession advisor,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String search) {
-        return conversations.list(advisor.id(), true, status, search);
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "ALL") String scope) {
+        return conversations.list(advisor.id(), true, status, search, scope);
     }
 
     @GetMapping("/paged")
@@ -44,9 +45,10 @@ public class AdvisorAdvisingController {
             @AuthenticationPrincipal AuthSession advisor,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "ALL") String scope,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return conversations.listPaged(advisor.id(), true, status, search, page, size);
+        return conversations.listPaged(advisor.id(), true, status, search, scope, page, size);
     }
 
     @GetMapping("/{id}")

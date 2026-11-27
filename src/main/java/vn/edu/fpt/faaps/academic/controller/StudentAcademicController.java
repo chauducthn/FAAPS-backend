@@ -3,6 +3,9 @@ package vn.edu.fpt.faaps.academic.controller;
 import vn.edu.fpt.faaps.academic.service.StudentAcademicService;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -39,7 +42,8 @@ public class StudentAcademicController {
     @PutMapping("/profile")
     public StudentAcademicService.Profile updateProfile(@AuthenticationPrincipal AuthSession student,
             @Valid @RequestBody UpdateProfile request) {
-        return academics.updateProfile(student.id(), request.fullName(), request.phone());
+        return academics.updateProfile(student.id(), request.fullName(), request.phone(),
+                request.email(), request.studentCode(), request.currentSemester());
     }
 
     @PutMapping("/profile/curriculum")
@@ -98,8 +102,16 @@ public class StudentAcademicController {
         return ResponseEntity.status(exception.getStatusCode()).body(ApiError.of(code, exception.getReason()));
     }
 
-    public record UpdateProfile(@NotBlank @Size(max = 255) String fullName,
-            @Size(max = 20) String phone) {}
+    public record UpdateProfile(
+            @NotBlank @Size(max = 255) String fullName,
+            @Size(max = 20) String phone,
+            @Email @Size(max = 255) String email,
+            @Size(max = 50) String studentCode,
+            @Min(0) @Max(12) Integer currentSemester) {
+        public UpdateProfile(String fullName, String phone) {
+            this(fullName, phone, null, null, null);
+        }
+    }
     public record ChangeCurriculumRequest(@NotNull UUID curriculumVersionId) {}
     public record CourseDetail(StudentAcademicService.Course course,
             List<StudentAcademicService.Prerequisite> prerequisites) {}

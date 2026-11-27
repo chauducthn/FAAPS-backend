@@ -55,6 +55,9 @@ class AppointmentBookingHelper {
                 VALUES (?, ?, ?, 'SCHEDULED', ?, ?, 30, 'PENDING', ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, sessionId, studentId.toString(), advisorId.toString(),
                 Timestamp.valueOf(start), Timestamp.valueOf(end), input.reason().strip());
+        if (input.advisingRequestId() != null) {
+            linkAdvisingRequest(sessionId, studentId, input.advisingRequestId());
+        }
 
         notifyUser(advisorId.toString(), "New Appointment Request",
                 "A student booked a 30-minute appointment.");
@@ -127,5 +130,15 @@ class AppointmentBookingHelper {
             return OffsetDateTime.parse(str).toLocalDateTime();
         }
         return LocalDateTime.parse(str);
+    }
+
+    /** Links the appointment to one of the student's own advising requests; another student's is rejected. */
+    private void linkAdvisingRequest(String sessionId, UUID studentId, UUID requestId) {
+        Integer owned = jdbc.queryForObject("SELECT COUNT(*) FROM advising_requests WHERE id = ? AND student_id = ?",
+                Integer.class, requestId.toString(), studentId.toString());
+        if (owned == null || owned == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Advising request not found");
+        }
+        jdbc.update("UPDATE advising_sessions SET advising_request_id = ? WHERE id = ?", requestId.toString(), sessionId);
     }
 }

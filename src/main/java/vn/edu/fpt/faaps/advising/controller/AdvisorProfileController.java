@@ -25,7 +25,8 @@ public class AdvisorProfileController {
     @PutMapping
     public Profile update(@AuthenticationPrincipal AuthSession advisor,
             @Valid @RequestBody UpdateRequest request) {
-        return profiles.update(advisor.id(), request.fullName(), request.phone(), request.specialization());
+        return profiles.update(advisor.id(), request.fullName(), request.phone(),
+                request.specialization(), request.email(), request.majorGroupId());
     }
 
     /** Writes the advisor-specific field only; the identity fields belong to the shared /api/profile endpoint. */

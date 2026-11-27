@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import vn.edu.fpt.faaps.academic.service.StudentAcademicService.*;
@@ -22,21 +23,35 @@ final class StudentAcademicQueryRepository {
     }
 
     Profile profile(UUID studentId) {
+        try {
+            return profile(studentId, true);
+        } catch (BadSqlGrammarException ex) {
+            log.debug("Falling back to student profile query without major groups: {}", ex.getMessage());
+            return profile(studentId, false);
+        }
+    }
+
+    private Profile profile(UUID studentId, boolean withMajorGroups) {
+        String groupColumns = withMajorGroups
+                ? "m.major_group_id, mg.code AS major_group_code, mg.name AS major_group_name,"
+                : "NULL AS major_group_id, NULL AS major_group_code, NULL AS major_group_name,";
+        String groupJoin = withMajorGroups ? "LEFT JOIN major_groups mg ON mg.id = m.major_group_id" : "";
         return jdbc.query("""
                 SELECT u.id, u.full_name, u.email, u.phone, u.date_of_birth, u.status AS account_status,
-                       s.student_code, s.major_id, m.code AS major_code, m.name AS major_name,
+                       s.student_code, s.major_id, m.code AS major_code, m.name AS major_name, %s
                        s.curriculum_version_id, cv.version AS cohort, s.current_semester,
                        s.current_gpa, s.total_credits_earned, s.academic_status
                 FROM users u LEFT JOIN students s ON s.user_id = u.id
-                LEFT JOIN majors m ON m.id = s.major_id
+                LEFT JOIN majors m ON m.id = s.major_id %s
                 LEFT JOIN curriculum_versions cv ON cv.id = s.curriculum_version_id
                 WHERE u.id = ?
-                """, (rs, row) -> new Profile(rs.getString("id"), rs.getString("full_name"),
-                rs.getString("email"),
+                """.formatted(groupColumns, groupJoin), (rs, row) -> new Profile(rs.getString("id"),
+                rs.getString("full_name"), rs.getString("email"),
                 rs.getString("phone") == null ? null : rs.getString("phone").replaceAll("\\s+", ""),
                 rs.getString("account_status"),
                 rs.getString("student_code"), rs.getString("major_id"), rs.getString("major_code"),
-                rs.getString("major_name"), rs.getString("curriculum_version_id"),
+                rs.getString("major_name"), rs.getString("major_group_id"), rs.getString("major_group_code"),
+                rs.getString("major_group_name"), rs.getString("curriculum_version_id"),
                 rs.getString("cohort"), (Integer) rs.getObject("current_semester"),
                 rs.getBigDecimal("current_gpa"), (Integer) rs.getObject("total_credits_earned"),
                 rs.getString("academic_status"), rs.getObject("date_of_birth", LocalDate.class)), studentId.toString())

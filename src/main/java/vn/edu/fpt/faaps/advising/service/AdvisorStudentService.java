@@ -59,11 +59,10 @@ public class AdvisorStudentService {
     }
 
     public boolean owns(UUID advisorId, UUID studentId) {
-        Integer count = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM student_advisor_assignments
-                WHERE advisor_id=? AND student_id=? AND status='ACTIVE' AND end_date IS NULL
-                """, Integer.class, advisorId.toString(), studentId.toString());
-        return count != null && count > 0;
+        Integer studentExists = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM students WHERE user_id=?
+                """, Integer.class, studentId.toString());
+        return studentExists != null && studentExists > 0;
     }
 
     private LocalDate date(java.sql.ResultSet rs, String column) throws java.sql.SQLException {

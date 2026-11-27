@@ -46,7 +46,13 @@ public class StudentAcademicService {
 
     @Transactional
     public Profile updateProfile(UUID studentId, String fullName, String phone) {
-        return profileUpdater.updateProfile(studentId, fullName, phone);
+        return updateProfile(studentId, fullName, phone, null, null, null);
+    }
+
+    @Transactional
+    public Profile updateProfile(UUID studentId, String fullName, String phone,
+            String email, String studentCode, Integer currentSemester) {
+        return profileUpdater.updateProfile(studentId, fullName, phone, email, studentCode, currentSemester);
     }
 
     @Transactional
@@ -115,9 +121,11 @@ public class StudentAcademicService {
 
     public record Profile(String id, String fullName, String email, String phone, String accountStatus,
             String studentCode, String majorId, String majorCode, String majorName,
+            String majorGroupId, String majorGroupCode, String majorGroupName,
             String curriculumVersionId, String cohort, Integer currentSemester, BigDecimal currentGpa,
             Integer totalCreditsEarned, String academicStatus, LocalDate dateOfBirth) {
     }
+
 
     public record TranscriptRow(String id, String courseCode, String courseName, int credits,
             String semesterCode, String semesterName, BigDecimal finalScore, String status,

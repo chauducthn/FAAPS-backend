@@ -1,5 +1,6 @@
 package vn.edu.fpt.faaps.advising.dto;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
@@ -14,18 +15,44 @@ public final class AdvisorProfileDtos {
             String fullName,
             String email,
             String phone,
+            LocalDate dateOfBirth,
+            String accountStatus,
+            String majorGroupId,
+            String majorGroupCode,
+            String majorGroupName,
             String specialization,
             int maxAdvisees,
             int activeAdvisees,
             String status,
             LocalDate assignmentStartDate
-    ) {}
+    ) {
+        public Profile(
+                UUID id,
+                String advisorCode,
+                String fullName,
+                String email,
+                String phone,
+                String specialization,
+                int maxAdvisees,
+                int activeAdvisees,
+                String status,
+                LocalDate assignmentStartDate) {
+            this(id, advisorCode, fullName, email, phone, null, "ACTIVE", null, null, null,
+                    specialization, maxAdvisees, activeAdvisees, status, assignmentStartDate);
+        }
+    }
 
     public record UpdateRequest(
             @NotBlank @Size(max = 255) String fullName,
             @Size(max = 20) String phone,
-            String specialization
-    ) {}
+            String specialization,
+            @Email @Size(max = 255) String email,
+            UUID majorGroupId
+    ) {
+        public UpdateRequest(String fullName, String phone, String specialization) {
+            this(fullName, phone, specialization, null, null);
+        }
+    }
 
     /**
      * The identity fields (name, phone) are written through the shared {@code /api/profile} endpoint, so this

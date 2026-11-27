@@ -34,8 +34,13 @@ public class AppointmentDtos {
     public record BookAppointmentDto(
             UUID advisorId,
             @NotBlank String startTime,
-            @NotBlank String reason
-    ) {}
+            @NotBlank String reason,
+            UUID advisingRequestId
+    ) {
+        public BookAppointmentDto(UUID advisorId, String startTime, String reason) {
+            this(advisorId, startTime, reason, null);
+        }
+    }
 
     public record UpdateAppointmentStatusDto(
             @NotBlank String status,
@@ -61,6 +66,7 @@ public class AppointmentDtos {
             String studentId,
             String studentName,
             String studentCode,
+            String advisingRequestId,
             String startTime,
             String endTime,
             String reason,
@@ -70,8 +76,15 @@ public class AppointmentDtos {
             String createdAt
     ) {
         public AdvisorAppointmentDto(String id, String studentId, String studentName, String studentCode,
+                String startTime, String endTime, String reason, String status, String decisionNote,
+                String consultationSummary, String createdAt) {
+            this(id, studentId, studentName, studentCode, null, startTime, endTime, reason, status,
+                    decisionNote, consultationSummary, createdAt);
+        }
+
+        public AdvisorAppointmentDto(String id, String studentId, String studentName, String studentCode,
                 String startTime, String endTime, String reason, String status, String decisionNote, String createdAt) {
-            this(id, studentId, studentName, studentCode, startTime, endTime, reason, status, decisionNote,
+            this(id, studentId, studentName, studentCode, null, startTime, endTime, reason, status, decisionNote,
                     "COMPLETED".equalsIgnoreCase(status) ? decisionNote : null, createdAt);
         }
     }
@@ -83,6 +96,7 @@ public class AppointmentDtos {
             String studentCode,
             String advisorId,
             String advisorName,
+            String advisingRequestId,
             String startTime,
             String endTime,
             String reason,
@@ -93,8 +107,15 @@ public class AppointmentDtos {
     ) {
         public BookedAppointmentDto(String id, String studentId, String studentName, String studentCode,
                 String advisorId, String advisorName, String startTime, String endTime, String reason,
+                String status, String decisionNote, String consultationSummary, String createdAt) {
+            this(id, studentId, studentName, studentCode, advisorId, advisorName, null, startTime, endTime,
+                    reason, status, decisionNote, consultationSummary, createdAt);
+        }
+
+        public BookedAppointmentDto(String id, String studentId, String studentName, String studentCode,
+                String advisorId, String advisorName, String startTime, String endTime, String reason,
                 String status, String decisionNote, String createdAt) {
-            this(id, studentId, studentName, studentCode, advisorId, advisorName, startTime, endTime, reason,
+            this(id, studentId, studentName, studentCode, advisorId, advisorName, null, startTime, endTime, reason,
                     status, decisionNote, "COMPLETED".equalsIgnoreCase(status) ? decisionNote : null, createdAt);
         }
     }

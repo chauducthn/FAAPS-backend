@@ -1,6 +1,7 @@
 package vn.edu.fpt.faaps.academic.service;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,13 +23,45 @@ final class StudentProfileUpdater {
         this.queries = queries;
     }
 
-    Profile updateProfile(UUID studentId, String fullName, String phone) {
+    /** Null or blank email, student code and semester leave the stored value untouched. */
+    Profile updateProfile(UUID studentId, String fullName, String phone,
+            String email, String studentCode, Integer currentSemester) {
         if (fullName == null || fullName.isBlank()) {
             throw new IllegalArgumentException("fullName is required");
         }
+        String id = studentId.toString();
         jdbc.update("UPDATE users SET full_name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                IdentityInput.fullName(fullName), IdentityInput.compactPhone(phone), studentId.toString());
+                IdentityInput.fullName(fullName), IdentityInput.compactPhone(phone), id);
+        if (email != null && !email.isBlank()) {
+            String normalizedEmail = IdentityInput.email(email);
+            requireUnused("SELECT COUNT(*) FROM users WHERE LOWER(email) = ? AND id <> ?",
+                    normalizedEmail, id, "Email is already in use");
+            jdbc.update("UPDATE users SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", normalizedEmail, id);
+        }
+        if (studentCode != null && !studentCode.isBlank()) {
+            String code = studentCode.strip().toUpperCase(Locale.ROOT);
+            if (!StudentOnboardingService.STUDENT_CODE.matcher(code).matches()) {
+                throw new IllegalArgumentException("Invalid student code format (e.g. SE173012)");
+            }
+            requireUnused("SELECT COUNT(*) FROM students WHERE UPPER(student_code) = ? AND user_id <> ?",
+                    code, id, "Student code is already in use");
+            jdbc.update("UPDATE students SET student_code = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", code, id);
+        }
+        if (currentSemester != null) {
+            if (currentSemester < 0 || currentSemester > 12) {
+                throw new IllegalArgumentException("currentSemester must be between 0 and 12");
+            }
+            jdbc.update("UPDATE students SET current_semester = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                    currentSemester, id);
+        }
         return queries.profile(studentId);
+    }
+
+    private void requireUnused(String countSql, String value, String ownerId, String message) {
+        Integer count = jdbc.queryForObject(countSql, Integer.class, value, ownerId);
+        if (count != null && count > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, message);
+        }
     }
 
     Profile changeCurriculum(UUID studentId, UUID curriculumVersionId) {

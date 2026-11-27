@@ -27,6 +27,12 @@ public class AdvisorProfileService {
 
     @Transactional
     public Profile update(UUID advisorId, String fullName, String phone, String specialization) {
+        return update(advisorId, fullName, phone, specialization, null, null);
+    }
+
+    @Transactional
+    public Profile update(UUID advisorId, String fullName, String phone, String specialization,
+            String email, UUID majorGroupId) {
         String normalizedName = IdentityInput.fullName(fullName);
 
         String normalizedPhone = IdentityInput.compactPhone(phone);
@@ -36,7 +42,24 @@ public class AdvisorProfileService {
             normalizedSpec = null;
         }
 
-        if (repository.update(advisorId, normalizedName, normalizedPhone, normalizedSpec) != 1) {
+        String normalizedEmail = email == null ? null : email.strip().toLowerCase(java.util.Locale.ROOT);
+        if (normalizedEmail != null && normalizedEmail.isBlank()) {
+            normalizedEmail = null;
+        }
+        if (normalizedEmail != null) {
+            if (normalizedEmail.length() > 255 || !normalizedEmail.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+                throw new IllegalArgumentException("Invalid email format");
+            }
+            if (repository.emailInUse(normalizedEmail, advisorId)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Email is already in use");
+            }
+        }
+
+        if (majorGroupId != null && !repository.majorGroupExists(majorGroupId)) {
+            throw new IllegalArgumentException("Major group not found");
+        }
+
+        if (repository.update(advisorId, normalizedName, normalizedPhone, normalizedSpec, normalizedEmail, majorGroupId) != 1) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Advisor profile not found");
         }
         return get(advisorId);

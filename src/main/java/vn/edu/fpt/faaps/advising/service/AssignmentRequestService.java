@@ -74,25 +74,31 @@ public class AssignmentRequestService {
         status.put("advisorId", advisors.isEmpty() ? null : advisors.get(0));
         status.put("pendingRequestId", pending.isEmpty() ? null : pending.get(0));
         status.put("canRequestAdvisor", advisors.isEmpty() && pending.isEmpty());
-        status.put("canRequestAdvising", !advisors.isEmpty());
+        status.put("canRequestAdvising", true);
         return status;
     }
 
     @Transactional
     public Map<String, Object> requestAdvising(UUID studentId, String title, String description) {
         List<String> advisors = activeAdvisors(studentId);
-        if (advisors.size() != 1) throw new AdminAssignmentService.Conflict();
+        String advisorId = advisors.size() == 1 ? advisors.get(0) : null;
         String id = UUID.randomUUID().toString();
         jdbc.update("""
                 INSERT INTO advising_requests (id, student_id, advisor_id, request_type,
                                               title, description, status)
                 VALUES (?, ?, ?, 'ACADEMIC_GUIDANCE', ?, ?, 'PENDING')
-                """, id, studentId.toString(), advisors.get(0), title, description);
-        jdbc.update("""
-                INSERT INTO notifications (id, recipient_user_id, notification_type, title, message, is_read)
-                VALUES (?, ?, 'INFO', 'New advising request', 'A student requested advising support.', FALSE)
-                """, UUID.randomUUID().toString(), advisors.get(0));
-        return Map.of("id", id, "status", "PENDING", "advisorId", advisors.get(0));
+                """, id, studentId.toString(), advisorId, title, description);
+        if (advisorId != null) {
+            jdbc.update("""
+                    INSERT INTO notifications (id, recipient_user_id, notification_type, title, message, is_read)
+                    VALUES (?, ?, 'INFO', 'New advising request', 'A student requested advising support.', FALSE)
+                    """, UUID.randomUUID().toString(), advisorId);
+        }
+        java.util.HashMap<String, Object> result = new java.util.HashMap<>();
+        result.put("id", id);
+        result.put("status", "PENDING");
+        result.put("advisorId", advisorId);
+        return result;
     }
 
     private List<String> activeAdvisors(UUID studentId) {
