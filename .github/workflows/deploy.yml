@@ -19,7 +19,7 @@ jobs:
           script_stop: true
           script: |
             echo "=== Pulling latest changes from Git ==="
-            cd /home/ubuntu/FAAPS-backend
+            cd /home/ubuntu/faaps-be
             git pull origin main
 
             echo "=== Building application with Maven ==="

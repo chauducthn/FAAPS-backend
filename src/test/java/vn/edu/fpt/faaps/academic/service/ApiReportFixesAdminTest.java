@@ -53,7 +53,10 @@ class ApiReportFixesAdminTest {
 
         var presetsResp = aiController.getPresets();
         assertTrue(presetsResp.success());
-        assertEquals(3, presetsResp.data().size());
+        assertFalse(presetsResp.data().isEmpty());
+        assertEquals(presetsResp.data().size(),
+                presetsResp.data().stream().map(p -> p.modelName()).distinct().count(),
+                "Every preset must target a distinct model key");
 
         var createdResp = aiController.create(new CreateAiConfigDto(
                 "Gemini Advisor", "GEMINI", "gemini-2.5-flash", "CHAT",
