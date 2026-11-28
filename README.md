@@ -29,7 +29,7 @@ To test Admin APIs in the same browser tab:
 
 For Student or Advisor APIs, sign in through the frontend with Google in the same browser profile, then open Swagger UI on `localhost:8080`. The account must have the required role. Swagger UI does not grant permissions; a 401 means no valid session and a 403 means missing role or CSRF token.
 
-For the shared development RDS database and Google OAuth setup, follow [the team setup guide](docs/RDS_TEAM_SETUP.md). The launcher is `./scripts/Start-Rds.ps1`; it keeps database and OAuth secrets out of Git.
+For the shared development RDS database and Google OAuth setup, follow [the team setup guide](https://github.com/chauducthn/faaps-doc/blob/main/backend/RDS_TEAM_SETUP.md). The launcher is `./scripts/Start-Rds.ps1`; it keeps database and OAuth secrets out of Git.
 
 To start from a private environment file, copy `.env.example` to `.env`, replace the placeholder values, then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-FromEnv.ps1` from the backend directory. The launcher loads `.env` for this process and configures the RDS TLS truststore. The application does not load `.env` by itself. Never commit or send a filled `.env` through Git or group chat; share secrets privately, and each developer should create their own `.env`.
 
@@ -56,3 +56,7 @@ Admin password login uses `JdbcAuthAccountStore` when a datasource is available.
 The system has one Admin account, referenced by the singleton `admin_account` row. Admin creation and status changes are not exposed through the User Accounts API. Existing databases must apply `sql/2026-10-26_single_admin_account.sql` after backing up; it verifies that exactly one active Admin exists, preserves that account and removes the former handover tables. New databases must create the initial Admin and singleton together.
 
 Google account persistence uses Google's stable `sub`. A first-time Google user creates an active `users` row with the `STUDENT` role; the academic `students` row is created only after the required student code, major, curriculum and enrollment semester are available. An existing active Advisor account with a matching verified email and no password or Google link can be linked on first sign-in. Admin accounts are never auto-linked by email. Existing Google links are resolved by `sub`, not by email, and suspended accounts are denied. Never derive Advisor or Admin rights from the email domain.
+
+## Documentation
+
+API notes, team workflow and setup guides live in [faaps-doc](https://github.com/chauducthn/faaps-doc).
