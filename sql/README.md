@@ -2,13 +2,13 @@
 
 For a new local MySQL 8.4 database, run `faaps_schema_mysql84.sql` once. It creates the `faaps` database, the core tables including `advisor_work_schedules`, the two Admin AI report tables, and the three roles. It does not create an Admin password.
 
-To add optional demo data, run `faaps_demo_seed.sql` after the schema. The demo seed is idempotent and creates one sample major, one curriculum, two advisors, four students, and two active advisor assignments. Demo accounts use `example.invalid` addresses and cannot sign in with Google.
+A local install is created by the Docker Compose stack, which runs the schema, `faaps_local_seed.sql`, `03-local-admin-and-defaults.sql` and `2026-11-28_seed_default_course_categories.sql` in order. That seed is deliberately clean: it creates the roles, the Admin account, the majors, the semesters, the curriculum versions, the eight course categories and the default academic rules, but **no sample courses, no demo advisors and no demo students**. The Admin imports the real course catalogue from FLM through Admin > Courses > Import, and creates the accounts through the app.
 
 In MySQL Workbench, open each SQL file and execute the entire script. From a terminal with the MySQL client installed:
 
 ```powershell
 mysql -u root -p --execute="SOURCE sql/faaps_schema_mysql84.sql"
-mysql -u root -p --execute="SOURCE sql/faaps_demo_seed.sql"
+mysql -u root -p --execute="SOURCE sql/faaps_local_seed.sql"
 ```
 
 Run the schema only on a new local database. The shared RDS database already has its schema and demo rows; teammates connecting to that same RDS database should not import these files again. Keep database credentials outside Git.
@@ -28,3 +28,5 @@ For mock data to test pagination, filters and bulk actions on a local database, 
 To simplify advisor profiles in an existing database, review and back up advisor identifiers/specializations first, then apply `2026-10-22_simplify_advisor_profile.sql`. It copies existing `advisors.work_days` into `advisor_work_schedules` before removing `advisor_code`, `specialization`, and `work_days` from `advisors`. Advisor API identity is now the associated `users.email`. MySQL DDL commits implicitly; do not treat this migration as transactional. The DOWN script recreates the old columns but cannot recover the original advisor codes or specializations; it generates synthetic `LEGACY-<user_id>` codes, so use a database backup for a true restoration.
 
 The current flow stores only the exact assignment start date in `advisors.assignment_start_date`; after backing up, apply `2026-10-26_remove_advisor_work_days.sql` to remove the obsolete work-day table created by the historical migration.
+
+To add the default FLM course categories to an existing database, apply `2026-11-28_seed_default_course_categories.sql`. It is idempotent and only inserts missing rows. The local seed created only `CORE`, `MATH` and `SPEC`, but the browser import check rejects a course whose category is unknown (`Category "PREP" does not exist.`), so a FLM export cannot be imported without the remaining knowledge blocks: `PREP`, `GEN`, `FOUND`, `OJT` and `CAP`. `MATH` is kept because the seeded courses already point at it; `FOUND` is the FLM name for the same kind of block.

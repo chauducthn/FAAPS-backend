@@ -68,7 +68,7 @@ CREATE TABLE `major_groups` (
 
 CREATE TABLE `majors` (
   `id` char(36) PRIMARY KEY DEFAULT (UUID()),
-  `code` varchar(50) UNIQUE NOT NULL,
+  `code` varchar(50) NOT NULL,
   `name` varchar(255) NOT NULL,
   `major_group_id` char(36),
   `description` text,
@@ -76,7 +76,11 @@ CREATE TABLE `majors` (
   `duration_years` decimal(3,1) NOT NULL,
   `status` varchar(20) DEFAULT 'ACTIVE' COMMENT 'ACTIVE, INACTIVE',
   `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
-  `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
+  `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
+  -- A major code can carry several names (FLM lists more than one programme
+  -- under a code), so the uniqueness is on the pair.
+  UNIQUE KEY `uq_majors_code_name` (`code`, `name`),
+  KEY `idx_majors_code` (`code`)
 );
 
 CREATE TABLE `semesters` (
@@ -135,9 +139,12 @@ CREATE TABLE `course_prerequisites` (
   `prerequisite_course_id` char(36) NOT NULL,
   `group_no` int NOT NULL DEFAULT 1 COMMENT 'Rows with the same group_no are alternatives (OR). Different group_no are all required (AND). Example: (A OR B) AND C -> A:1, B:1, C:2',
   `type` varchar(20) NOT NULL DEFAULT 'PREREQUISITE' COMMENT 'PREREQUISITE, REPLACEMENT',
+  `effective_from_curriculum_version_id` char(36) COMMENT 'NULL = the REPLACEMENT applies to every curriculum version; otherwise the relation only applies from this cohort onwards',
+  `replaced_by_reason` varchar(255) COMMENT 'Why this substitution exists (curriculum change note)',
   `minimum_score` decimal(4,2) COMMENT 'Minimum score, 10-point scale (e.g. 5.00)',
   `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
-  CONSTRAINT `course_prerequisites_type_ck` CHECK (`type` IN ('PREREQUISITE', 'REPLACEMENT'))
+  CONSTRAINT `course_prerequisites_type_ck` CHECK (`type` IN ('PREREQUISITE', 'REPLACEMENT')),
+  CONSTRAINT `fk_prereq_replacement_scope` FOREIGN KEY (`effective_from_curriculum_version_id`) REFERENCES `curriculum_versions` (`id`) ON DELETE CASCADE
 );
 
 CREATE TABLE `curriculum_courses` (
@@ -162,6 +169,7 @@ CREATE TABLE `students` (
   `current_gpa` decimal(4,2) DEFAULT 0 COMMENT 'GPA 10-point scale (0.00 - 10.00)',
   `total_credits_earned` int DEFAULT 0,
   `academic_status` varchar(20) DEFAULT 'ACTIVE' COMMENT 'ACTIVE, PROBATION, SUSPENDED, GRADUATED, WITHDRAWN, LEAVE_OF_ABSENCE',
+  `onboarding_completed_at` timestamp NULL COMMENT 'Set when the student finishes the first-login setup (major, specialization)',
   `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
   `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
 );
@@ -203,8 +211,10 @@ CREATE TABLE `student_course_records` (
   `status` varchar(20) DEFAULT 'IN_PROGRESS' COMMENT 'IN_PROGRESS, PASSED, FAILED, WITHDRAWN, EXEMPTED',
   `attempt_number` int DEFAULT 1 COMMENT 'Retake tracking',
   `credits_earned` int DEFAULT 0,
+  `satisfied_via_course_id` char(36) COMMENT 'The curriculum course this record satisfies, when the student took a substitute course instead',
   `created_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
-  `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP)
+  `updated_at` timestamp DEFAULT (CURRENT_TIMESTAMP),
+  CONSTRAINT `fk_student_record_satisfied_via` FOREIGN KEY (`satisfied_via_course_id`) REFERENCES `courses` (`id`) ON DELETE SET NULL
 );
 
 CREATE TABLE `semester_summaries` (

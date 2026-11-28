@@ -38,10 +38,46 @@ final class TranscriptLookupResolver {
             List<Object[]> tmi = lookupCourse(jdbc, "TMI_ELE");
             if (!tmi.isEmpty()) return tmi;
         }
-        return jdbc.query(
+        List<Object[]> slashed = jdbc.query(
                 "SELECT id, code FROM courses WHERE UPPER(code) LIKE ? OR UPPER(code) LIKE ? LIMIT 1",
                 (rs, n) -> new Object[]{rs.getString(1), rs.getString(2)},
                 upper + "/%", "%/" + upper);
+        if (!slashed.isEmpty()) return slashed;
+        return resolveCodeVariant(jdbc, upper);
+    }
+
+    /**
+     * Resolves a code that the catalog only knows under another delivery variant.
+     *
+     * <p>FAP exports the code a student actually sat ({@code IoT102t}), while the FLM
+     * catalog may list the subject once ({@code IOT102}), and the other way round
+     * ({@code SWE201} in FAP, {@code SWE201c} in FLM). A transcript row carries no name,
+     * so the base code is the only evidence; it is trusted only when the catalog family
+     * of that base code is one subject:
+     * <ul>
+     *   <li>every member of the family must be a variant of the others (same credits
+     *       and names); a family that mixes unrelated courses ({@code ISM301} /
+     *       {@code ISM301c}) is ambiguous and stays unresolved;</li>
+     *   <li>the plain base code is preferred, otherwise the first variant.</li>
+     * </ul>
+     */
+    static List<Object[]> resolveCodeVariant(JdbcTemplate jdbc, String upper) {
+        String base = CourseMatchRules.baseCode(upper);
+        if (base == null) return List.of();
+        List<CourseMatchRules.CourseRef> family = jdbc.query(
+                "SELECT id, code, name, credits FROM courses WHERE UPPER(code) LIKE ? ORDER BY code",
+                (rs, n) -> new CourseMatchRules.CourseRef(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4)),
+                base + "%").stream()
+                .filter(c -> base.equals(CourseMatchRules.baseCode(c.code())))
+                .toList();
+        if (family.isEmpty()) return List.of();
+        CourseMatchRules.CourseRef first = family.get(0);
+        for (CourseMatchRules.CourseRef other : family.subList(1, family.size())) {
+            if (!CourseMatchRules.isSameCourseVariant(first, other)) return List.of();
+        }
+        CourseMatchRules.CourseRef chosen = family.stream()
+                .filter(c -> c.upperCode().equals(base)).findFirst().orElse(first);
+        return List.<Object[]>of(new Object[]{chosen.id(), chosen.code()});
     }
 
     static String resolveOrCreateSemester(JdbcTemplate jdbc, String rawCode) {

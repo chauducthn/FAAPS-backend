@@ -34,8 +34,9 @@ public class AdvisorAtRiskController {
             @RequestParam(required = false) String riskLevel,
             @RequestParam(required = false) String reason,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "100") int size) {
-        return atRiskService.list(advisor.id(), riskLevel, reason, page, size);
+            @RequestParam(defaultValue = "100") int size,
+            @RequestParam(required = false) UUID semesterId) {
+        return atRiskService.list(advisor.id(), riskLevel, reason, semesterId, page, size);
     }
 
     @GetMapping("/counts")

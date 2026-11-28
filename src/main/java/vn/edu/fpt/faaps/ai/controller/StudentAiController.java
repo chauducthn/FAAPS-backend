@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -25,6 +26,9 @@ import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.AiConversationDto;
 import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.AiMessageFeedbackDto;
 import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.CreateAiConversationDto;
 import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.GenerateRoadmapDto;
+import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.RoadmapVersionsDto;
+import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.SaveCustomRoadmapDto;
+import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.SelectRoadmapVersionDto;
 import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.SendAiMessageDto;
 import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.SendAiMessageResultDto;
 import vn.edu.fpt.faaps.ai.dto.StudentAiDtos.StudyRoadmapDto;
@@ -95,6 +99,34 @@ public class StudentAiController {
             @AuthenticationPrincipal AuthSession student,
             @RequestBody(required = false) GenerateRoadmapDto dto) {
         return studentAiService.generateRoadmap(student.id(), dto != null ? dto : new GenerateRoadmapDto(null, null));
+    }
+
+    /** The SYSTEM, AI and CUSTOM roadmap versions, and the one the student follows. */
+    @GetMapping("/roadmap/versions")
+    public RoadmapVersionsDto getRoadmapVersions(@AuthenticationPrincipal AuthSession student) {
+        return studentAiService.roadmapVersions(student.id());
+    }
+
+    /** Rebuilds the system plan for the given goals, then asks the AI to improve it. */
+    @PostMapping("/roadmap/ai")
+    public StudyRoadmapDto generateAiRoadmap(
+            @AuthenticationPrincipal AuthSession student,
+            @RequestBody(required = false) GenerateRoadmapDto dto) {
+        return studentAiService.generateAiRoadmap(student.id(), dto != null ? dto : new GenerateRoadmapDto(null, null));
+    }
+
+    @PutMapping("/roadmap/custom")
+    public StudyRoadmapDto saveCustomRoadmap(
+            @AuthenticationPrincipal AuthSession student,
+            @RequestBody SaveCustomRoadmapDto dto) {
+        return studentAiService.saveCustomRoadmap(student.id(), dto);
+    }
+
+    @PutMapping("/roadmap/active")
+    public RoadmapVersionsDto selectRoadmapVersion(
+            @AuthenticationPrincipal AuthSession student,
+            @RequestBody SelectRoadmapVersionDto dto) {
+        return studentAiService.selectRoadmapVersion(student.id(), dto == null ? null : dto.kind());
     }
 }
 

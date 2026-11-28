@@ -61,8 +61,14 @@ public class StudentBlockPlanController {
         return service.prerequisiteMap();
     }
 
+    /**
+     * The courses that satisfy the same curriculum requirement as the given course.
+     *
+     * <p>The graph is scoped to the student's own curriculum version, so a substitution
+     * that only applies to a later cohort does not leak into an earlier one.
+     */
     @GetMapping("/equivalents")
-    public Map<String, List<String>> equivalents() {
-        return equivalences.equivalenceMap();
+    public Map<String, List<String>> equivalents(@AuthenticationPrincipal AuthSession student) {
+        return service.curriculumEquivalents(student.id());
     }
 }

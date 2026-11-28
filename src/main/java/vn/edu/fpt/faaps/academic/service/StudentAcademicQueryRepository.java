@@ -54,9 +54,27 @@ final class StudentAcademicQueryRepository {
                 rs.getString("major_group_name"), rs.getString("curriculum_version_id"),
                 rs.getString("cohort"), (Integer) rs.getObject("current_semester"),
                 rs.getBigDecimal("current_gpa"), (Integer) rs.getObject("total_credits_earned"),
-                rs.getString("academic_status"), rs.getObject("date_of_birth", LocalDate.class)), studentId.toString())
+                rs.getString("academic_status"), rs.getObject("date_of_birth", LocalDate.class),
+                onboardingCompleted(studentId, rs.getString("curriculum_version_id"))), studentId.toString())
                 .stream().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Student account not found"));
+    }
+
+    /**
+     * Reads the first-login setup flag. Databases that have not run the
+     * `2026-11-28_student_onboarding_completed_at` migration yet do not have the
+     * column, so fall back to "a student that already has a curriculum is set up".
+     */
+    private boolean onboardingCompleted(UUID studentId, String curriculumVersionId) {
+        try {
+            Integer count = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM students WHERE user_id = ? AND onboarding_completed_at IS NOT NULL",
+                    Integer.class, studentId.toString());
+            return count != null && count > 0;
+        } catch (BadSqlGrammarException ex) {
+            log.debug("Falling back to curriculum presence for the onboarding flag: {}", ex.getMessage());
+            return curriculumVersionId != null;
+        }
     }
 
     List<TranscriptRow> transcript(UUID studentId) {
@@ -83,11 +101,28 @@ final class StudentAcademicQueryRepository {
                 JOIN courses c ON c.id = cc.course_id
                 WHERE cc.curriculum_version_id = ? AND cc.is_mandatory = TRUE
                 """, Integer.class, p.curriculumVersionId());
+        // A curriculum requirement counts as met when the student passed the course
+        // itself OR a course an admin declared as its replacement (for example the
+        // student took CSI104 while the K18 curriculum lists the replacement CSI106).
         Integer passed = jdbc.queryForObject("""
-                SELECT COUNT(DISTINCT r.course_id) FROM student_course_records r
-                JOIN curriculum_courses cc ON cc.course_id = r.course_id AND cc.curriculum_version_id = ?
-                WHERE r.student_id = ? AND r.status IN ('PASSED', 'EXEMPTED')
-                """, Integer.class, p.curriculumVersionId(), studentId.toString());
+                SELECT COUNT(*) FROM curriculum_courses cc
+                WHERE cc.curriculum_version_id = ?
+                  AND EXISTS (
+                    SELECT 1 FROM student_course_records r
+                    WHERE r.student_id = ? AND r.status IN ('PASSED', 'EXEMPTED')
+                      AND (
+                        r.course_id = cc.course_id
+                        OR r.course_id IN (
+                          SELECT cp.prerequisite_course_id
+                          FROM course_prerequisites cp
+                          WHERE cp.course_id = cc.course_id AND UPPER(cp.type) = 'REPLACEMENT'
+                            AND (cp.effective_from_curriculum_version_id IS NULL
+                                 OR cp.effective_from_curriculum_version_id = ?)
+                        )
+                      )
+                  )
+                """, Integer.class, p.curriculumVersionId(), studentId.toString(),
+                p.curriculumVersionId());
         Integer total = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM curriculum_courses WHERE curriculum_version_id = ?",
                 Integer.class, p.curriculumVersionId());

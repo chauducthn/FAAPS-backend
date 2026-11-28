@@ -22,10 +22,15 @@ public class AdvisorAtRiskService {
     }
 
     public AtRiskStudentResponse list(UUID advisorId, String riskLevelFilter, String reasonFilter, int page, int size) {
+        return list(advisorId, riskLevelFilter, reasonFilter, null, page, size);
+    }
+
+    public AtRiskStudentResponse list(UUID advisorId, String riskLevelFilter, String reasonFilter, UUID semesterId,
+            int page, int size) {
         if (page < 0 || size < 1 || size > 200) {
             throw new IllegalArgumentException("Invalid page or size");
         }
-        List<AtRiskStudent> filtered = computeAllAtRisk(advisorId).stream()
+        List<AtRiskStudent> filtered = computeAllAtRisk(advisorId, semesterId).stream()
                 .filter(s -> riskLevelFilter == null || riskLevelFilter.isBlank()
                         || "ALL".equalsIgnoreCase(riskLevelFilter)
                         || s.riskLevel().equalsIgnoreCase(riskLevelFilter.strip()))
@@ -75,14 +80,19 @@ public class AdvisorAtRiskService {
                 r.currentSemester(), r.currentGpa() != null ? r.currentGpa().doubleValue() : null,
                 "LOW", List.of(),
                 note != null && !note.isBlank() ? "Acknowledged: " + note.strip() : "Acknowledged",
-                r.totalCreditsEarned(), Instant.now().toString());
+                r.totalCreditsEarned(), Instant.now().toString(), null, null, 0);
     }
 
     public List<AtRiskStudent> computeAllAtRisk(UUID advisorId) {
+        return computeAllAtRisk(advisorId, null);
+    }
+
+    public List<AtRiskStudent> computeAllAtRisk(UUID advisorId, UUID semesterId) {
         List<AdviseeRow> advisees = queries.loadAdvisees(advisorId, null);
         List<AtRiskStudent> result = new ArrayList<>();
+        String semester = semesterId == null ? null : semesterId.toString();
         for (AdviseeRow row : advisees) {
-            AtRiskStudent evaluated = evaluator.evaluate(row);
+            AtRiskStudent evaluated = evaluator.evaluate(row, semester);
             if (evaluated != null) {
                 result.add(evaluated);
             }
@@ -112,7 +122,11 @@ public class AdvisorAtRiskService {
             List<String> reasons,
             String reasonDetails,
             int totalCreditsEarned,
-            String detectedAt
+            String detectedAt,
+            /** Latest advising contact (session or email) with the student, null when never contacted. */
+            String lastContactAt,
+            String lastContactType,
+            int contactCount
     ) {}
 
     public record AtRiskStudentResponse(

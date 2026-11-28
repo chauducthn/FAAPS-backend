@@ -30,8 +30,8 @@ public class StudentAiService {
             @Autowired(required = false) TranscriptImportService transcriptImport,
             @Autowired(required = false) GeminiVisionClient visionClient) {
         this.jdbc = jdbc;
-        this.roadmaps = new StudentRoadmapService(jdbc);
         this.chatSupport = new StudentAiChatSupport(jdbc);
+        this.roadmaps = new StudentRoadmapService(jdbc, new StudentRoadmapAiRefiner(gemini, secretStore, chatSupport));
         this.contextBuilder = new AiAcademicContextBuilder(jdbc);
         this.generator = new StudentAiGenerationHelper(gemini, secretStore);
         this.attachments = new StudentAiAttachmentHelper(transcriptImport, visionClient);
@@ -189,5 +189,25 @@ public class StudentAiService {
     @Transactional
     public StudyRoadmapDto generateRoadmap(UUID studentId, GenerateRoadmapDto dto) {
         return roadmaps.generate(studentId, dto);
+    }
+
+    public vn.edu.fpt.faaps.ai.dto.StudentAiDtos.RoadmapVersionsDto roadmapVersions(UUID studentId) {
+        return roadmaps.versions(studentId);
+    }
+
+    /** Not transactional on purpose: the AI call can take a minute and must not hold a database transaction. */
+    public StudyRoadmapDto generateAiRoadmap(UUID studentId, GenerateRoadmapDto dto) {
+        return roadmaps.generateAi(studentId, dto);
+    }
+
+    @Transactional
+    public StudyRoadmapDto saveCustomRoadmap(UUID studentId,
+            vn.edu.fpt.faaps.ai.dto.StudentAiDtos.SaveCustomRoadmapDto dto) {
+        return roadmaps.saveCustom(studentId, dto);
+    }
+
+    @Transactional
+    public vn.edu.fpt.faaps.ai.dto.StudentAiDtos.RoadmapVersionsDto selectRoadmapVersion(UUID studentId, String kind) {
+        return roadmaps.selectVersion(studentId, kind);
     }
 }

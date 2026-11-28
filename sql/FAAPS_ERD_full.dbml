@@ -168,6 +168,8 @@ Table course_prerequisites {
   prerequisite_course_id uuid [not null]
   group_no int [not null, default: 1, note: 'For PREREQUISITE: rows with the same group_no are alternatives (OR); different groups are all required (AND). Use 1 for REPLACEMENT.']
   type varchar(20) [not null, default: 'PREREQUISITE', note: 'PREREQUISITE, REPLACEMENT']
+  effective_from_curriculum_version_id uuid [ref: > curriculum_versions.id, note: 'For REPLACEMENT only: the cohort the substitution starts at; NULL applies to every curriculum version.']
+  replaced_by_reason varchar(255) [note: 'Why this substitution was declared (curriculum change note).']
   minimum_score decimal(4,2) [note: 'For PREREQUISITE only; NULL for REPLACEMENT. Minimum score uses the 10-point scale.']
   created_at timestamp [default: `CURRENT_TIMESTAMP`]
 
@@ -280,6 +282,7 @@ Table student_course_records {
   status varchar(20) [default: 'IN_PROGRESS', note: 'IN_PROGRESS, PASSED, FAILED, WITHDRAWN, EXEMPTED']
   attempt_number int [default: 1, note: 'Retake tracking']
   credits_earned int [default: 0]
+  satisfied_via_course_id uuid [ref: > courses.id, note: 'The curriculum course this record fulfils, when the student took a declared substitute course instead.']
   created_at timestamp [default: `CURRENT_TIMESTAMP`]
   updated_at timestamp [default: `CURRENT_TIMESTAMP`]
 

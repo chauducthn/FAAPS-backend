@@ -26,7 +26,8 @@ public class AdvisorAiCopilotService {
             - Key Discussion Points
             - Agreed Action Items
             - Follow-up Plan.
-            Keep it concise and factual.
+            Keep it concise and factual. Plain text only (no markdown), at most 900 characters, written so the
+            student can read it in their advising history.
             """;
 
     private final JdbcTemplate jdbc;
@@ -64,6 +65,56 @@ public class AdvisorAiCopilotService {
         String fallback = "Session Summary:\n- " + rawNotes.strip()
                 + "\n\nNext Steps:\n- Follow up on agreed action items.";
         return executeCopilot(advisorId, SUMMARY_SYSTEM_PROMPT, prompt, fallback);
+    }
+
+    private static final String OUTREACH_SYSTEM_PROMPT = """
+            You are an Academic Advising Copilot for FPT University advisors.
+            Write a short, warm and professional email from the advisor to a student who was flagged by the
+            early-warning system (high absence and/or low grades). Mention the concrete facts given, avoid blame,
+            explain why it matters (e.g. attendance below 80% fails the course), and invite the student to a
+            meeting or to reply. 120-180 words. Plain text only. Start with the line "Subject: ..." then a blank
+            line, then the body. Sign with the advisor name.
+            """;
+
+    /** Flow 3: an outreach email the advisor can edit before sending. */
+    public OutreachDraft draftOutreachEmail(UUID advisorId, UUID studentId) {
+        StudentSnapshot snapshot = loadStudentSnapshot(studentId);
+        List<String> absences = absenceFacts(studentId);
+        String advisorName = jdbc.query("SELECT full_name FROM users WHERE id = ?", (rs, row) -> rs.getString(1),
+                advisorId.toString()).stream().findFirst().orElse("Your academic advisor");
+        String prompt = buildBriefPrompt(snapshot) + "\nAttendance warnings: "
+                + (absences.isEmpty() ? "None" : String.join("; ", absences)) + "\nAdvisor: " + advisorName;
+
+        String subject = "Checking in on your studies this term";
+        StringBuilder body = new StringBuilder("Dear ").append(snapshot.fullName()).append(",\n\n")
+                .append("I am reaching out because our early-warning report shows a few things worth talking about:\n");
+        absences.forEach(fact -> body.append("- ").append(fact).append("\n"));
+        snapshot.failedCourses().forEach(code -> body.append("- ").append(code).append(" was not passed yet\n"));
+        if (snapshot.gpa() > 0 && snapshot.gpa() < 5.0) {
+            body.append(String.format(java.util.Locale.ROOT, "- Your GPA is %.2f%n", snapshot.gpa()));
+        }
+        body.append("\nMissing more than 20% of the sessions fails a course regardless of scores, so it helps to act "
+                + "early. Could you book a slot with me this week, or simply reply to this email with what is "
+                + "getting in the way? We can plan the rest of the term together.\n\nBest regards,\n")
+                .append(advisorName);
+        CopilotResult result = executeCopilot(advisorId, OUTREACH_SYSTEM_PROMPT, prompt,
+                "Subject: " + subject + "\n\n" + body);
+        return OutreachDraft.parse(result.content(), subject, result.fallback());
+    }
+
+    private List<String> absenceFacts(UUID studentId) {
+        try {
+            return jdbc.query("""
+                    SELECT c.code, a.absent_sessions, a.total_sessions, a.result
+                    FROM student_course_attendance a JOIN courses c ON c.id = a.course_id
+                    WHERE a.student_id = ? AND a.result IN ('WARNING', 'FAIL')
+                    ORDER BY a.absent_rate DESC LIMIT 5
+                    """, (rs, row) -> rs.getString(1) + ": absent " + rs.getInt(2) + "/" + rs.getInt(3)
+                    + " sessions" + ("FAIL".equals(rs.getString(4)) ? " (over the limit)" : ""),
+                    studentId.toString());
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     private CopilotResult executeCopilot(UUID advisorId, String systemPrompt, String prompt, String fallbackText) {
@@ -164,4 +215,17 @@ public class AdvisorAiCopilotService {
             String academicStatus, List<String> failedCourses, List<String> openWarnings) {}
 
     public record CopilotResult(String content, boolean fallback) {}
+
+    public record OutreachDraft(String subject, String message, boolean fallback) {
+        static OutreachDraft parse(String content, String defaultSubject, boolean fallback) {
+            String text = content == null ? "" : content.strip();
+            if (text.regionMatches(true, 0, "Subject:", 0, 8)) {
+                int newline = text.indexOf('\n');
+                String subject = (newline < 0 ? text.substring(8) : text.substring(8, newline)).strip();
+                String body = newline < 0 ? "" : text.substring(newline + 1).strip();
+                return new OutreachDraft(subject.isEmpty() ? defaultSubject : subject, body, fallback);
+            }
+            return new OutreachDraft(defaultSubject, text, fallback);
+        }
+    }
 }

@@ -77,19 +77,20 @@ class AdvisorAtRiskQueryHelper {
         }
     }
 
-    int countUnrecoveredFailedCourses(String studentId) {
+    int countUnrecoveredFailedCourses(String studentId, String semesterId) {
         try {
             Integer count = jdbc.queryForObject("""
                     SELECT COUNT(DISTINCT r.course_id)
                     FROM student_course_records r
                     WHERE r.student_id = ? AND r.status = 'FAILED'
+                      AND (? IS NULL OR r.semester_id = ?)
                       AND NOT EXISTS (
                           SELECT 1 FROM student_course_records r2
                           WHERE r2.student_id = r.student_id
                             AND r2.course_id = r.course_id
                             AND r2.status IN ('PASSED', 'EXEMPTED')
                       )
-                    """, Integer.class, studentId);
+                    """, Integer.class, studentId, semesterId, semesterId);
             return count == null ? 0 : count;
         } catch (Exception ex) {
             log.debug("Could not count failed courses for student {}: {}", studentId, ex.getMessage());
@@ -97,29 +98,31 @@ class AdvisorAtRiskQueryHelper {
         }
     }
 
-    AttendanceRiskSummary checkAttendanceRisk(String studentId) {
+    AttendanceRiskSummary checkAttendanceRisk(String studentId, String semesterId) {
         try {
             List<String[]> rows = jdbc.query("""
                     SELECT absent_sessions, total_sessions, absent_rate, result
                     FROM student_course_attendance
                     WHERE student_id = ? AND result IN ('WARNING', 'FAIL')
+                      AND (? IS NULL OR semester_id = ?)
                     ORDER BY absent_rate DESC
                     """, (rs, r) -> new String[] {
                     String.valueOf(rs.getInt("absent_sessions")),
                     String.valueOf(rs.getInt("total_sessions")),
                     rs.getBigDecimal("absent_rate") != null ? rs.getBigDecimal("absent_rate").toPlainString() : "0",
                     rs.getString("result")
-            }, studentId);
+            }, studentId, semesterId, semesterId);
             if (!rows.isEmpty()) {
                 boolean hasFail = rows.stream().anyMatch(r -> "FAIL".equalsIgnoreCase(r[3]));
                 String[] worst = rows.get(0);
-                String detail = "Absent " + worst[0] + "/" + worst[1] + " sessions (" + worst[2] + "%)";
+                String detail = "Absent " + worst[0] + "/" + worst[1] + " sessions (" + worst[2] + "%)"
+                        + (rows.size() > 1 ? " in " + rows.size() + " courses" : "");
                 return new AttendanceRiskSummary(true, hasFail, detail);
             }
         } catch (Exception ex) {
             log.debug("Could not query student_course_attendance for student {}: {}", studentId, ex.getMessage());
         }
-        if (hasUnresolvedWarning(studentId, "ATTENDANCE")) {
+        if (semesterId == null && hasUnresolvedWarning(studentId, "ATTENDANCE")) {
             return new AttendanceRiskSummary(true, false, "High absence warning");
         }
         return new AttendanceRiskSummary(false, false, null);
@@ -138,6 +141,27 @@ class AdvisorAtRiskQueryHelper {
             return false;
         }
     }
+
+    /** The latest advising contact (any session type) with the student, by any advisor. */
+    LastContact lastContact(String studentId) {
+        try {
+            List<LastContact> rows = jdbc.query("""
+                    SELECT session_type, status, COALESCE(ended_at, scheduled_at, created_at) AS contacted_at,
+                           (SELECT COUNT(*) FROM advising_sessions s2
+                            WHERE s2.student_id = s.student_id AND s2.status <> 'CANCELLED') AS contact_count
+                    FROM advising_sessions s
+                    WHERE s.student_id = ? AND s.status <> 'CANCELLED'
+                    ORDER BY COALESCE(ended_at, scheduled_at, created_at) DESC LIMIT 1
+                    """, (rs, r) -> new LastContact(rs.getString("session_type"), rs.getString("status"),
+                    rs.getTimestamp("contacted_at"), rs.getInt("contact_count")), studentId);
+            return rows.isEmpty() ? null : rows.get(0);
+        } catch (Exception ex) {
+            log.debug("Could not read advising contacts for student {}: {}", studentId, ex.getMessage());
+            return null;
+        }
+    }
+
+    record LastContact(String sessionType, String status, Timestamp at, int count) {}
 
     record AdviseeRow(String id, String studentCode, String fullName, String majorCode,
             String majorName, Integer currentSemester, BigDecimal currentGpa, int totalCreditsEarned,

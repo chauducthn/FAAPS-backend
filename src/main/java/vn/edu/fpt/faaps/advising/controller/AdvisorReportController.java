@@ -1,5 +1,9 @@
 package vn.edu.fpt.faaps.advising.controller;
 
+import java.util.UUID;
+import vn.edu.fpt.faaps.dashboard.service.AdvisingSemesterReportService;
+import vn.edu.fpt.faaps.dashboard.service.AdvisingSemesterReportService.AdvisorSemesterReport;
+import vn.edu.fpt.faaps.dashboard.service.AdvisingSemesterReportService.SemesterActivity;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -21,9 +25,33 @@ public class AdvisorReportController {
     private final AdvisorReportQueryHelper queries;
     private final AdvisorAtRiskService atRiskService;
 
+    private final AdvisingSemesterReportService semesterReports;
+
     public AdvisorReportController(JdbcTemplate jdbc, AdvisorAtRiskService atRiskService) {
+        this(jdbc, atRiskService, new AdvisingSemesterReportService(jdbc, atRiskService));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AdvisorReportController(JdbcTemplate jdbc, AdvisorAtRiskService atRiskService,
+            AdvisingSemesterReportService semesterReports) {
         this.queries = new AdvisorReportQueryHelper(jdbc);
         this.atRiskService = atRiskService;
+        this.semesterReports = semesterReports;
+    }
+
+    /** Flow 5: this advisor's advising activity in one semester (the current one when none is given). */
+    @GetMapping("/semester")
+    public AdvisorSemesterReport semester(
+            @AuthenticationPrincipal AuthSession advisor,
+            @RequestParam(required = false) UUID semesterId) {
+        return semesterReports.advisorReport(advisor.id(), semesterId);
+    }
+
+    @GetMapping("/semester-trend")
+    public List<SemesterActivity> semesterTrend(
+            @AuthenticationPrincipal AuthSession advisor,
+            @RequestParam(defaultValue = "6") int limit) {
+        return semesterReports.trend(advisor.id(), limit);
     }
 
     @GetMapping("/overview")

@@ -2,9 +2,16 @@ package vn.edu.fpt.faaps.infrastructure.config;
 
 import java.util.Map;
 
+/**
+ * Seeds the structural catalogue of a local install: roles, the Admin account,
+ * majors, semesters, curriculum versions, course categories and the default
+ * academic rules.
+ *
+ * <p>It deliberately creates NO sample courses, NO demo advisors and NO demo
+ * students. The Admin imports the real course catalogue from FLM through
+ * Admin &gt; Courses &gt; Import, and accounts are created through the app.
+ */
 final class LocalSeedCatalog {
-
-    private static final String SYLLABUS_BASE = "https://flm.fpt.edu.vn/gui/role/student/SyllabusDetails?sylId=";
 
     private final LocalSeedCatalogSql sql;
     private final LocalSeedCourseSql courseSql;
@@ -12,6 +19,25 @@ final class LocalSeedCatalog {
     LocalSeedCatalog(LocalSeedCatalogSql sql, LocalSeedCourseSql courseSql) {
         this.sql = sql;
         this.courseSql = courseSql;
+    }
+
+    /**
+     * Creates the default FLM course categories if they are missing. This runs
+     * for every local database, not only empty ones, because the browser import
+     * check rejects any course whose category is unknown and the older local
+     * seeds only created CORE, MATH and SPEC.
+     */
+    static void seedDefaultCourseCategories(LocalSeedCourseSql courseSql) {
+        courseSql.ensureCategory("PREP", "Preparation Courses",
+                "Pre-training preparation courses such as physical education, music, arts and life skills");
+        courseSql.ensureCategory("GEN", "General Education & Soft Skills",
+                "Foreign languages, humanities, general education and soft skills requirements");
+        courseSql.ensureCategory("FOUND", "Foundation & Basic Sciences",
+                "Foundational mathematics, computing and engineering science courses");
+        courseSql.ensureCategory("OJT", "On-the-Job Training",
+                "On-the-Job Training internship terms completed at a partner company");
+        courseSql.ensureCategory("CAP", "Capstone Project",
+                "Graduation capstone projects and thesis courses");
     }
 
     CatalogRefs seed() {
@@ -41,80 +67,28 @@ final class LocalSeedCatalog {
         String iaK17Id = sql.ensureCurriculumVersion(iaMajorId, "K17", "Information Assurance K17", fa2022Id, true);
         sql.ensureCurriculumVersion(aiMajorId, "K17", "Artificial Intelligence K17", fa2022Id, true);
 
-        Map<String, String> courses = seedCoursesAndCurriculum(seK17Id, iaK17Id);
+        seedDefaultCategories();
         seedAcademicRules(seK17Id);
 
         return new CatalogRefs(advisorRoleId, studentRoleId, adminUserId, seMajorId, iaMajorId,
-                seK17Id, iaK17Id, fa2022Id, sp2025Id, su2025Id, fa2025Id, fa2026Id, sp2027Id, courses);
+                seK17Id, iaK17Id, fa2022Id, sp2025Id, su2025Id, fa2025Id, fa2026Id, sp2027Id, Map.of());
     }
 
-    private Map<String, String> seedCoursesAndCurriculum(String seK17Id, String iaK17Id) {
-        String coreCatId = courseSql.ensureCategory("CORE", "Core Courses",
+    /**
+     * Seeds the seven FLM knowledge blocks. The browser import check rejects any
+     * course whose category is unknown, so a FLM export cannot be imported
+     * unless every block already exists. MATH is kept because it holds the
+     * foundational mathematics courses; FOUND is the FLM name for the same
+     * kind of block.
+     */
+    private void seedDefaultCategories() {
+        seedDefaultCourseCategories(courseSql);
+        courseSql.ensureCategory("CORE", "Core Courses",
                 "Required foundational and professional core courses");
-        String mathCatId = courseSql.ensureCategory("MATH", "Mathematics & Basic Sciences",
+        courseSql.ensureCategory("MATH", "Mathematics & Basic Sciences",
                 "Foundational mathematics courses");
-        String specCatId = courseSql.ensureCategory("SPEC", "Specialization & Capstone",
+        courseSql.ensureCategory("SPEC", "Specialization & Capstone",
                 "Major specialization and capstone courses");
-
-        String prf192 = course("PRF192", "Programming Fundamentals", coreCatId,
-                "Fundamental programming concepts and problem solving with C");
-        String mae101 = course("MAE101", "Mathematics for Engineering", mathCatId,
-                "Linear algebra, matrices, limits, derivatives, and integrals");
-        String pro192 = course("PRO192", "Object-Oriented Programming", coreCatId,
-                "Encapsulation, inheritance, polymorphism, and collections in Java");
-        String mad101 = course("MAD101", "Discrete Mathematics", mathCatId,
-                "Logic, sets, combinatorics, recursion, graphs, and trees");
-        String csd201 = course("CSD201", "Data Structures and Algorithms", coreCatId,
-                "Core data structures, algorithms, and complexity analysis");
-        String dbi202 = course("DBI202", "Introduction to Databases", coreCatId,
-                "Relational database design, SQL, normalization, and transactions");
-        String prj301 = course("PRJ301", "Java Web Application Development", specCatId,
-                "Servlets, JSP, MVC architecture, JDBC, and web development");
-        String swe201c = course("SWE201c", "Introduction to Software Engineering", specCatId,
-                "Software development life cycle, Agile/Scrum, requirements, and testing");
-        String swr302 = course("SWR302", "Software Requirement", specCatId,
-                "Requirement elicitation, analysis, specification (SRS), and validation");
-        String swt301 = course("SWT301", "Software Testing", specCatId,
-                "Unit testing, integration testing, and test automation");
-        String swp391 = course("SWP391", "Application Development Project", specCatId,
-                "Team-based software development project applying Agile/Scrum");
-        String iai101 = course("IAI101", "Introduction to Information Assurance", coreCatId,
-                "Security principles, threats, controls, and assurance practices");
-
-        courseSql.ensurePrerequisite(pro192, prf192);
-        courseSql.ensurePrerequisite(csd201, pro192);
-        courseSql.ensurePrerequisite(prj301, pro192);
-        courseSql.ensurePrerequisite(prj301, dbi202);
-        courseSql.ensurePrerequisite(swe201c, pro192);
-        courseSql.ensurePrerequisite(swr302, swe201c);
-        courseSql.ensurePrerequisite(swt301, swe201c);
-        courseSql.ensurePrerequisite(swp391, prj301);
-
-        courseSql.ensureCurriculumCourse(seK17Id, prf192, 1);
-        courseSql.ensureCurriculumCourse(seK17Id, mae101, 1);
-        courseSql.ensureCurriculumCourse(seK17Id, pro192, 2);
-        courseSql.ensureCurriculumCourse(seK17Id, mad101, 2);
-        courseSql.ensureCurriculumCourse(seK17Id, csd201, 3);
-        courseSql.ensureCurriculumCourse(seK17Id, dbi202, 3);
-        courseSql.ensureCurriculumCourse(seK17Id, prj301, 4);
-        courseSql.ensureCurriculumCourse(seK17Id, swe201c, 4);
-        courseSql.ensureCurriculumCourse(seK17Id, swr302, 5);
-        courseSql.ensureCurriculumCourse(seK17Id, swt301, 5);
-        courseSql.ensureCurriculumCourse(seK17Id, swp391, 5);
-
-        courseSql.ensureCurriculumCourse(iaK17Id, prf192, 1);
-        courseSql.ensureCurriculumCourse(iaK17Id, pro192, 2);
-        courseSql.ensureCurriculumCourse(iaK17Id, dbi202, 3);
-        courseSql.ensureCurriculumCourse(iaK17Id, iai101, 3);
-
-        return Map.ofEntries(
-                Map.entry("PRF192", prf192), Map.entry("MAE101", mae101), Map.entry("PRO192", pro192),
-                Map.entry("CSD201", csd201), Map.entry("DBI202", dbi202), Map.entry("PRJ301", prj301),
-                Map.entry("SWR302", swr302), Map.entry("SWT301", swt301), Map.entry("SWP391", swp391));
-    }
-
-    private String course(String code, String name, String categoryId, String description) {
-        return courseSql.ensureCourse(code, name, 3, categoryId, description, SYLLABUS_BASE + code);
     }
 
     private void seedAcademicRules(String seK17Id) {

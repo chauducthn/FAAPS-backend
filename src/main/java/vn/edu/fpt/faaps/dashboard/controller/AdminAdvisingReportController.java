@@ -11,14 +11,27 @@ import org.springframework.web.bind.annotation.RestController;
 import vn.edu.fpt.faaps.dashboard.service.AdminAdvisingReportService;
 import vn.edu.fpt.faaps.dashboard.service.AdminAdvisingReportService.AdvisorEffectivenessRow;
 import vn.edu.fpt.faaps.dashboard.service.AdminAdvisingReportService.SchoolAdvisingOverview;
+import vn.edu.fpt.faaps.dashboard.service.AdvisingSemesterReportService;
+import vn.edu.fpt.faaps.dashboard.service.AdvisingSemesterReportService.SemesterActivity;
 
 @RestController
 @RequestMapping("/api/admin/reports/advising")
 public class AdminAdvisingReportController {
     private final AdminAdvisingReportService reports;
+    private final AdvisingSemesterReportService semesterReports;
 
-    public AdminAdvisingReportController(AdminAdvisingReportService reports) {
+    public AdminAdvisingReportController(AdminAdvisingReportService reports,
+            AdvisingSemesterReportService semesterReports) {
         this.reports = reports;
+        this.semesterReports = semesterReports;
+    }
+
+    /** School-wide advising activity for the last semesters, oldest first. */
+    @GetMapping("/semester-trend")
+    public List<SemesterActivity> semesterTrend(
+            @RequestParam(required = false) UUID advisorId,
+            @RequestParam(defaultValue = "6") int limit) {
+        return semesterReports.trend(advisorId, limit);
     }
 
     @GetMapping("/overview")

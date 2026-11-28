@@ -13,13 +13,13 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AdminStructureImportService {
-    private static final int BATCH_SIZE = 500;
     private static final Pattern SEM_RE = Pattern.compile("^(SP|SU|FA)(\\d{4})$");
     private final JdbcTemplate jdbc;
 
@@ -53,7 +53,7 @@ public class AdminStructureImportService {
                 majorLimitById.put(id, credits);
             }
         }
-        batchExecute("""
+        int majorsCreated = insertIgnoringDuplicates("""
                 INSERT INTO majors (id, code, name, description, total_credits, duration_years,
                     status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -90,11 +90,11 @@ public class AdminStructureImportService {
                 cohortMajorById.put(cid, mid);
             }
         }
-        batchExecute("""
+        insertIgnoringDuplicates("""
                 INSERT INTO semesters (id, code, name, start_date, end_date, is_current, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, semInserts);
-        batchExecute("""
+        int cohortsCreated = insertIgnoringDuplicates("""
                 INSERT INTO curriculum_versions (id, major_id, version, name, effective_from_semester_id,
                     effective_to_semester_id, is_current, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -118,14 +118,15 @@ public class AdminStructureImportService {
                 if (!existingLinks.add(cid + "::" + link.courseId())) continue;
                 linkInserts.add(new Object[] { UUID.randomUUID().toString(), cid, link.courseId(), link.term() });
             }
-            batchExecute("""
+            int coursesLinked = insertIgnoringDuplicates("""
                     INSERT INTO curriculum_courses (id, curriculum_version_id, course_id, semester_number,
                         is_mandatory, created_at, updated_at)
                     VALUES (?, ?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """, linkInserts);
+            return new ImportSummary(majorsCreated, cohortsCreated, coursesLinked, skipped);
         }
 
-        return new ImportSummary(majorInserts.size(), cohortInserts.size(), linkInserts.size(), skipped);
+        return new ImportSummary(majorsCreated, cohortsCreated, 0, skipped);
     }
 
     private String resolveSemester(String existingId, String rawCode,
@@ -150,10 +151,24 @@ public class AdminStructureImportService {
         return id;
     }
 
-    private void batchExecute(String sql, List<Object[]> args) {
-        for (int i = 0; i < args.size(); i += BATCH_SIZE) {
-            jdbc.batchUpdate(sql, args.subList(i, Math.min(i + BATCH_SIZE, args.size())));
+    /**
+     * Runs an insert and survives a row that another process already created.
+     * A structure import re-reads the current state, so a concurrent insert (or
+     * a unique index the caller did not know about) must not fail the whole
+     * batch with a 500.
+     *
+     * @return the number of rows that were actually inserted
+     */
+    private int insertIgnoringDuplicates(String sql, List<Object[]> args) {
+        int inserted = 0;
+        for (Object[] row : args) {
+            try {
+                inserted += jdbc.update(sql, row);
+            } catch (DuplicateKeyException ex) {
+                // The row already exists; the caller counted it as skipped.
+            }
         }
+        return inserted;
     }
     private String normalizeMajorStatus(String status) {
         String upper = status == null || status.isBlank() ? "ACTIVE" : status.strip().toUpperCase(Locale.ROOT);

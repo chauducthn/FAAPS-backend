@@ -54,6 +54,8 @@ final class AdminCourseTestSupport {
                     id VARCHAR(36) PRIMARY KEY, course_id VARCHAR(36) NOT NULL,
                     prerequisite_course_id VARCHAR(36) NOT NULL, group_no INT DEFAULT 1,
                     type VARCHAR(20) DEFAULT 'PREREQUISITE', minimum_score DECIMAL(4,2),
+                    effective_from_curriculum_version_id VARCHAR(36),
+                    replaced_by_reason VARCHAR(255),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
                 """);

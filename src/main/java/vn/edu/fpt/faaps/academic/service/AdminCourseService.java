@@ -47,6 +47,12 @@ public class AdminCourseService {
         return relationService.add(courseId, kind, groupNo, otherCourseId, minimumScore);
     }
     @Transactional
+    public CourseRelation addRelation(UUID courseId, String kind, Integer groupNo,
+            UUID otherCourseId, BigDecimal minimumScore, UUID scopeCurriculumVersionId, String reason) {
+        return relationService.add(courseId, kind, groupNo, otherCourseId, minimumScore,
+                scopeCurriculumVersionId, reason);
+    }
+    @Transactional
     public CourseRelation updateRelation(UUID courseId, UUID relationId, Integer groupNo, BigDecimal minimumScore) {
         return relationService.update(courseId, relationId, groupNo, minimumScore);
     }
@@ -132,8 +138,21 @@ public class AdminCourseService {
     public record CourseReference(UUID courseId, String courseCode, String courseName) {}
     public record PrerequisiteItem(UUID id, UUID prerequisiteCourseId, String prerequisiteCode,
             String prerequisiteName, int groupNo, String type, BigDecimal minimumScore) {}
+    /**
+     * A relation between two courses.
+     *
+     * @param scopeCurriculumVersionId for a {@code REPLACEMENT} relation, the cohort the
+     *     substitution starts at; {@code null} means it applies to every curriculum
+     */
     public record CourseRelation(UUID relationId, String kind, int groupNo, UUID otherCourseId,
-            String otherCourseCode, String otherCourseName, BigDecimal minimumScore) {}
+            String otherCourseCode, String otherCourseName, BigDecimal minimumScore,
+            UUID scopeCurriculumVersionId, String scopeCurriculumVersion, String reason) {
+        public CourseRelation(UUID relationId, String kind, int groupNo, UUID otherCourseId,
+                String otherCourseCode, String otherCourseName, BigDecimal minimumScore) {
+            this(relationId, kind, groupNo, otherCourseId, otherCourseCode, otherCourseName, minimumScore,
+                    null, null, null);
+        }
+    }
     public record PrerequisiteInput(UUID prerequisiteCourseId, Integer groupNo, String type, BigDecimal minimumScore) {}
     public record CategoryItem(UUID id, String code, String name, String description) {}
     public record ImportRowItem(int rowNumber, String code, String name, int credits, String categoryId,

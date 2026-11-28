@@ -22,16 +22,35 @@ class CourseRelationService {
     }
 
     List<AdminCourseService.CourseRelation> list(UUID courseId) {
-        return reads.detail(courseId).prerequisites().stream()
-                .map(r -> new AdminCourseService.CourseRelation(
-                        r.id(), r.type(), r.groupNo(), r.prerequisiteCourseId(),
-                        r.prerequisiteCode(), r.prerequisiteName(), r.minimumScore()))
-                .toList();
+        return jdbc.query("""
+                SELECT cp.id, cp.type, cp.group_no, cp.prerequisite_course_id,
+                       p.code, p.name, cp.minimum_score,
+                       cp.effective_from_curriculum_version_id, cv.version, cp.replaced_by_reason
+                FROM course_prerequisites cp
+                JOIN courses p ON p.id = cp.prerequisite_course_id
+                LEFT JOIN curriculum_versions cv ON cv.id = cp.effective_from_curriculum_version_id
+                WHERE cp.course_id = ?
+                ORDER BY cp.group_no ASC, p.code ASC
+                """, (rs, row) -> new AdminCourseService.CourseRelation(
+                        UUID.fromString(rs.getString("id")), rs.getString("type"), rs.getInt("group_no"),
+                        UUID.fromString(rs.getString("prerequisite_course_id")),
+                        rs.getString("code"), rs.getString("name"), rs.getBigDecimal("minimum_score"),
+                        rs.getString("effective_from_curriculum_version_id") == null ? null
+                                : UUID.fromString(rs.getString("effective_from_curriculum_version_id")),
+                        rs.getString("version"), rs.getString("replaced_by_reason")),
+                courseId.toString());
     }
 
     @Transactional
     AdminCourseService.CourseRelation add(
             UUID courseId, String kind, Integer groupNo, UUID other, BigDecimal score) {
+        return add(courseId, kind, groupNo, other, score, null, null);
+    }
+
+    @Transactional
+    AdminCourseService.CourseRelation add(
+            UUID courseId, String kind, Integer groupNo, UUID other, BigDecimal score,
+            UUID scopeCurriculumVersionId, String reason) {
         reads.detail(courseId);
         validate(courseId, kind, groupNo, other, score);
         reads.detail(other);
@@ -49,14 +68,17 @@ class CourseRelationService {
         try {
             jdbc.update("""
                     INSERT INTO course_prerequisites
-                        (id, course_id, prerequisite_course_id, group_no, type, minimum_score, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        (id, course_id, prerequisite_course_id, group_no, type,
+                         effective_from_curriculum_version_id, replaced_by_reason, minimum_score, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     """,
                     UUID.randomUUID().toString(),
                     courseId.toString(),
                     other.toString(),
                     type.equals("REPLACEMENT") ? 1 : groupNo,
                     type,
+                    scopeCurriculumVersionId == null ? null : scopeCurriculumVersionId.toString(),
+                    reason,
                     type.equals("REPLACEMENT") ? null : score);
         } catch (DuplicateKeyException e) {
             throw new AdminCourseService.Conflict("This course relation already exists");

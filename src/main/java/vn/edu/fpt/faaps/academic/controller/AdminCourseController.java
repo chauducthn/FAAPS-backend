@@ -51,7 +51,8 @@ public class AdminCourseController {
     public ResponseEntity<ApiResponse<AdminCourseService.CourseRelation>> addRelation(
             @PathVariable UUID id, @Valid @RequestBody AddRelationRequest request) {
         var rel = courses.addRelation(id, request.kind(), request.groupNo(),
-                request.otherCourseId(), request.minimumScore());
+                request.otherCourseId(), request.minimumScore(),
+                request.scopeCurriculumVersionId(), request.reason());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Course relation created", rel));
     }
 
@@ -178,7 +179,9 @@ public class AdminCourseController {
     public record ConfirmImportRequest(@NotEmpty List<AdminCourseService.ImportConfirmItem> items) {}
     public record ImportErrorRequest(List<AdminCourseService.ImportRowItem> items) {}
     public record AddRelationRequest(@NotBlank String kind, @NotNull @Min(1) @Max(20) Integer groupNo,
-            @NotNull UUID otherCourseId, @DecimalMin("0.00") @DecimalMax("10.00") BigDecimal minimumScore) {}
+            @NotNull UUID otherCourseId, @DecimalMin("0.00") @DecimalMax("10.00") BigDecimal minimumScore,
+            UUID scopeCurriculumVersionId,
+            @Size(max = 255) String reason) {}
     public record UpdateRelationRequest(@Min(1) @Max(20) Integer groupNo,
             @DecimalMin("0.00") @DecimalMax("10.00") BigDecimal minimumScore) {}
     public record ApiResponse<T>(boolean success, String message, T data) {

@@ -16,9 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class StudentBlockPlanService {
     private static final Set<String> MODES = Set.of("CUSTOM", "RETAKE", "DEFERRED", "EARLY", "DRAFT", "EXCLUDED");
     private final JdbcTemplate jdbc;
+    private final CurriculumSubstitutionService substitutions;
 
-    public StudentBlockPlanService(JdbcTemplate jdbc) {
+    public StudentBlockPlanService(JdbcTemplate jdbc, CourseEquivalenceService equivalences) {
         this.jdbc = jdbc;
+        this.substitutions = new CurriculumSubstitutionService(jdbc, equivalences);
         ensureTable();
     }
 
@@ -133,6 +135,21 @@ public class StudentBlockPlanService {
             });
         } catch (RuntimeException ignored) { /* minimal test schema */ }
         return map;
+    }
+
+    /**
+     * The equivalence graph of the student's own curriculum.
+     *
+     * <p>Only the courses of the enrolled curriculum are reported, the declared
+     * substitutions are scoped to that curriculum version, and the replacements inferred
+     * for this student are included.
+     */
+    public Map<String, List<String>> curriculumEquivalents(UUID studentId) {
+        String curriculumVersionId = jdbc.queryForList(
+                "SELECT curriculum_version_id FROM students WHERE user_id = ?", String.class, studentId.toString())
+                .stream().findFirst().filter(id -> id != null && !id.isBlank()).orElse(null);
+        if (curriculumVersionId == null) return Map.of();
+        return substitutions.curriculumEquivalents(studentId, curriculumVersionId);
     }
 
     private static String normalizeMode(String v) {

@@ -200,7 +200,10 @@ if ($TrackOnly) {
 
 # 5. Determine if schema or seed needs to run
 $missingSchema = (-not $before.Exists) -or ($before.Counts.Values -contains -1)
-$CoreRequiredTables = @("majors", "semesters", "curriculum_versions", "courses", "academic_policies", "advisors", "students")
+# Only the structural tables count as "core". Courses, advisors and students are
+# excluded on purpose: a clean install starts without them, and including them
+# would make every run look like an unseeded database.
+$CoreRequiredTables = @("majors", "semesters", "curriculum_versions", "academic_policies")
 $emptyCoreTables = @()
 if ($before.Exists) {
     foreach ($coreTbl in $CoreRequiredTables) {

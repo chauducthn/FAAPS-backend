@@ -30,9 +30,15 @@ public class LocalDatabaseSeeder implements ApplicationRunner {
             "student_course_records", "semester_summaries", "academic_warnings",
             "study_plans", "advising_requests", "advising_sessions");
 
+    /**
+     * Tables that must hold data for the install to be considered set up. The
+     * catalogue is seeded by the SQL init scripts, so only the structural
+     * tables belong here. Courses, advisors and students are excluded on
+     * purpose: a clean install starts without them, and including them would
+     * make every startup look like an unseeded database.
+     */
     private static final List<String> CORE_REQUIRED_TABLES = List.of(
-            "majors", "semesters", "curriculum_versions", "courses",
-            "academic_policies", "advisors", "students");
+            "majors", "semesters", "curriculum_versions", "academic_policies");
 
     private final JdbcTemplate jdbc;
     private final boolean autoEnable;
@@ -55,6 +61,7 @@ public class LocalDatabaseSeeder implements ApplicationRunner {
             return;
         }
         try {
+            ensureDefaultCourseCategories();
             DatabaseTrackingReport report = trackAndSeedIfEmpty(false);
             if (report.seeded()) {
                 log.info("FAAPS LocalDatabaseSeeder: Seeded empty local database tables. Before={}, After={}",
@@ -66,6 +73,18 @@ public class LocalDatabaseSeeder implements ApplicationRunner {
         } catch (Exception ex) {
             log.warn("FAAPS LocalDatabaseSeeder skipped automatic startup check: {}", ex.getMessage());
         }
+    }
+
+    /**
+     * Makes sure the default FLM course categories exist. This runs even when the
+     * database already holds data, because a course import is rejected when its
+     * category is unknown and older databases only have CORE, MATH and SPEC.
+     */
+    private void ensureDefaultCourseCategories() {
+        if (LocalDatabaseSeeder.safeCount(jdbc, "course_categories") < 0) {
+            return;
+        }
+        LocalSeedCatalog.seedDefaultCourseCategories(new LocalSeedCourseSql(jdbc));
     }
 
     /**
@@ -99,7 +118,8 @@ public class LocalDatabaseSeeder implements ApplicationRunner {
 
         LocalSeedCatalogSql catalogSql = new LocalSeedCatalogSql(jdbc);
         LocalSeedCatalog.CatalogRefs refs = new LocalSeedCatalog(catalogSql, new LocalSeedCourseSql(jdbc)).seed();
-        new LocalSeedPeople(catalogSql, new LocalSeedPeopleSql(jdbc), new LocalSeedAdvisingSql(jdbc)).seed(refs);
+        // No demo people are seeded. Advisors and students are created through
+        // the app, so a local install starts with only the Admin account.
 
         Map<String, Integer> after = inspectTableCounts();
         return new DatabaseTrackingReport(before, after, true);

@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import vn.edu.fpt.faaps.advising.service.AdvisorAtRiskQueryHelper.AdviseeRow;
 import vn.edu.fpt.faaps.advising.service.AdvisorAtRiskQueryHelper.AttendanceRiskSummary;
+import vn.edu.fpt.faaps.advising.service.AdvisorAtRiskQueryHelper.LastContact;
 import vn.edu.fpt.faaps.advising.service.AdvisorAtRiskService.AtRiskStudent;
 
 class AdvisorAtRiskEvaluator {
@@ -22,6 +23,11 @@ class AdvisorAtRiskEvaluator {
     }
 
     AtRiskStudent evaluate(AdviseeRow row) {
+        return evaluate(row, null);
+    }
+
+    /** {@code semesterId} limits attendance and failed courses to one term; null looks at every term. */
+    AtRiskStudent evaluate(AdviseeRow row, String semesterId) {
         List<String> reasons = new ArrayList<>();
         List<String> details = new ArrayList<>();
         boolean highSeverity = false;
@@ -52,7 +58,7 @@ class AdvisorAtRiskEvaluator {
             }
         }
 
-        AttendanceRiskSummary attendanceRisk = queries.checkAttendanceRisk(row.id());
+        AttendanceRiskSummary attendanceRisk = queries.checkAttendanceRisk(row.id(), semesterId);
         if (attendanceRisk.atRisk()) {
             reasons.add("HIGH_ABSENCE");
             details.add(attendanceRisk.detail());
@@ -61,7 +67,7 @@ class AdvisorAtRiskEvaluator {
             }
         }
 
-        int failedCount = queries.countUnrecoveredFailedCourses(row.id());
+        int failedCount = queries.countUnrecoveredFailedCourses(row.id(), semesterId);
         boolean hasFailedCourseWarning = queries.hasUnresolvedWarning(row.id(), "FAILED_COURSES");
         if (failedCount > 0 || hasFailedCourseWarning) {
             reasons.add("FAILED_COURSES");
@@ -82,11 +88,16 @@ class AdvisorAtRiskEvaluator {
                 ? row.updatedAt().toInstant().atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT)
                 : Instant.now().toString();
 
+        LastContact contact = queries.lastContact(row.id());
         return new AtRiskStudent(
                 row.id(), row.studentCode(), row.fullName(), row.majorCode(), row.majorName(),
                 row.currentSemester(), gpa != null ? gpa.doubleValue() : null, riskLevel,
                 reasons, details.isEmpty() ? null : String.join(" · ", details),
-                row.totalCreditsEarned(), detectedAt);
+                row.totalCreditsEarned(), detectedAt,
+                // Local wall-clock time, like every other appointment time the API returns.
+                contact == null || contact.at() == null ? null : contact.at().toLocalDateTime().toString(),
+                contact == null ? null : contact.sessionType(),
+                contact == null ? 0 : contact.count());
     }
 
     static int riskRank(String level) {

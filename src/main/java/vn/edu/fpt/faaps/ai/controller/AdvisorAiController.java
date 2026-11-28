@@ -29,6 +29,13 @@ public class AdvisorAiController {
         return copilot.generateStudentBrief(advisor.id(), studentId);
     }
 
+    @PostMapping("/students/{studentId}/outreach-draft")
+    public AdvisorAiCopilotService.OutreachDraft outreachDraft(
+            @PathVariable UUID studentId,
+            @AuthenticationPrincipal AuthSession advisor) {
+        return copilot.draftOutreachEmail(advisor.id(), studentId);
+    }
+
     @PostMapping("/sessions/{sessionId}/draft-summary")
     public CopilotResult draftSummary(
             @PathVariable UUID sessionId,
